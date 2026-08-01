@@ -307,11 +307,154 @@ end
 
 -- ----------------------------------------------------------------- build --
 
+-- A desk with separately-classified objects on it (a template's `parts`
+-- list): the methodology's region classification at part granularity.
+-- Upright parts anchor their drawn bottom row to the desk's top plane
+-- and wear their own drawn tops as lids; flat parts (a keyboard, a
+-- sheet of paper) lie one voxel proud at drawn row = depth row -- the
+-- same 1:1 the tabletop itself is drawn with, so an object's height ON
+-- the drawing is its position ON the desk. The desk is the lab-table
+-- slab + base; its lid is the one synthesized surface in the model
+-- (the objects cover every drawn pixel of the tabletop), continued
+-- from the sibling tables' pattern in the drawing's own shades.
+-- tools/building_voxels.py `build_desk_set` is the reference twin.
+local function deskSetModel(sp, pr, t)
+  local W, H, D = sp.W, sp.H, pr.D
+  local ground = pr.ground
+  local col, inside = sp.col, sp.inside
+  local vox = {}
+  local function key(x, y, z) return (y * D + z) * W + x end
+  local function put(x, y, z, i) vox[key(x, y, z)] = i end
+
+  -- de-outline walk bounded to the part, so a part's side faces show
+  -- its own material and never the neighbour's (the sprite-wide walk
+  -- the facade path uses would cross the black seam between units)
+  local function interiorAt(sx, sy, lo, hi)
+    local i = sy * W + sx
+    if col[i] ~= BLACK then return sx end
+    local step = sx < math.floor((lo + hi) / 2) and 1 or -1
+    for d = 1, 3 do
+      local nx = sx + step * d
+      if nx >= lo and nx <= hi then
+        local ni = sy * W + nx
+        if inside[ni] and col[ni] ~= BLACK then return nx end
+      end
+    end
+    return sx
+  end
+
+  local f0, f1 = t.desk.fascia[1], t.desk.fascia[2]
+  local b0, b1 = t.desk.base[1], t.desk.base[2]
+  local plane = (b1 - b0 + 1) + (f1 - f0 + 1)
+
+  -- the base band, extruded exactly like every lab table's
+  for sy = b0, b1 do
+    Budget.tick()
+    local y = ground - 1 - sy
+    for sx = 0, W - 1 do
+      if inside[sy * W + sx] then
+        local ix = interiorAt(sx, sy, 0, W - 1)
+        for z = 0, D - 1 do
+          local px = (z == 0 or z == D - 1) and sx or ix
+          put(sx, y, z, sy * W + px)
+        end
+      end
+    end
+  end
+  for i in pairs(pr.recess) do
+    local sy = math.floor(i / W)
+    if sy >= b0 and sy <= b1 then
+      vox[key(i % W, ground - 1 - sy, D - 1)] = nil
+    end
+  end
+
+  -- the slab: fascia rows wrap every side; the lid continues the
+  -- sibling tables' top -- black rim, white highlight courses along
+  -- the north and west, grey field
+  for sy = f0, f1 do
+    Budget.tick()
+    local y = plane - 1 - (sy - f0)
+    for sx = 0, W - 1 do
+      for z = 0, D - 1 do put(sx, y, z, sy * W + sx) end
+    end
+  end
+  for sx = 0, W - 1 do
+    for z = 0, D - 1 do
+      local shade = GREY
+      if sx == 0 or sx == W - 1 or z == 0 or z == D - 1 then
+        shade = BLACK
+      elseif sx == 1 or z == 1 then
+        shade = WHITE
+      end
+      put(sx, plane - 1, z, pr.shadeTexel[shade])
+    end
+  end
+
+  local ytop = plane
+  for _, p in ipairs(t.parts) do
+    Budget.tick()
+    local x0, x1 = p.x[1], p.x[2]
+    if p.kind == "flat" then
+      for sy = p.rows[1], p.rows[2] do
+        if sy >= 0 and sy < D then
+          for sx = x0, x1 do
+            if inside[sy * W + sx] then put(sx, plane, sy, sy * W + sx) end
+          end
+        end
+      end
+    else
+      local tr0, tr1 = p.top[1], p.top[2]
+      local fr0, fr1 = p.facade[1], p.facade[2]
+      local pd = p.depth
+      local ytp = plane + (fr1 - fr0)
+      if ytp > ytop then ytop = ytp end
+      for sx = x0, x1 do
+        -- the lid: the part's drawn top laid across its depth from the
+        -- back, last row continuing forward; the front lid row is the
+        -- facade's own top row -- the drawn front-top edge
+        for z = 0, pd - 1 do
+          local front = z == pd - 1
+          local sy = front and fr0 or math.min(tr0 + z, tr1)
+          while sy <= tr1 and not inside[sy * W + sx] do sy = sy + 1 end
+          local ok = sy <= tr1 or (front and inside[fr0 * W + sx])
+          if ok then
+            put(sx, ytp, z, (front and fr0 or sy) * W + sx)
+          end
+        end
+        -- the body: facade rows anchored to the desk's top plane
+        for sy = fr0 + 1, fr1 do
+          local y = plane + (fr1 - sy)
+          local i = sy * W + sx
+          if inside[i] then
+            local ix = interiorAt(sx, sy, x0, x1)
+            for z = 0, pd - 1 do
+              if z == pd - 1 then
+                if not pr.recess[i] then put(sx, y, z, i) end
+              elseif z == 0 then
+                put(sx, y, z, i)
+              else
+                put(sx, y, z, sy * W + ix)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
+  return { at = function(x, y, z)
+             if x < 0 or x >= W or y < 0 or z < 0 or z >= D then return nil end
+             return vox[key(x, y, z)]
+           end,
+           W = W, ytop = ytop, zmin = 0, zmax = D - 1 }
+end
+
 -- The voxel model as a lookup: `at(x, y, z)` is the index of the sprite
 -- pixel that voxel wears, or nil. Build ORDER is expressed as lookup
 -- order -- roof first, so it overwrites the walls it intersects, and walls
 -- are trimmed to its underside so nothing pokes through the surface.
 local function model(sp, pr, t)
+  if t.parts then return deskSetModel(sp, pr, t) end
   local W, H, D = sp.W, sp.H, pr.D
   local slab, roofRows = t.slab, t.roofRows
   local top, ytop, ground = pr.top, pr.ytop, pr.ground

@@ -3270,16 +3270,21 @@ return {
         roofRows = 19, roofBack = 16, roofFront = 0, roofCycle = { 2, 13 },
         slab = 3, frontEave = 0, ledge = nil, depth = 2,
       },
-      -- F02: the computer bank on the lab's west table (OAKS_LAB cell
-      -- 0,1) -- the one FACADE-ONLY template: rows 0-14 are machines
-      -- drawn face-on (monitor and keys, the centre console, the right
-      -- cabinet) over the lab-table fascia and base bands, and nothing
-      -- is drawn from above. roofRows = 0, so the whole drawing
-      -- extrudes -- the house facade treatment with no roof band; the
-      -- roof fields are inert and the recess pass sinks every framed
-      -- pane (screens, keys, the cabinet's inset face) into relief on
-      -- its own. Same drawing, same grid, stands in the Hall of Fame
-      -- on the GYM atlas -- registered there below.
+      -- F02: the computer desk on the lab's west side (OAKS_LAB cell
+      -- 0,1) -- the one DESK-SET template: the pipeline's region
+      -- classification at PART granularity (see Buildings
+      -- deskSetModel). The desk is the sibling lab table (fascia rows
+      -- 16-18, base 19-21); on it stand a monitor over its keyboard
+      -- (left), a computer tower over a keyboard and mouse (middle),
+      -- and a sheet of paper LYING FLAT (right). Upright parts anchor
+      -- their drawn bottom row to the desk's top plane and wear their
+      -- own drawn tops as lids; flat parts lie one voxel proud at
+      -- drawn row = depth row -- the same 1:1 the tabletop itself is
+      -- drawn with. The roof fields are inert (roofRows = 0 keeps the
+      -- recess scan over the whole drawing, which is what sinks the
+      -- monitor's screen and the tower's slots). Same drawing, same
+      -- grid, stands in the Hall of Fame on the GYM atlas --
+      -- registered there below.
       {
         id = "lab_computers",
         tiles = {
@@ -3289,6 +3294,16 @@ return {
         },
         roofRows = 0, roofBack = 0, roofFront = 0, roofCycle = { 0, 0 },
         slab = 0, frontEave = 0, ledge = nil, depth = 2,
+        desk = { fascia = { 16, 18 }, base = { 19, 21 } },
+        parts = {
+          { kind = "upright", x = { 2, 13 }, top = { 0, 2 },
+            facade = { 3, 10 }, depth = 4 },              -- the monitor
+          { kind = "flat", x = { 1, 13 }, rows = { 11, 14 } },  -- keyboard
+          { kind = "upright", x = { 14, 21 }, top = { 0, 3 },
+            facade = { 4, 10 }, depth = 6 },              -- the tower
+          { kind = "flat", x = { 14, 21 }, rows = { 11, 14 } }, -- keys+mouse
+          { kind = "flat", x = { 22, 30 }, rows = { 1, 14 } },  -- the paper
+        },
       },
       -- F03: the empty north table beside it (OAKS_LAB cell 2,1): the
       -- starter table's band table verbatim on a grid two tiles
@@ -3307,8 +3322,8 @@ return {
 
     GYM = {
       -- F02 again: the Hall of Fame's recording machine is the lab's
-      -- computer bank drawing, tile for tile, on the GYM atlas (one
-      -- placement: HALL_OF_FAME cell 4,1). Same band table as the DOJO
+      -- computer desk drawing, tile for tile, on the GYM atlas (one
+      -- placement: HALL_OF_FAME cell 4,1). Same part table as the DOJO
       -- entry above.
       {
         id = "lab_computers",
@@ -3319,6 +3334,16 @@ return {
         },
         roofRows = 0, roofBack = 0, roofFront = 0, roofCycle = { 0, 0 },
         slab = 0, frontEave = 0, ledge = nil, depth = 2,
+        desk = { fascia = { 16, 18 }, base = { 19, 21 } },
+        parts = {
+          { kind = "upright", x = { 2, 13 }, top = { 0, 2 },
+            facade = { 3, 10 }, depth = 4 },              -- the monitor
+          { kind = "flat", x = { 1, 13 }, rows = { 11, 14 } },  -- keyboard
+          { kind = "upright", x = { 14, 21 }, top = { 0, 3 },
+            facade = { 4, 10 }, depth = 6 },              -- the tower
+          { kind = "flat", x = { 14, 21 }, rows = { 11, 14 } }, -- keys+mouse
+          { kind = "flat", x = { 22, 30 }, rows = { 1, 14 } },  -- the paper
+        },
       },
     },
   },
