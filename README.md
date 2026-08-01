@@ -9,6 +9,22 @@ as leaning sprite slabs, a shadow map throws real cast shadows across
 whatever they land on, and an optional tilt-shift pass sells the
 miniature-model look.
 
+Water is a surface rather than a texture lying in a hole. It is a field of
+one-pixel-wide voxel columns, each standing a whole number of pixels tall and
+rising and falling as waves — found by walking the view ray through them in
+the shader, so a crest hides what is behind it and shows you its lit side,
+with no extra geometry anywhere.
+
+And it reflects. The sky it stands under, in the same bands, the same dither
+and off the same clock, so the lake and the sky above it meet at the
+waterline with no seam. The sun or moon hanging in it, at the size the
+painted disc is drawn, craters and all. Whoever is standing beside it —
+walkers, NPCs, the two Pokémon in a staged battle. And on **FULL**, a
+screen-space ray march adds the rest of what is on screen: the shoreline, the
+trees behind it, the buildings across the bay. How much of it shows is
+Fresnel, so the top rung is a mirror and a looking-straight-down rung is a
+pond, off the same water.
+
 And battles fought on that world rather than on a white field. When
 something picks a fight the map's NPCs are culled, the engine's own wipe
 plays over the empty map, and the battle draws over the nearest patch of
@@ -34,6 +50,7 @@ menu.
 | `6`, or the **T-SHIFT** options row | OFF → 1 → 2 → 3 → OFF (miniature blur) |
 | `7`, or the **V-CURVE** options row | OFF → 1 → 2 → 3 — bend the world over the horizon |
 | `8`, or the **3D-BTL** options row | ON / OFF — fight on the map instead of on a white field |
+| `9`, or the **WATER** options row | FULL / SKY / OFF — waves and reflections on water. **SKY** gives the surface its pixel-tall wave columns and puts the sky, the sun, the moon and the cast in them; **FULL** adds a screen-space ray march that also reflects the shoreline, the trees and the buildings standing behind it |
 | the **BACK SPRITES** options row | OFF / ON — keep your own Pokémon on the battle menu, seen from behind in its classic slot, instead of standing it on the map; the foe is still out there. Only on the menu while **3D-BTL** is on, because it decides nothing without it |
 | the **DAYTIME** options row | SYNC / DAY / NIGHT / DUSK / DAWN / CYCLE — what time it is outdoors, on the diorama *and* on the flat 2D world; held at SYNC (and off the menu) while VOXEL is FULL |
 

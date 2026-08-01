@@ -1,5 +1,228 @@
 # Changelog
 
+## 1.4.0
+
+### Added
+
+- **WATER, a new row on hotkey 9: water reflects the world, the sky, the sun
+  and the moon.** Every lake, sea and pond in Kanto was a flat animated
+  texture lying in a hole in the ground. It is now a surface, and it is
+  reflective.
+
+  What it reflects, in the order the shader resolves them:
+
+  - **The sky.** The reflected direction goes through the very matrix the
+    frame is drawn with, as a point at infinity, and the canvas row that
+    lands on is looked up on Sky's own band ramp -- the identical texture,
+    the identical checkerboard dither, the identical display-mode transform.
+    So the sky in the lake is the sky over it, and the two meet at the
+    waterline with no seam at any pitch, field of view, window shape or zoom.
+    Blue at noon, gold at dusk, navy under the moon; GRAY gets a grey lake
+    and CLASSIC a green one, for nothing.
+
+  - **The sun and the moon**, hung by ANGLE rather than by screen position,
+    because a reflected body is usually off the top of the frame entirely
+    and a projected point stops meaning anything out there. The angular
+    radius is the painted disc's own radius run back through the camera's
+    field of view, so the two are the same size -- craters, dithered rim,
+    the sunset's loom and all, off one shared list. This is also the
+    specular: a low sun lays a broken gold path across the water on its own,
+    out of the reflection rather than out of a highlight term nailed on
+    beside it.
+
+  - **The world, in screen space.** The reflected ray is walked forward in
+    world space, each step projected through the same matrix, looking for
+    where it passes behind what the depth buffer holds -- then binary-refined
+    onto the contact and read out of a copy of the frame as it stood before
+    the water went down. Shore trees, buildings, ledges and cliffs land in
+    the water because they are on screen; where the ray leaves the frame or
+    finds nothing, the sky above answers instead, which is what makes the far
+    half of a lake sky and the near half scenery with no seam between them.
+
+  Fresnel decides how much of it shows: almost nothing looked straight down
+  at, almost everything looked along -- so the 15-degree rung is a pond and
+  the 75-degree rung is a mirror, off the same surface.
+
+  Every rung gets one, though, which took a lean. A reflection off flat water
+  points as far above the horizon as the eye is above the water: 15 degrees
+  at the top rung -- grazing the sky's pale end, sweeping the sun's own path,
+  travelling far enough across the screen for the march to find the shoreline
+  -- and 75 degrees, straight up, at the steepest. Up there the bands are at
+  their darkest, the sun and moon sit at about 6 degrees of squashed
+  elevation and are nowhere near it, and the screen-space ray leaves the top
+  of the frame in two steps. All three are correct, and together they are a
+  lake with nothing in it.
+
+  So the reflection now LEANS toward the elevation the top rung reflects at,
+  by however far the camera is from having a horizon in frame -- **zero** at
+  the rung where the horizon IS in frame, so the one place the join can be
+  seen, the waterline, is still the exact reflection it was. Toward an
+  elevation rather than by a weight, because the ray it starts from differs
+  at every rung and a fixed fraction lands them all somewhere different: the
+  middle rungs came out further from the sun than the steepest one. And it
+  leans the LEVEL reflection with each column's own deflection added back on
+  top -- leaning the perturbed ray sets its elevation outright, which at full
+  lean gave every column on the lake the same one, flattened the sky to a
+  single band and removed the moon entirely.
+
+  Three rungs rather than a toggle. FULL is the whole thing; SKY drops the
+  ray march and keeps the sky, sun and moon, which is most of the look for a
+  handful of instructions; OFF is the flat water this mode always drew. The
+  FULL preset sets it to FULL.
+
+- **The water surface is a field of pixel-tall columns, and they are real.**
+  Not a normal map: a heightfield of one-world-pixel bars -- the same unit
+  every other voxel in this mode is built from, and exactly one texel of the
+  water tile -- each standing a WHOLE number of pixels high and rising and
+  falling on its own.
+
+  Three travelling wave trains, and one of them dominates: a wave has a
+  DIRECTION, and its crest is a line running across it for as far as the
+  water goes. Three trains of equal weight cancel and reinforce in patches
+  instead, and the surface comes out as round islands of raised pixels with
+  no travel to them -- blobs rather than waves. The dominant train's
+  wavelength is about forty world pixels, five tiles, so a crest is a long
+  run of columns at one height with a step down either side.
+
+  Drawn with no extra geometry at all: the mesh is still one flat quad per
+  tile, and the columns are found by walking the view ray down through the
+  slab in the pixel shader. That is what makes them read as solid -- a tall
+  bar hides the shorter ones behind it, you see the SIDE of the ones facing
+  you (wearing the mesh's own direction shading, so a crest is lit like every
+  other voxel in the world), and the whole field parallaxes against the plane
+  as the camera moves. The water's art is read at the column the ray landed
+  on rather than at the flat quad underneath, so the pixels travel with the
+  bars they are made of.
+
+  The columns are what you SEE; the normal they reflect with is read off the
+  smooth surface they are a quantisation of. That distinction is the whole
+  difference between a moon on the water and confetti: whole-pixel heights
+  have whole-pixel differences, so a normal built from them can only point in
+  about five directions, and a sun or moon barely two degrees across falls
+  between them. Still one normal per column, so the surface stays
+  pixel-quantised in space while the value it reflects with is continuous.
+
+  Crests stand up to five world pixels, well past the 2px recess water sits
+  in -- deliberately, because the columns are relief drawn inside the water
+  quad's own footprint, so a bar that reaches above the bank is clipped at
+  the water's edge rather than spilling over it. What it buys is a surface
+  with real swell in it instead of a two-rung terrace.
+
+  And it moves in STEPS, at **15 a second** -- the cadence hand-drawn pixel
+  art is animated at. A surface built out of whole pixels that crawls
+  smoothly between them gives away that the quantisation is only skin deep.
+  Each step advances the dominant wave by exactly one world pixel, derived
+  from that train's own wavelength rather than tuned beside it, so nothing
+  ever lands half-way between two pixels and changing a wavelength moves the
+  speed with it.
+
+
+### Changed
+
+- **The water surface is its own mesh, and its own pass.** A mirror cannot be
+  drawn until what it reflects exists, so water is lifted out of the terrain
+  mesh at build time and drawn between the world and the characters. The
+  shoreline faces around it are untouched -- they belong to the GROUND that
+  exposes them -- and the sun still sees the surface, so a tree at the water's
+  edge still throws its shadow onto the lake.
+
+- **The scene's depth buffer is a readable canvas.** It was an internal buffer
+  that could be written and tested and never sampled; it is now the same
+  buffer with a texture handle on it, at the same cost. Drivers that will not
+  make one fall straight back to the old buffer and lose the reflections and
+  nothing else.
+
+- **The cast is reflected too -- by being drawn twice.** Gen 1 draws people
+  over the world and water is world, so a surfing player has to composite
+  OVER the water they are sitting on, which puts them after it; and a
+  reflection can only hold what came before it. So the walkers, the NPCs and
+  the authored figures are painted into the reflection COPY alone, where they
+  are in the picture the water reflects and not yet in the picture the water
+  is drawn into. Both draws go through one function, so they cannot come out
+  different. The staged battle does the same with its two Pokemon.
+
+  The ray march finds them the honest way round: a sprite is not in the depth
+  buffer at that point, so a ray aimed at one passes through to the terrain
+  standing behind it and reads the copy there -- where the sprite is already
+  painted. The reflection lands a hair off the sprite's own depth and exactly
+  on its colour, which at a lake's worth of wave is the same picture.
+
+### Changed
+
+- **The waves arrive in sets now, and a little slower.** Three fixed trains
+  are an exactly periodic field -- every forty-odd pixels of sea wore the
+  same crest at the same height, which reads as wallpaper the moment a lake
+  is bigger than the repeat. Two long-wavelength fields now ride the
+  dominant train, four to five carrier wavelengths apiece so neither reads
+  as a wave itself: a SWELL that breathes its amplitude, so a few tall
+  crests march through and hand over to a lull that is itself moving, and a
+  BEND that bows its phase, so a crest line curves across the surface
+  instead of ruling itself over all of it. The two lesser trains stay
+  plain: they are texture rather than structure, and a third modulator is
+  the soup the train weights exist to avoid. The step beat comes down from
+  15 to 12 a second -- the crests were hurrying, and a big wave is slower
+  than a walk cycle -- still a clean divisor of the engine's 60, and still
+  exactly one world pixel of dominant-crest travel per step.
+
+- **Staged battles draw their water plain, whatever the WATER row says.**
+  The reflective pass is tuned for the overworld's ladder of cameras; a
+  battle's camera is PLACED -- low, tilted, framed like a picture -- and
+  under it the pass read wrong: Fresnel opened all the way up, the leaned
+  sky landed on bands the framing never shows, and a lake-sized arena came
+  out as murk wearing the tile art. The battle is a stage set, and stage
+  water is painted: the flat animated tiles the mode always drew, with the
+  mons compositing over them like everything else on the set.
+
+### Fixed
+
+- **On Android the water stayed flat, as if the row were off -- and once it
+  did draw, it came up in blocks with the haze showing through the holes.**
+  Three separate faults, every one of them invisible on desktop GL, run down
+  on a Galaxy Z Fold 7 with the driver's own compiler errors in logcat:
+
+  **The shader would not build.** Fragment floats default to **mediump** on
+  GLSL ES while the vertex stage's default is highp, and the water shader is
+  the mod's first to declare the same uniform -- the frame's `vp` matrix --
+  in BOTH stages, one on each default; GLSL ES refuses to link that, and the
+  pass fell back, quietly and by design, to the flat water the mode always
+  drew. The pixel stage now lifts its float default to highp (guarded, so a
+  GPU without fragment highp still compiles and falls back flat), which
+  settles the link and is also simply needed: the march works in world
+  coordinates that run to a few thousand, where fp16 has no fraction left.
+  The world-position varying is qualified highp for the same reason the
+  wireframe's always was, and the depth sampler too -- samplers default to
+  **lowp** whatever the floats are set to, and eight bits of depth is a
+  march with nothing to land on. One wrinkle inside the fix: LOVE's header
+  forward-declares `effect()` under ITS default, and Samsung's Xclipse
+  compiler treats a definition whose parameter precisions have drifted from
+  the prototype's as an illegal overload -- so effect()'s own float
+  parameters stay pinned to mediump, matching the declaration, and the
+  maths above them runs highp regardless.
+
+  **The depth test read the wrong texels.** The shader's own depth test
+  normalised LOVE's pixel coordinate by the `screen` uniform, which counts
+  canvas UNITS -- and on a highdpi phone (Android's density here is 2.625)
+  a canvas holds that many PIXELS per unit, so the lookup ran to 2.6,
+  clamped, and read edge texels across two thirds of the frame. Water
+  discarded itself in blocks wherever the mis-read depth landed in front,
+  and the haze backdrop showed through the holes. The coordinate is now
+  normalised by `love_ScreenSize.xy` -- the bound canvas's own pixel size,
+  measured in the same units on every display.
+
+  **And the readable depth canvas** -- the one hardware requirement the
+  rest of the mode does not already have -- now tries four formats before
+  giving up: depth24, depth24 riding a stencil (a pairing some mobile
+  drivers will texture when they refuse the bare format), depth32f, and
+  depth16 as the floor every GLES3 device can read. Refused all four, the
+  reflections are lost and nothing else, exactly as before.
+
+### Known
+
+- Screen-space reflections can only reflect what is in the frame. A tree just
+  off the top edge is not in the water below it, and a reflection whose ray
+  runs off the side of the screen fades into the sky rather than ending on a
+  hard line.
+
 ## 1.3.1
 
 ### Fixed

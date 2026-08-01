@@ -141,9 +141,10 @@ local function prefetchArena(state, host)
   for _, nb in ipairs(state.neighbors or {}) do live[nb.map.id] = true end
   ChunkMesher.setLive(live)
   TerrainAtlas.setLive(live)
-  local terrain = ChunkMesher.request(host, false, nil, true)
-                  or ChunkMesher.peek(host, true)
-  return terrain, {}
+  ChunkMesher.request(host, false, nil, true)
+  local terrain, water = ChunkMesher.pair(host, false)
+  if not terrain then terrain, water = ChunkMesher.pair(host, true) end
+  return terrain, {}, water, {}
 end
 
 -- ------- the sun
@@ -227,7 +228,8 @@ local function shadowSignature(state, arena, terrain, nbMesh, token)
 end
 
 local function castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh,
-                           atlasFor, cards, token, host, neighbors)
+                           atlasFor, cards, token, host, neighbors,
+                           water, nbWater)
   if not ShadowMap.available() then return end
   local sig = shadowSignature(state, arena, terrain, nbMesh, token)
   if not ShadowMap.stale(sig) then return end
@@ -236,6 +238,14 @@ local function castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh,
   ShadowMap.draw(terrain, atlasFor(host), nil)
   for i, nb in ipairs(neighbors) do
     ShadowMap.draw(nbMesh[i], atlasFor(nb.map), Mat4.translate(nb.ox, 0, nb.oy))
+  end
+  -- the water surface is its own reflective pass now (see Water) and so is
+  -- no longer inside the terrain mesh; the sun still has to see it, or the
+  -- light's map has a hole at every lake
+  ShadowMap.draw(water, atlasFor(host), nil)
+  for i, nb in ipairs(neighbors) do
+    ShadowMap.draw(nbWater and nbWater[i], atlasFor(nb.map),
+                   Mat4.translate(nb.ox, 0, nb.oy))
   end
   -- thin cards are snugged toward the sun (ShadowMap.snug) so their shadows
   -- keep contact with their bases instead of starting a bias-width away
@@ -249,10 +259,15 @@ local function castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh,
   -- the mons themselves, as the same cards the camera will see. Their alpha
   -- is the silhouette, so what lands on the ground is the shape of the
   -- Pokemon rather than a blob standing in for one.
+  -- marked as the CAST, so a fight staged at the water's edge does not lay a
+  -- cut-out of a Pokemon across the lake (see ShadowMap.sprites); the arena's
+  -- own floor still takes them, which is the shadow that matters here
+  ShadowMap.sprites(true)
   for _, card in ipairs(cards or {}) do
     ShadowMap.draw(BattleBillboard.mesh(), card.tex,
                    ShadowMap.snug(card.model))
   end
+  ShadowMap.sprites(false)
 
   ShadowMap.finish(sig)
 end
@@ -299,9 +314,36 @@ end
 BattleScene.FLASH_COLOR = { 1, 1, 1 }
 BattleScene.FLASH_STRENGTH = 0.5
 
+-- ------- the tile clock, while the overworld is not the one drawing
+--
+-- Water and flowers animate off TileRenderer's 60Hz counter, and the ENGINE
+-- only advances it from OverworldState:drawWorld -- which runs under dialogs
+-- and menus, but not under a battle, because a battle draws instead of the
+-- overworld rather than over it. So for the length of a staged fight the
+-- counter stood still: the water tiles stopped rotating their pixels and the
+-- wave field, which is driven off the same number so the two cannot drift
+-- (see Water), stopped with them. A lake in the background of a battle was a
+-- photograph.
+--
+-- Ticked HERE rather than from the mod's update hook, because here is the
+-- one place that means "a staged battle is drawing this frame, and the
+-- overworld is not". From the update hook the condition would have to be
+-- guessed at, and a frame where both ran would double the rate.
+local function tickTiles()
+  local Game = require("src.core.Game")
+  local ow = Game and Game.overworld
+  local top = Game and Game.stack and Game.stack:top()
+  -- during the wipe INTO a battle the overworld can still be the one
+  -- drawing, and it is ticking the clock itself; two ticks in a frame would
+  -- run the water at double speed
+  if top and ow and top == ow then return end
+  pcall(require("src.render.TileRenderer").tick)
+end
+
 function BattleScene.render(state, arena, textures, token)
   if not (state and state.map and arena) then return nil end
   if not Voxel3D.available() then return nil end
+  tickTiles()
 
   -- the floor the fight is staged on: normally the player's own, sometimes
   -- another floor of the same cave or building (see BattleArena)
@@ -326,7 +368,7 @@ function BattleScene.render(state, arena, textures, token)
 
   -- shares the free-roam mode's request/evict bookkeeping, so a battle warms
   -- exactly the meshes walking around would have and nothing extra
-  local terrain, nbMesh = prefetchArena(state, host)
+  local terrain, nbMesh, water, nbWater = prefetchArena(state, host)
   if not terrain then return nil end
 
   local lx, ly, s, pw, ph = BattleScene.letterbox()
@@ -356,7 +398,7 @@ function BattleScene.render(state, arena, textures, token)
   local cards = monCards(arena, groundY, textures)
   Voxel3D.camera = nil
   castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh, atlasFor,
-              cards, token, host, neighbors)
+              cards, token, host, neighbors, water, nbWater)
 
   -- An opaque void either way. Outdoors the camera is low enough that the
   -- horizon is genuinely in frame, so it is sky; indoors it is the dark end
@@ -392,6 +434,22 @@ function BattleScene.render(state, arena, textures, token)
     for i, nb in ipairs(neighbors) do
       Voxel3D.draw(nbMesh[i], atlasFor(nb.map),
                    Mat4.translate(nb.ox, 0, nb.oy))
+    end
+    -- and the water over it -- PLAIN, always: the flat animated tiles, never
+    -- the reflective pass, whatever the WATER row says. The reflection is
+    -- tuned for the overworld's ladder of cameras; this shot's is PLACED --
+    -- low, tilted and framed like a picture -- and under it the pass reads
+    -- wrong: Fresnel opens all the way up, the leaned sky lands on bands the
+    -- framing never shows, and a lake-sized arena comes out as murk wearing
+    -- the tile art. The battle is a stage set, and stage water is painted.
+    -- (No mirror also means the mons need no second draw into one -- they
+    -- just composite over the water below, like everything else on the set.)
+    if water then Voxel3D.draw(water, atlasFor(host)) end
+    for i, nb in ipairs(neighbors) do
+      if nbWater and nbWater[i] then
+        Voxel3D.draw(nbWater[i], atlasFor(nb.map),
+                     Mat4.translate(nb.ox, 0, nb.oy))
+      end
     end
     -- The mons, standing on their tiles. Depth-tested like everything else,
     -- so a ledge or a tree between the camera and a Pokemon really is in

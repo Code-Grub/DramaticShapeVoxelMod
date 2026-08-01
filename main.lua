@@ -81,6 +81,7 @@ local OverworldBattle = V.require("OverworldBattle")
 local BattleExit = V.require("BattleExit")
 local DayNight = V.require("DayNight")
 local DayTint = V.require("DayTint")
+local Water = V.require("Water")
 
 -- Forward declaration: the voxel pipeline's update hook (registered below)
 -- calls this, and it is defined further down with the settings it drives.
@@ -282,6 +283,10 @@ applyFull = function(level)
   -- the horizon flat. The curve bends the world away from a walking player,
   -- which fights a fixed diorama framing
   WorldCurve.setting:setIndex(1, Game)
+  -- and the water reflecting everything it can: FULL is the diorama at its
+  -- most photographed, and a lake with the sky and the shoreline in it is
+  -- most of what makes the model read as being outdoors
+  Water.setting:setIndex(1, Game)
   -- and the view fitted to the window
   opts.zoom = 0
   Zoom.applyOptions(opts)
@@ -332,6 +337,11 @@ local SETTINGS = {
   { VoxelGrid.setting, "One-pixel wireframe along every voxel edge." },
   { WorldCurve.setting,
     "Bend the world down over the horizon, Animal Crossing style." },
+  { Water.setting,
+    "Reflections on water. FULL adds screen-space reflections of the "
+    .. "shoreline, the trees and the buildings behind it; SKY is the sky, "
+    .. "the sun and the moon alone, which is most of the look for a "
+    .. "fraction of the cost." },
   -- `full` marks a row FULL does not take away. FULL owns the diorama's own
   -- knobs; what a battle is drawn over, and how it is framed, are not that.
   { OverworldBattle.setting,
@@ -366,6 +376,7 @@ mod.options:define(schema)
 --   6  T-SHIFT  cycle the blur ladder        (was 9)
 --   7  V-CURVE  cycle the horizon bend       (new)
 --   8  3D-BTL   toggle overworld battles     (new)
+--   9  WATER    cycle the water reflections  (new; 9 was T-SHIFT's old key)
 --
 -- Only 6 arrives by the documented route. Game:keypressed answers the
 -- engine's own display keys FIRST and returns -- 2 COLORS, 3 TILT, 4 ZOOM,
@@ -398,6 +409,7 @@ local HOTKEYS = {
   ["5"] = VoxelGrid.setting,
   ["7"] = WorldCurve.setting,
   ["8"] = OverworldBattle.setting,
+  ["9"] = Water.setting,
 }
 
 do
@@ -447,19 +459,19 @@ do
           return
         end
       elseif Pipelines.canToggle("voxel", top, self.overworld) then
-        -- All three answer to the voxel pass's own free-roam gate --
+        -- All four answer to the voxel pass's own free-roam gate --
         -- borrowed from the registry rather than restated, so a press
         -- mid-warp or mid-cutscene is refused for the wireframe exactly when
-        -- it would be for the mode itself. Two of them parameterise that
-        -- pass; the third (3D-BTL) decides what a battle is drawn over, and
+        -- it would be for the mode itself. Three of them parameterise that
+        -- pass; the fourth (3D-BTL) decides what a battle is drawn over, and
         -- wants the same gate for a different reason: the answer is read
         -- when the fight starts, so flipping it from inside one would be a
         -- switch that appeared to do nothing.
         claim:cycle(self)
         -- 8 is one of the two ways staged battles get switched on, and they
-        -- pin BATTLE LAYOUT to OG (see the rows hook). The other two keys
+        -- pin BATTLE LAYOUT to OG (see the rows hook). The other keys
         -- parameterise the pass and leave the layout alone; the guard answers
-        -- for all three, so nothing here has to know which key it was.
+        -- for all of them, so nothing here has to know which key it was.
         if stagedBattles() then OverworldBattle.forceOG(self) end
         return
       end
@@ -848,7 +860,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.3.1"
+mod.exports.version = "1.4.0"
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout
 mod.exports.lib = V

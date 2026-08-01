@@ -263,6 +263,27 @@ end
 
 Sky._rampFor = rampFor            -- named for the suite
 
+-- The band ramp for the CURRENT bands, plus how many texels wide it is --
+-- for a pass that wants to read the same sky this one paints. The water's
+-- reflection is the one caller: it looks the reflected direction up on this
+-- very ramp, so the sky on the lake and the sky over it are one palette,
+-- through one display-mode transform, off one clock.
+--
+-- nil where the ramp could not be built, which is exactly when Sky.paint
+-- falls back to flat bands -- so a driver that loses the gradient loses the
+-- reflected gradient with it rather than showing two different skies.
+function Sky.ramp()
+  local bands = Sky.bands()
+  if not (bands and bands[1]) then return nil end
+  local img = rampFor(bands)
+  if not img then return nil end
+  return img, #bands, bands
+end
+
+-- How far the twilight glow reaches around the disc, in canvas pixels, for
+-- a `w`-wide frame. The same number Sky.paint sends as `glowInvR`.
+Sky.GLOW_REACH = 0.55
+
 local shader = nil            -- nil = untried, false = unavailable
 
 local function getShader()
@@ -323,20 +344,51 @@ end
 Sky.DISC_FRAC = 0.030     -- disc radius, as a fraction of the frame height
 Sky.DISC_MIN = 3          -- but never fewer cells than this across a radius
 
--- crater centres as fractions of the radius, so they ride any disc size
-local MOON_CRATERS = { { -0.4, -0.2 }, { 0.2, 0.45 }, { 0.5, -0.4 },
-                       { -0.15, 0.7 }, { 0.05, 0.05 } }
+-- crater centres as fractions of the radius, so they ride any disc size.
+-- Public because the water's reflection draws the same moon (see Water):
+-- one list, so the disc on the lake cannot drift from the one in the sky.
+Sky.MOON_CRATERS = { { -0.4, -0.2 }, { 0.2, 0.45 }, { 0.5, -0.4 },
+                     { -0.15, 0.7 }, { 0.05, 0.05 } }
+
+-- a crater's radius, as a fraction of the disc's -- the r/5 paintDisc uses
+Sky.CRATER_FRAC = 0.2
+
+local MOON_CRATERS = Sky.MOON_CRATERS
+
+-- The disc's four shades as the display mode has them, lightest first.
+-- Shared with the reflection pass, so the sun on the water is the same sun
+-- that is in the sky, in the same mode's palette.
+function Sky.discShades(moon)
+  local src = moon and DayNight.MOON_COLORS or DayNight.SUN_COLORS
+  return PaletteFX.effectiveColors(src) or src
+end
+
+-- Whether this body is the LOOMING low sun -- the sunset exaggeration.
+local function looming(body)
+  return (body.glowAmt or 0) > 0.25 and not body.moon
+end
+
+-- The disc's radius for a `h`-tall frame on a `cell`-pixel grid: in CANVAS
+-- PIXELS, and in whole cells. Sized by the FRAME rather than by the world
+-- (see DISC_FRAC), so a zoom does not swell the sun.
+--
+-- Read by paintDisc below and by the reflection, which needs the same
+-- number in radians -- a disc drawn one size and mirrored another would
+-- read as two different suns.
+function Sky.discRadius(h, cell, body)
+  cell = math.max(1, cell or 1)
+  local r = math.max(Sky.DISC_MIN,
+                     math.floor(h * Sky.DISC_FRAC / cell + 0.5))
+  if body and looming(body) then r = r + math.max(1, math.floor(r * 0.4)) end
+  return r * cell, r
+end
 
 local function paintDisc(body, edge, cell, w, h)
   local g = love.graphics
   if not (body and body.y and g.setScissor) then return end
-  local src = body.moon and DayNight.MOON_COLORS or DayNight.SUN_COLORS
-  local shades = PaletteFX.effectiveColors(src) or src
-  local twilight = (body.glowAmt or 0) > 0.25 and not body.moon
-  local r = math.max(Sky.DISC_MIN,
-                     math.floor(h * Sky.DISC_FRAC / cell + 0.5))
-  -- the low sun looms: the classic sunset exaggeration, and it reads
-  if twilight then r = r + math.max(1, math.floor(r * 0.4)) end
+  local shades = Sky.discShades(body.moon)
+  local twilight = looming(body)
+  local _, r = Sky.discRadius(h, cell, body)
   -- snap the centre to the cell grid, like everything else in this sky
   local bx = math.floor(body.x / cell) * cell + cell / 2
   local by = math.floor(body.y / cell) * cell + cell / 2
@@ -429,7 +481,7 @@ function Sky.paint(w, h, sky, horizonY, cell, body)
       if glowAmt > 0 then
         local gc = body.glowColor or { 248, 224, 168 }
         sh:send("glowPos", { body.x, body.y })
-        sh:send("glowInvR", 1 / math.max(1, w * 0.55))
+        sh:send("glowInvR", 1 / math.max(1, w * Sky.GLOW_REACH))
         sh:send("glowColor", { gc[1] / 255, gc[2] / 255, gc[3] / 255 })
       end
     end)
