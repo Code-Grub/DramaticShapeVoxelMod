@@ -1,9 +1,9 @@
 # Front animated battle art
 
 Optional animated opponent/player-front battle atlases are grouped here as
-`gen2/`, `gen3/`, and `gen5/`. Local PNG files are ignored by Git. `ANIM SET`
-chooses exactly one folder; missing or malformed art falls back to the ROM
-sprite rather than silently mixing generations.
+`gen2/`, `gen3/`, and `gen5/`. Local PNG files are ignored by Git. `FRONT GEN`
+chooses exactly one folder in ANIMATED mode; missing or malformed art falls
+back to the ROM sprite rather than silently mixing generations.
 
 GIF decoding is authoring-only. The game reads PNG atlases, extracts every
 cell at its native logical resolution, and uses nearest-neighbour filtering.

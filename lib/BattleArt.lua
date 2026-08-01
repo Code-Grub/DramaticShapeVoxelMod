@@ -7,8 +7,12 @@ local BattleArt = {}
 
 BattleArt.setting = ModSetting.new("battleArt", "BATTLE ART",
   { "static", "animated", "rom" }, { "STATIC", "ANIMATED", "ROM" })
-BattleArt.animationSetting = ModSetting.new("animatedSet", "ANIM SET",
+BattleArt.frontAnimationSetting = ModSetting.new("frontAnimatedSet", "FRONT GEN",
   { "gen2", "gen3", "gen5" }, { "GEN 2", "GEN 3", "GEN 5" })
+-- Gen 5 is currently the supplied animated-back collection, so it is the
+-- sensible fallback for a save with no explicit back-generation choice.
+BattleArt.backAnimationSetting = ModSetting.new("backAnimatedSet", "BACK GEN",
+  { "gen2", "gen3", "gen5" }, { "GEN 2", "GEN 3", "GEN 5" }, 3)
 BattleArt.viewSetting = ModSetting.new("playerView", "PLAYER VIEW",
   { "front", "back" }, { "FRONT", "BACK" })
 

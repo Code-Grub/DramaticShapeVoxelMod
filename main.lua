@@ -342,10 +342,18 @@ local SETTINGS = {
     "Use optional PNGs from assets/battle in fights. Missing art falls "
     .. "back to the ROM. STATIC is the zero-configuration default.",
     when = function() return stagedBattles() end, full = true },
-  { BattleArt.animationSetting,
-    "Choose the generation folder used by BATTLE ART: ANIMATED. Missing "
-    .. "art falls directly back to ROM rather than mixing generations.",
-    when = function() return stagedBattles() end, full = true },
+  { BattleArt.frontAnimationSetting,
+    "Choose the front generation used by BATTLE ART: ANIMATED. STATIC "
+    .. "ignores this row. Missing art falls directly back to ROM.",
+    when = function()
+      return stagedBattles() and BattleArt.setting:get() == "animated"
+    end, full = true },
+  { BattleArt.backAnimationSetting,
+    "Choose the back generation used by BATTLE ART: ANIMATED. STATIC "
+    .. "ignores this row. Missing art falls directly back to ROM.",
+    when = function()
+      return stagedBattles() and BattleArt.setting:get() == "animated"
+    end, full = true },
   { BattleArt.viewSetting,
     "Show the player's Pokemon from the front or back. Both choices stay "
     .. "world-placed, lit, shadowed and depth-occluded.",
@@ -701,7 +709,8 @@ end)
 -- and a player who stepped off FULL could not see the rows come back.
 --
 -- Rebuilt in place, and only on a step that changes the LIST: crossing FULL,
--- or toggling 3D-BTL, which is the other row that owns one (BATTLE LAYOUT).
+-- toggling 3D-BTL, which owns BATTLE LAYOUT, or stepping BATTLE ART into or
+-- out of ANIMATED, which owns the FRONT GEN and BACK GEN rows.
 -- Every other rung returns the same list, and rebuilding on all of them would
 -- rerun every mod's ui.options.rows hook once per keypress. The cursor is
 -- clamped rather than reset, so it stays on the row it was just used on
@@ -720,12 +729,15 @@ do
     function OptionsMenu:update(dt)
       local before = Pipelines.level("voxel")
       local hadBattles = OverworldBattle.enabled()
+      local hadAnimated = BattleArt.setting:get() == "animated"
       local wasOn = idAt(self, self.index)
       inner(self, dt)
       local after = Pipelines.level("voxel")
       local crossedFull = after ~= before
                           and (Voxel.isFull(before) or Voxel.isFull(after))
-      if crossedFull or OverworldBattle.enabled() ~= hadBattles then
+      local hasAnimated = BattleArt.setting:get() == "animated"
+      if crossedFull or OverworldBattle.enabled() ~= hadBattles
+         or hasAnimated ~= hadAnimated then
         local rebuilt = OptionsMenu.new(self.game)
         self.rows = rebuilt.rows
         -- Follow the row the cursor was ON rather than the slot it was in:

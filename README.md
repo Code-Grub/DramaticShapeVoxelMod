@@ -35,7 +35,8 @@ menu.
 | `7`, or the **V-CURVE** options row | OFF → 1 → 2 → 3 — bend the world over the horizon |
 | `8`, or the **3D-BTL** options row | ON / OFF — fight on the map instead of on a white field |
 | the **BATTLE ART** options row | STATIC / ANIMATED / ROM — use optional battle-only art, with a direct ROM fallback when a file or atlas is absent |
-| the **ANIM SET** options row | GEN 2 / GEN 3 / GEN 5 — choose one animated-art generation without mixing sets |
+| the **FRONT GEN** options row | GEN 2 / GEN 3 / GEN 5 — choose the animated front collection |
+| the **BACK GEN** options row | GEN 2 / GEN 3 / GEN 5 — independently choose the animated back collection |
 | the **PLAYER VIEW** options row | FRONT / BACK — choose the player's view while keeping it world-placed, lit, shadowed and depth-occluded |
 | the **DAYTIME** options row | SYNC / DAY / NIGHT / DUSK / DAWN / CYCLE — what time it is outdoors, on the diorama *and* on the flat 2D world; held at SYNC (and off the menu) while VOXEL is FULL |
 
@@ -62,11 +63,13 @@ art. Missing or unreadable files fall straight back to the ROM art.
 The four battle-art directories are intentionally ignored by Git except for
 their README contracts. `tools/package_mod.ps1` nevertheless includes local
 PNGs from them in a test ZIP, so artwork can stay private and uncommitted.
-`BATTLE ART: ANIMATED` reads the generation selected by `ANIM SET` from
-`front-animated/gen2`, `gen3`, or `gen5` (and `back-animated/gen5`). The
-authoring importer generates the PNG atlases and one metadata table per set;
-the runtime extracts native-resolution cells without a DPI-scaled canvas and
-falls back per missing or malformed atlas directly to ROM art.
+`BATTLE ART: ANIMATED` reads independent `FRONT GEN` and `BACK GEN` choices
+from the matching generation folders. These selectors are ignored by STATIC
+and ROM modes and only appear on the in-game menu while ANIMATED is selected.
+The authoring importer generates the PNG atlases and one
+metadata table per set; the runtime extracts native-resolution cells without
+a DPI-scaled canvas and falls back per missing or malformed atlas directly to
+ROM art.
 
 Trainer cards are always static. Opponent trainer fronts use class filenames
 in `front-static` (for example `youngster.png`, `cooltrainer-f.png`, and

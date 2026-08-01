@@ -90,7 +90,9 @@ end
 local function definition(battler, side)
   local species = battler and battler.mon and battler.mon.species
   local key = species and tostring(species):upper()
-  local selected = SETS[BattleArt.animationSetting:get()]
+  local setting = side == "back" and BattleArt.backAnimationSetting
+                                  or BattleArt.frontAnimationSetting
+  local selected = SETS[setting:get()]
   local bySide = selected and key and selected[key]
   return bySide and bySide[side] or nil
 end
