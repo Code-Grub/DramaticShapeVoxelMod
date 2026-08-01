@@ -1675,6 +1675,31 @@ T.check(math.abs(math.sin(Water.LEAN_ELEV) - Water.LEAN_FROM) < 1e-12,
 VoxelState.angle, Voxel3D.camera = wasAngle, wasCam
 end
 
+-- ------- people do not shadow water
+--
+-- The sun pass is ONE map, so a surface cannot ask what threw a shadow
+-- unless the map says -- and it does, in the blue channel, which was zero
+-- anyway. Water is the only surface that asks: a character standing at a
+-- lake's edge laid a hard cut-out of its own sprite across a surface already
+-- showing the sky and the shoreline, which reads as a sticker rather than as
+-- a shadow. Everything the world casts still shades it.
+do
+local ShadowMap = run.loader.exports.DRAMATIC_SHAPE.lib.require("ShadowMap")
+T.check(type(ShadowMap.sprites) == "function",
+  "the sun pass can be told it is drawing the cast rather than the world")
+-- inert outside a pass, like every other toggle on it -- a caller that
+-- brackets a draw it never made must not send to a shader that is not bound
+T.check(pcall(ShadowMap.sprites, true) and pcall(ShadowMap.sprites, false),
+  "and saying so outside one is harmless")
+
+local shadowSrc = ShadowMap._source and ShadowMap._source() or nil
+if shadowSrc then
+  T.check(shadowSrc:find("fract(d), sprite", 1, true) ~= nil,
+    "the marker rides the channel the depth pack left free, so it costs "
+    .. "nothing: the map is still two channels of depth")
+end
+end
+
 -- ------- the compiled variants
 local plain = Water._source(false)
 local gridded = Water._source(true)
@@ -1704,14 +1729,19 @@ T.check(plain:find("relief(vBent, view, hit, col, face, axis)", 1, true) ~= nil,
 -- the march's reach grows as one over the ray's descent, so a grazing camera
 -- asks for hundreds of world pixels of it from a fixed number of samples --
 -- which stepped over whole crests and smeared the surface into streaks
+-- a sample is worth a SCREEN pixel of surface, so that is the stride: held
+-- at a world pixel up close (finer buys nothing and skipping costs the
+-- pepper) and opened out with distance (holding it there just runs the march
+-- out of samples part-way down the slab, which flattened the lowest rung's
+-- whole middle distance)
 T.check(plain:find("#define WAVE_STRIDE", 1, true) ~= nil
-        and plain:find("float maxSpan = float(WAVE_STEPS) * WAVE_STRIDE;",
-                       1, true) ~= nil,
-  "and its span is capped to a stride a sample can actually resolve")
+        and plain:find("max(WAVE_STRIDE, dist * pxAngle / dy)", 1, true) ~= nil,
+  "the relief stride is a screen pixel's worth of surface, floored at a "
+  .. "world pixel")
 T.check(Water.WAVE_STRIDE <= 1,
-  "which is at most ONE world pixel, because a column is one world pixel "
-  .. "wide -- a longer stride steps over columns, and which ones it misses "
-  .. "changes fragment to fragment, which is the peppery noise")
+  "and that floor is at most ONE world pixel, because a column is one world "
+  .. "pixel wide -- a longer one steps over columns, and which ones it "
+  .. "misses changes fragment to fragment, which is the peppery noise")
 -- and the art is read off the COLUMN rather than by offsetting the
 -- fragment's own uv by however far the march happened to travel: one world
 -- pixel is one texel, so a column's texel follows from where it stands and

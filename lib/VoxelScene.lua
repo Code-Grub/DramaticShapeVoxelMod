@@ -699,6 +699,11 @@ local function castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh,
     ShadowMap.draw(ChunkMesher.flowers(nb.map), atlasFor(nb.map),
                    ShadowMap.snug(Mat4.translate(nb.ox, 0, nb.oy)))
   end
+  -- From here down it is the CAST, marked as such in the map (see
+  -- ShadowMap.sprites) so water can decline them: everything the world casts
+  -- still shades a lake, a silhouette of somebody standing beside it does
+  -- not. Ground, roofs and the characters themselves take them as before.
+  ShadowMap.sprites(true)
   -- authored figures cast too, for the same reason the flowers do: a
   -- handful of cards per map, and a person with no shadow reads as pasted on
   eachFigure(state.map, 0, 0, function(mesh, _, caster)
@@ -720,6 +725,7 @@ local function castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh,
                                             mirror)))
     end
   end
+  ShadowMap.sprites(false)
 
   ShadowMap.finish(sig)
 end
@@ -779,8 +785,30 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
                  Mat4.translate(nb.ox, 0, nb.oy))
   end
 
+  -- Without a shadow map (headless, or a driver that could not make the
+  -- canvas) the old flat decals stand in: ground-only, characters only,
+  -- but better than a world with nothing under anybody. They go down
+  -- first, as decals the characters then stand over -- depth-tested
+  -- against the terrain just drawn (a shadow behind a building stays
+  -- hidden) but never depth-writing, so the grass pass at the end of the
+  -- frame still wins its feet-overdraw fights.
+  if not Voxel3D.shadowsActive() then
+    Voxel3D.beginShadows()
+    for _, p in ipairs(posed) do
+      drawShadow(p.sprite, p.px, p.py, p.facing, p.phase, p.flip, p.gh,
+                 p.lift)
+    end
+    Voxel3D.endShadows()
+  end
+
   -- and the water over the top of it, reflecting everything just drawn plus
-  -- the sky the frame opened with (see drawWater)
+  -- the sky the frame opened with (see drawWater).
+  --
+  -- After the fallback decals deliberately: those are the stand-in drop
+  -- shadows for a frame with no shadow map, they write no depth, and a
+  -- lake would otherwise wear one as a black smear. Water covers them,
+  -- which is the same answer the shadow map's own pass gives (see
+  -- ShadowMap.sprites) -- people do not shadow water either way.
   local waterDraws = {}
   if water then
     waterDraws[#waterDraws + 1] = { water, atlasFor(state.map), nil }
@@ -800,21 +828,6 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
     end)
   end
 
-  -- Without a shadow map (headless, or a driver that could not make the
-  -- canvas) the old flat decals stand in: ground-only, characters only,
-  -- but better than a world with nothing under anybody. They go down
-  -- first, as decals the characters then stand over -- depth-tested
-  -- against the terrain just drawn (a shadow behind a building stays
-  -- hidden) but never depth-writing, so the grass pass at the end of the
-  -- frame still wins its feet-overdraw fights.
-  if not Voxel3D.shadowsActive() then
-    Voxel3D.beginShadows()
-    for _, p in ipairs(posed) do
-      drawShadow(p.sprite, p.px, p.py, p.facing, p.phase, p.flip, p.gh,
-                 p.lift)
-    end
-    Voxel3D.endShadows()
-  end
 
   -- Sprite sheets from here to the figure pass: their texture coordinates
   -- mean nothing to the tileset-shaped glass mask, so the glass is off or

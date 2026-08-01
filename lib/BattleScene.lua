@@ -259,10 +259,15 @@ local function castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh,
   -- the mons themselves, as the same cards the camera will see. Their alpha
   -- is the silhouette, so what lands on the ground is the shape of the
   -- Pokemon rather than a blob standing in for one.
+  -- marked as the CAST, so a fight staged at the water's edge does not lay a
+  -- cut-out of a Pokemon across the lake (see ShadowMap.sprites); the arena's
+  -- own floor still takes them, which is the shadow that matters here
+  ShadowMap.sprites(true)
   for _, card in ipairs(cards or {}) do
     ShadowMap.draw(BattleBillboard.mesh(), card.tex,
                    ShadowMap.snug(card.model))
   end
+  ShadowMap.sprites(false)
 
   ShadowMap.finish(sig)
 end
@@ -309,9 +314,36 @@ end
 BattleScene.FLASH_COLOR = { 1, 1, 1 }
 BattleScene.FLASH_STRENGTH = 0.5
 
+-- ------- the tile clock, while the overworld is not the one drawing
+--
+-- Water and flowers animate off TileRenderer's 60Hz counter, and the ENGINE
+-- only advances it from OverworldState:drawWorld -- which runs under dialogs
+-- and menus, but not under a battle, because a battle draws instead of the
+-- overworld rather than over it. So for the length of a staged fight the
+-- counter stood still: the water tiles stopped rotating their pixels and the
+-- wave field, which is driven off the same number so the two cannot drift
+-- (see Water), stopped with them. A lake in the background of a battle was a
+-- photograph.
+--
+-- Ticked HERE rather than from the mod's update hook, because here is the
+-- one place that means "a staged battle is drawing this frame, and the
+-- overworld is not". From the update hook the condition would have to be
+-- guessed at, and a frame where both ran would double the rate.
+local function tickTiles()
+  local Game = require("src.core.Game")
+  local ow = Game and Game.overworld
+  local top = Game and Game.stack and Game.stack:top()
+  -- during the wipe INTO a battle the overworld can still be the one
+  -- drawing, and it is ticking the clock itself; two ticks in a frame would
+  -- run the water at double speed
+  if top and ow and top == ow then return end
+  pcall(require("src.render.TileRenderer").tick)
+end
+
 function BattleScene.render(state, arena, textures, token)
   if not (state and state.map and arena) then return nil end
   if not Voxel3D.available() then return nil end
+  tickTiles()
 
   -- the floor the fight is staged on: normally the player's own, sometimes
   -- another floor of the same cave or building (see BattleArena)
