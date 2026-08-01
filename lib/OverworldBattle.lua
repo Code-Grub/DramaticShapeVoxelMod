@@ -700,8 +700,11 @@ function OverworldBattle.sideTexture(battle, side)
                            and battle.trainerPic)
                          or (side == "player" and battle.showPlayerBack
                              and battle.playerBackPic)
-  local metric = not showingTrainer and BattleArt.metrics(battler and battler.sprite)
-                 or nil
+  local shownImage = showingTrainer
+                     and (side == "enemy" and battle.trainerPic
+                          or battle.playerBackPic)
+                     or (battler and battler.sprite)
+  local metric = BattleArt.metrics(shownImage)
   local cw, ch = BattleScene.GB_W, BattleScene.GB_H
   local ax, ay = TEX_AX, TEX_AY
   if metric then
@@ -737,7 +740,12 @@ function OverworldBattle.sideTexture(battle, side)
     g.clear(0, 0, 0, 0)
     g.setBlendMode("alpha")
     g.setColor(1, 1, 1, 1)
-    innerPics(battle, 0, 0, 0)
+    if side == "enemy" and showingTrainer and metric then
+      local img = battle:picImage(battle.trainerPic)
+      g.draw(img, ax - metric.center, ay - (metric.y1 + 1))
+    else
+      innerPics(battle, 0, 0, 0)
+    end
   end)
 
   texturing = nil
@@ -753,7 +761,8 @@ function OverworldBattle.sideTexture(battle, side)
   local trainer = false
   -- The intro trainer pic draws itself straight into its own 7x7 slot rather
   -- than through the placement helpers, so it is hung from that slot instead.
-  if side == "enemy" and battle.showEnemyTrainer and battle.trainerPic then
+  if side == "enemy" and battle.showEnemyTrainer and battle.trainerPic
+     and not metric then
     ax, ay, trainer = TRAINER_AX, TRAINER_AY, true
   elseif side == "player" and battle.showPlayerBack and battle.playerBackPic then
     trainer = true
@@ -814,6 +823,15 @@ function OverworldBattle.install()
   end
 
   local BattleState = require("src.battle.BattleState")
+  if not BattleState.dramaticShapeTrainerPartyHook then
+    local newTrainer = BattleState.newTrainer
+    function BattleState.newTrainer(game_, oppClass, partyIndex)
+      local battle = newTrainer(game_, oppClass, partyIndex)
+      battle.dramaticShapeTrainerParty = partyIndex or 1
+      return battle
+    end
+    BattleState.dramaticShapeTrainerPartyHook = true
+  end
   if BattleState.dramaticShapeBattleHook then return end
 
   -- Integer scales only. The camera is solved to make one overworld square

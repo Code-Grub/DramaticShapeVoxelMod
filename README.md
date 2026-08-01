@@ -64,6 +64,12 @@ PNGs from them in a test ZIP, so artwork can stay private and uncommitted.
 Animated atlas decoding is being added behind the stable `ANIMATED` option;
 until an atlas is recognised, that selection safely uses ROM art.
 
+Trainer cards are always static. Opponent trainer fronts use class filenames
+in `front-static` (for example `youngster.png`, `cooltrainer-f.png`, and
+`jessie-james.png`). Player-side trainer backs use `back-static/player.png`,
+`back-static/oak.png`, or `back-static/old-man.png`. The folder READMEs carry
+the complete trainer-class list and the four exceptional Pokémon filenames.
+
 Two of the engine's own rows are taken away while this mod is installed:
 **TILT**, which is the flat fake of what this mode does for real, and **GBC
 FX**, a full-screen present pass over the top of the diorama. Both are held at

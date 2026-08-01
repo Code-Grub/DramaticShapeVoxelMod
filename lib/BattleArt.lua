@@ -14,6 +14,7 @@ local cache = {}
 local external = setmetatable({}, { __mode = "k" })
 local metrics = setmetatable({}, { __mode = "k" })
 local original = setmetatable({}, { __mode = "k" })
+local trainerOriginal = setmetatable({}, { __mode = "k" })
 
 local function slug(species)
   local s = tostring(species or ""):lower()
@@ -41,6 +42,14 @@ local function pathFor(species, side)
   local fs = love and love.filesystem
   if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
   return path, rel
+end
+
+local function staticPathFor(name, side)
+  if BattleArt.setting:get() == "rom" then return nil end
+  local path = V.mod.assets:path(
+    ("assets/battle/%s-static/%s.png"):format(side, name))
+  local fs = love and love.filesystem
+  return fs and fs.getInfo and fs.getInfo(path) and path or nil
 end
 
 local function rgbaKey(data, w, h)
@@ -165,6 +174,54 @@ function BattleArt.image(species, side)
   return path and prepare(path, displayMode()) or nil
 end
 
+function BattleArt.namedImage(name, side)
+  local path = staticPathFor(name, side)
+  return path and prepare(path, displayMode()) or nil
+end
+
+local function trainerKey(battle)
+  local id = battle and battle.oppClass
+  if type(id) ~= "string" then return nil end
+  if id == "OPP_ROCKET" and (battle.dramaticShapeTrainerParty or 1) >= 42 then
+    return "jessie-james"
+  end
+  return slug(id:gsub("^OPP_", ""))
+end
+
+local function replaceTrainerField(battle, field, img)
+  local rec = trainerOriginal[battle]
+  if not rec then rec = {}; trainerOriginal[battle] = rec end
+  local saved = field .. "Saved"
+  if img then
+    if not rec[saved] then
+      rec[field], rec[saved] = battle[field] or false, true
+    end
+    battle[field] = img
+  elseif rec[saved] then
+    battle[field] = rec[field] or nil
+    rec[field], rec[saved] = nil, nil
+  end
+end
+
+function BattleArt.applyTrainers(battle)
+  if not battle then return end
+  local enemy = battle.showEnemyTrainer and trainerKey(battle) or nil
+  replaceTrainerField(battle, "trainerPic",
+    enemy and BattleArt.namedImage(enemy, "front") or nil)
+
+  local player
+  if battle.showPlayerBack then
+    if battle.demo then
+      player = tostring(battle.demoName or ""):find("OAK", 1, true)
+               and "oak" or "old-man"
+    else
+      player = "player"
+    end
+  end
+  replaceTrainerField(battle, "playerBackPic",
+    player and BattleArt.namedImage(player, "back") or nil)
+end
+
 function BattleArt.apply(battle)
   if not battle then return end
   local function applyOne(battler, side)
@@ -182,6 +239,7 @@ function BattleArt.apply(battle)
   end
   applyOne(battle.enemy, "front")
   applyOne(battle.player, BattleArt.playerSide())
+  BattleArt.applyTrainers(battle)
 end
 
 function BattleArt.isExternal(img) return external[img] and true or false end
@@ -192,6 +250,7 @@ function BattleArt.invalidate()
   external = setmetatable({}, { __mode = "k" })
   metrics = setmetatable({}, { __mode = "k" })
   original = setmetatable({}, { __mode = "k" })
+  trainerOriginal = setmetatable({}, { __mode = "k" })
 end
 
 return BattleArt

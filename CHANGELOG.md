@@ -13,6 +13,9 @@
   day/night tint, display filtering, hit flash and alpha-shaped shadow.
 - **Private test packaging.** The four battle-art folders ignore local art in
   Git while `tools/package_mod.ps1` deliberately includes those PNGs in a ZIP.
+- **Static trainer cards.** Opponent trainer classes resolve from
+  `front-static`; the player, Professor Oak, and Old Man backs resolve from
+  `back-static`. Trainer art never uses either animated folder.
 
 ## 1.3.0
 

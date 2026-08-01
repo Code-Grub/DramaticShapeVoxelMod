@@ -20,3 +20,17 @@ engine names need the following exact filenames:
 | Nidoran♂ | `nidoran-m.png` | `nidoran.png`, `nidoran-male.png` |
 
 Filenames are lowercase. The same names apply in every battle-art folder.
+
+## Static player-side trainer backs
+
+Trainer pictures are never animated. This is the only battle-art folder used
+for trainer back pictures:
+
+| Battle role | Expected filename |
+| --- | --- |
+| Normal player battle intro | `player.png` |
+| Professor Oak in Yellow's opening battle | `oak.png` |
+| Old Man catching tutorial | `old-man.png` |
+
+These are intro trainer cards, not Pokémon species. Missing files retain the
+ROM trainer backsprite. Opponent trainers never read from a back folder.

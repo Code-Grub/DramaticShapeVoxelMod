@@ -16,3 +16,7 @@ engine names need the following exact filenames:
 | Nidoran♂ | `nidoran-m.png` | `nidoran.png`, `nidoran-male.png` |
 
 Filenames are lowercase. The same names apply in every battle-art folder.
+
+Trainer front pictures can never be animated and are not read from this
+folder. Put every opponent trainer PNG in `../front-static/`, including while
+`BATTLE ART` is set to `ANIMATED`.
