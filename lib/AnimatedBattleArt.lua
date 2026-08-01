@@ -8,6 +8,7 @@ local V = ...
 
 local BattleArt = V.require("BattleArt")
 local DEFINITIONS = V.data("animated_battle_sprites")
+local CRYSTAL = V.data("animated_battle_sprites_crystal")
 local AnimatedBattleArt = {}
 
 local loaded, loadOrder = {}, {}
@@ -85,7 +86,11 @@ end
 
 local function definition(battler, side)
   local species = battler and battler.mon and battler.mon.species
-  local bySide = species and DEFINITIONS[tostring(species):upper()]
+  local key = species and tostring(species):upper()
+  local crystal = key and CRYSTAL[key]
+  local preferred = crystal and crystal[side]
+  if preferred and atlasPath(preferred) then return preferred end
+  local bySide = key and DEFINITIONS[key]
   return bySide and bySide[side] or nil
 end
 

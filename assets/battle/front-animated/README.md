@@ -12,6 +12,13 @@ cell at its native logical resolution, and uses nearest-neighbour filtering.
 The importer creates both the atlases and their single shared metadata file;
 users do not write one Lua file per Pokemon.
 
+`crystal/` is the preferred front collection when a matching atlas exists.
+Run `python tools/import_crystal_front_sprites.py --root .` from the repository
+root to download National Dex #001-#151 from the configured source, convert
+their GIF frames without resizing, and regenerate the shared Crystal timing
+metadata. A missing Crystal species falls through to the root animated atlas
+and then to ROM art.
+
 ## Gen 1 filename exceptions
 
 Most species use their ordinary lowercase name (`pikachu.png`). These four

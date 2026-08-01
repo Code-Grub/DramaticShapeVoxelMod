@@ -21,6 +21,11 @@
   scaling, and sends every frame through the same transparency, display
   filtering, world lighting, depth and shadow path as static art. Missing or
   malformed atlases fall back per Pokemon to ROM art.
+- **Optional Crystal front collection.** Local atlases in
+  `front-animated/crystal` are preferred per species, with the ordinary
+  animated atlas and ROM art as successive fallbacks. The authoring importer
+  downloads #001-#151, preserves their 56x56 logical canvases and original
+  frame delays, and commits only generated timing metadata—not artwork.
 
 ## 1.3.0
 
