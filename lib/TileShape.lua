@@ -83,6 +83,10 @@ local FALLBACK_HEIGHTS = {
   bed = 7,
   stool = 8,
   counter = 8,
+  -- the raised back band of low seating: the Center couch's west strip
+  -- is drawn from above like the rest of the couch, but depicts the
+  -- back and arm rising over the 8px seat
+  backrest = 12,
   table = 12,
   desk = 24,
   prop = 16,
@@ -145,6 +149,9 @@ local ART = {
   -- profile archetype Structures builds real steps for -- rising flights
   -- for stairs leading up, sunken stairwells for stairs leading down
   bed = "top",
+  -- a backrest's art is the couch seen from above, so like the bed it
+  -- rides the top face of its taller box
+  backrest = "top",
   stool = "billboard",
   -- half-cell furniture: a service counter, a low couch.  One 8px band,
   -- so exactly the drawing's bottom row stands up as the front and
@@ -295,6 +302,24 @@ function TileShape.forMap(map)
   if cache[id] then return cache[id] end
 
   local heights = TileShape.heights()
+  -- Per-tileset height overrides (a tileset entry's `heights`): the class
+  -- vocabulary is global but the drawings are not -- the DOJO lab tables
+  -- are drawn 6px tall where the default `table` is 12 -- and the height
+  -- a sprite RIDES at (VoxelScene.groundAt) must be the height the art
+  -- actually stands, or the starter balls float over their own table.
+  -- Same gate as the global list: known classes, numbers only.
+  do
+    local s = load()
+    local entry = s and s.tilesets and s.tilesets[id]
+    local over = entry and entry.heights
+    if type(over) == "table" then
+      for class, h in pairs(over) do
+        if type(h) == "number" and FALLBACK_HEIGHTS[class] then
+          heights[class] = h
+        end
+      end
+    end
+  end
   local authored = authoredGroups(id, heights)
   local count = math.floor((tileset.imageWidth or 128) / 8)
                 * math.floor((tileset.imageHeight or 48) / 8)

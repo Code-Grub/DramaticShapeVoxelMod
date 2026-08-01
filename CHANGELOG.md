@@ -1,5 +1,66 @@
 # Changelog
 
+## 1.4.1
+
+### Added
+
+- **Furniture through the building pipeline.** The band-table voxelizer
+  that models whole buildings from their own drawings (lib/Buildings.lua)
+  now reads interior furniture too, and the first four drawings are in:
+
+  - **F01, the starter-ball table in Oak's lab** -- the tabletop's 16
+    drawn rows lay flat over a 16px plot (1:1, the first template that
+    never cycles), the black/#555/black edge band folds into the slab's
+    own rim, and the base extrudes with its corner feet. Six voxels
+    tall, exactly the drawn elevation.
+  - **F03, the empty north table beside it** -- the same band table on a
+    grid two tiles narrower.
+  - **F02, the lab's computer desk** -- the first DESK-SET template: the
+    drawing segments into PARTS, each classified by the surface it
+    depicts. The monitor and the computer tower stand upright on the
+    desk wearing their own drawn tops as lids; the keyboards and the
+    mouse lie flat in front of them; the sheet of paper on the right
+    lies flat across the desk. Flat parts keep the drawing's own rule --
+    drawn row IS depth row, the same 1:1 the tabletop is drawn with --
+    so an object's height on the drawing is its position on the desk.
+    The Hall of Fame's recording machine is this drawing tile for tile
+    on the GYM atlas, and models identically for free.
+  - **F04, the Center PC** -- the desk-set read again: a Mac-style unit
+    with its screen and drive slot in relief, standing at the back of a
+    low white-topped desk with its keyboard lying at the front edge.
+    Eleven Pokemon Centers, plus the Indigo Plateau lobby, whose MART
+    tileset shares the atlas.
+
+  Two measurements had to stop being assumptions for furniture to fit
+  the pipeline: the GROUND LINE is now read off the drawing (a building
+  ends on the black threshold row it stands on; a table's legs stop two
+  rows short of theirs, and extruding against the grid floated them in
+  the air), and a template may name its PLOT (`depth`) when the matched
+  grid runs past it onto the walkable floor the legs merely stand on.
+  Both are identities for every existing building.
+
+- **The Center couch has a backrest.** The couch is drawn from above --
+  back-and-arm strip down the west side, cushions and seams on the east
+  -- and rendered as one seat-high box. The new `backrest` class raises
+  the drawn back strip to 12px over the 8px seat, in every Center and
+  the Celadon Hotel. The man sitting on it keeps his seat: the figure
+  anchor now scans under his card for the tallest authored upright (his
+  cushion) instead of reading the corner tile, which is the backrest
+  now.
+
+### Changed
+
+- **Sprites ride at the height the art actually stands.** Class heights
+  can now be overridden per tileset (a tileset entry's `heights`), and
+  DOJO's lab tables use it: they are drawn 6px tall, not the default
+  table's 12, so the starter balls sit exactly on the modelled tabletop
+  -- and the volume-built north tables drop to the same height, keeping
+  every table in the room level.
+- The Center PC's old rendering -- a 12px table box with the unit as a
+  flat standee on it -- retires wherever the F04 template stamps; the
+  pins stay only as the degradation path when the shape profile is
+  absent.
+
 ## 1.4.0
 
 ### Added
@@ -116,6 +177,72 @@
   ever lands half-way between two pixels and changing a wavelength moves the
   speed with it.
 
+- **AA, a new options row: OFF / 2X / 4X.** Everything else in this game is
+  flat art blitted at whole pixels. This mode's world is real geometry seen
+  through a perspective camera, and a polygon edge that lands at an angle
+  across the pixel grid is the one place where a hard stair-step is not a
+  stylistic choice -- a roof ridge, a ledge lip, a tree's silhouette against
+  the sky, the leaning card of a character. At the shallow rungs, where the
+  diorama reads most like a photograph of a model, they crawl as the camera
+  drifts.
+
+  The row is SUPERSAMPLING: the whole pass renders into a canvas larger than
+  the window and is folded back down at the end. The ladder is samples per
+  display pixel, so 2X is a canvas root-two wider and taller and 4X one
+  exactly twice the size -- an honest 2x2 box.
+
+  Two alternatives were tried against what this pass already is, and both
+  lost:
+
+  - **MSAA** would have taken the water with it. The reflections read the
+    frame's own depth buffer as a texture, and a multisampled depth
+    attachment is not something a fragment shader in this dialect can sample.
+    The row would have quietly switched the WATER row off.
+
+  - **An edge filter** (FXAA and its relatives) works from the finished
+    colour alone, so it would be guessing where the edges are out of one
+    sample per pixel -- inventing detail it never rendered, and unable to
+    tell a geometry edge from the boundary between two texels of a tileset.
+
+  Rendering larger has neither problem, and nothing in the frame had to be
+  taught about it: every pass already measures itself in the canvas it was
+  handed, so the sky's dither, the water's ray march, the shadow lookups and
+  the camera itself come out the same picture at a higher sample rate. It
+  antialiases the geometry, the alpha-cut outline of a sprite card, the
+  wireframe and the reflections at once, because none of them know it is
+  happening.
+
+  And it softens the ARTWORK with them, which is worth saying plainly. A
+  tileset texel out here is not a screen pixel, it is a quad in a perspective
+  view, and its boundary crosses the pixel grid at the same arbitrary angle a
+  roof ridge does -- so the fold averages across it exactly as it averages
+  across the ridge. That is what an honest extra sample says about that
+  pixel, and it is also the trade the row is: the diorama comes out smoother,
+  not sharper. Which is why it is a row and not something that is simply on.
+
+  Two things are quoted in DISPLAY pixels rather than canvas ones and are
+  multiplied up to match: the voxel wireframe's line width -- left alone it
+  would fold down to half a line, so turning the smoothing up would appear to
+  fade the grid out -- and the scale the overworld's FX closures draw at.
+
+  The fold is a shader rather than a scaled draw, because the void this pass
+  renders into is a transparent BLACK: averaging a straight-alpha edge against
+  it drags the colour toward black as well as toward transparent, and the
+  engine's composite then multiplies by that alpha a second time. Every
+  silhouette against the sky would have come out ringed with a dark fringe --
+  the exact artefact the row exists to remove. So the taps are premultiplied
+  before they are averaged and divided back out after.
+
+  The staged battle gets it too, on its own canvas: the arena is folded back
+  to the window's pixel size before the depth-of-field pass and the HUDs go
+  on, so the world is smoothed and the pics, panels and text box stay the
+  chunky GB art they are.
+
+  OFF by default, and **FULL neither sets it nor takes the row away** -- it
+  is the one row that is not a knob on the look but on what the look COSTS,
+  and only the player knows what their machine can carry. No hotkey, for the
+  same reason: it is set once, not flicked while walking.
+
 
 ### Changed
 
@@ -215,6 +342,36 @@
   drivers will texture when they refuse the bare format), depth32f, and
   depth16 as the floor every GLES3 device can read. Refused all four, the
   reflections are lost and nothing else, exactly as before.
+
+- **Under BACK SPRITES some of your own Pokemon were see-through -- Pikachu,
+  Seel, Dewgong, Chansey, Jigglypuff -- with the arena showing through the
+  middle of them.** Those back pics are drawn as OUTLINES: everything inside
+  the ink is the lightest shade, the decoder keys that shade to nothing, and
+  on hardware it did not matter because the field behind them was white too.
+
+  BattlePics already put that paper back by flooding the background inward and
+  filling whatever it could not reach, and along the bottom of a figure it told
+  a narrow opening (a belly the drawing ran out of, sealed) from a wide one (a
+  stride, left open for the world to show through). Right for a mon standing
+  on the map -- but the pinned back pic is not on the map, it is on the text
+  box with its feet on row 96, and there is white box under its lowest row
+  rather than arena. Every one of those mons leaks out through an opening far
+  too wide to read as a drain, so the flood walked straight up inside them.
+
+  A pic on the box is now told so, and its bottom edge seals: nothing reaches
+  it from below at any width, and the rule stops being a heuristic -- paper is
+  whatever the background cannot walk to from the left, the right or the top.
+  Twelve of the game's 151 back pics turn on this; the other 139 come back
+  byte-identical, and no front pic is touched at all.
+
+  **And a hole is filled with the pic's own paper rather than with white.**
+  Shade 0 is only white while the pic is still grays, and pics arrive here
+  after the bake -- a species SGB colour, a BGP fade mid-animation, PAL_BLACK
+  across the whole screen while the blackout text is up. A hardcoded white
+  belly would have been the one lit thing on a blacked-out mon. The lightest
+  shade still standing in the pic is that colour, and every one of the game's
+  battler pics keeps at least one such pixel -- an eye, a highlight down a
+  cheek -- so what goes back is the baked shade itself.
 
 ### Known
 

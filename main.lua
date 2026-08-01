@@ -82,6 +82,7 @@ local BattleExit = V.require("BattleExit")
 local DayNight = V.require("DayNight")
 local DayTint = V.require("DayTint")
 local Water = V.require("Water")
+local AntiAlias = V.require("AntiAlias")
 
 -- Forward declaration: the voxel pipeline's update hook (registered below)
 -- calls this, and it is defined further down with the settings it drives.
@@ -203,20 +204,34 @@ mod.content.render_pipelines:register("voxel", {
     -- a magnified low-res image, while the FX closures keep drawing in
     -- world-pixel units.
     local sw, sh = sceneSize(ctx)
-    local canvas = VoxelScene.render(ctx.state, sw, sh,
+    -- With AA on, the whole pass runs into a canvas BIGGER than the window
+    -- and is folded back down at the end (see AntiAlias).  Nothing between
+    -- these two lines knows: every pass in the frame measures itself in the
+    -- canvas it was handed, so the sky's dither, the water's march and the
+    -- camera itself all come out the same picture at a higher sample rate.
+    local rw, rh = AntiAlias.expand(sw, sh)
+    local canvas = VoxelScene.render(ctx.state, rw, rh,
                                      ctx.vw, ctx.vh, ctx.paletteFor)
     if not canvas then return nil end   -- fall back to the 2D path
     if Voxel3D.beginOverlay() then
+      -- the FX closures are ordinary 2D draws sized in DISPLAY pixels, and
+      -- they are drawing into the supersampled canvas alongside everything
+      -- else -- so the scale goes up with it, or the "!" bubble lands the
+      -- right place at half the size.  project() already answers in canvas
+      -- pixels, so only the scale needs saying.
       ctx.drawFx(function(wx, wy) return Voxel3D.project(wx, 0, wy) end,
-                 ctx.scale)
+                 ctx.scale * AntiAlias.factor())
       Voxel3D.endOverlay()
     end
-    return canvas
+    -- and back to the window's own size, which is what the engine composites
+    -- one canvas pixel to one display pixel.  A pass-through when AA is off.
+    return AntiAlias.resolve(canvas, sw, sh, "world")
   end,
 
   invalidate = function()
     Voxel3D.invalidate()
     OverworldBattle.invalidate()
+    AntiAlias.invalidate()
     ChunkMesher.invalidate()   -- no map id = every cached mesh
   end,
 })
@@ -361,6 +376,21 @@ local SETTINGS = {
     .. "let CYCLE run it -- ten minutes of sun, ten of moon, with the "
     .. "shadows, the sky and the light following -- or SYNC it to the "
     .. "clock on the wall, so Kanto's evening falls when yours does." },
+  -- Marked `full` for the opposite reason the battle rows are: this is not a
+  -- knob on the look at all, it is what the look COSTS. FULL is a preset for
+  -- the diorama, not a licence to spend four times the fill rate on the
+  -- machine it happens to be running on, so it neither sets this nor takes
+  -- the row away -- the player decides what their hardware can carry, from
+  -- inside FULL like anywhere else.
+  { AntiAlias.setting,
+    "Smooth the stair-stepped edges of the 3D world -- roof ridges, ledge "
+    .. "lips, a tree against the sky -- by rendering the diorama larger than "
+    .. "the window and folding it back down. Every edge in the picture "
+    .. "softens with them, the tileset's own texels included, so the diorama "
+    .. "reads smoother rather than sharper. 2X costs half again as many "
+    .. "pixels in each direction and 4X twice, which makes this the most "
+    .. "expensive row in the mod.",
+    full = true },
 }
 
 local schema = {}
@@ -860,7 +890,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.4.0"
+mod.exports.version = "1.4.1"
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout
 mod.exports.lib = V

@@ -145,6 +145,9 @@ T.check(not fullIds["DRAMATIC_SHAPE:daytime"], "and DAYTIME")
 -- back sprite (or no staged fights at all) can still say so from inside FULL
 T.check(fullIds["DRAMATIC_SHAPE:battles"], "3D-BTL is still on the menu under FULL")
 T.check(fullIds["DRAMATIC_SHAPE:battleBack"], "and BACK SPRITES with it")
+-- and AA, for the opposite reason: it is not a knob on the look at all, it is
+-- what the look COSTS, and only the player knows what their machine can carry
+T.check(fullIds["DRAMATIC_SHAPE:aa"], "and AA, which FULL neither sets nor owns")
 
 -- DAYTIME is not only hidden under FULL, it is HELD at SYNC: the row cannot
 -- be reached while FULL owns it, so a value changed underneath (the mod
@@ -379,9 +382,11 @@ end
 Pipelines.setLevel("voxel", 2)
 local hookedRows = Runtime.call("ui.options.rows", function(_, r) return r end,
                                { data = Data }, { { id = "text_speed" } })
-T.eq(#hookedRows, 7, "the options hook added a row per setting")
+T.eq(#hookedRows, 8, "the options hook added a row per setting")
 local grid, curve, water = hookedRows[2], hookedRows[3], hookedRows[4]
 local battles, backRow, daytime = hookedRows[5], hookedRows[6], hookedRows[7]
+-- the AA row is hookedRows[8]; it is read in its own block below, because
+-- this chunk is one main function and has 200 local slots to spend
 T.eq(water.label, "WATER", "the water row carries its label")
 T.eq(water.value(), "FULL",
   "and defaults to FULL -- reflections are the point of having the row")
@@ -458,6 +463,57 @@ curve.step(settingGame, 1)
 curve.step(settingGame, 1)
 curve.step(settingGame, 1)
 T.eq(curve.value(), "OFF", "the curve is left off for the rows below")
+
+-- ------- AA renders the pass larger and folds it back down
+--
+-- The ladder is SAMPLES per display pixel, so the canvas scale each rung asks
+-- for is its square root -- and the scale in force has to be readable after
+-- the fact, because two things are quoted in DISPLAY pixels and have to be
+-- multiplied up into the canvas the pass actually opened: the wireframe's
+-- line width and the FX overlay's sprite scale.
+do
+local AntiAlias = run.loader.exports.DRAMATIC_SHAPE.lib.require("AntiAlias")
+local VoxelGrid = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelGrid")
+local aaGame = { save = { options = {} }, mods = { modOptions = {} } }
+local aa = hookedRows[8]
+T.eq(aa.label, "AA", "the anti-aliasing row carries its label")
+T.eq(aa.value(), "OFF",
+  "and starts off -- supersampling is a cost knob, and a mod must not spend "
+  .. "four times the fill rate of the machine it lands on unasked")
+
+T.eq(AntiAlias.samples(), 0, "AA is off by default")
+local w, h = AntiAlias.expand(320, 200)
+T.eq(w, 320, "an OFF row renders at the window's own width")
+T.eq(h, 200, "and its height")
+T.eq(AntiAlias.factor(), 1, "with nothing to multiply display pixels by")
+T.eq(VoxelGrid.width(), VoxelGrid.WIDTH,
+  "so the wireframe is the one-display-pixel line it has always been")
+
+aa.step(aaGame, 1)
+T.eq(aa.value(), "2X", "stepping the row climbs to two samples a pixel")
+T.eq(aaGame.save.options.modOptions.DRAMATIC_SHAPE.aa, 2,
+  "the sample count persists beside the other settings, not over them")
+w, h = AntiAlias.expand(320, 200)
+T.eq(w, 453, "two samples a pixel is a canvas root-two wider")
+T.eq(h, 283, "and root-two taller")
+T.check(math.abs(AntiAlias.factor() - 453 / 320) < 1e-9,
+  "and the factor is what it MEASURED, not what the row asked for")
+
+aa.step(aaGame, 1)
+T.eq(aa.value(), "4X", "and again to four")
+w, h = AntiAlias.expand(320, 200)
+T.eq(w, 640, "four samples a pixel is a canvas exactly twice the size")
+T.eq(h, 400, "in each direction, which is the 2x2 box the fold reads")
+T.eq(AntiAlias.factor(), 2, "with everything in display pixels doubled")
+T.eq(VoxelGrid.width(), VoxelGrid.WIDTH * 2,
+  "the wireframe among them -- a seam left at 1.0 would fold down to half a "
+  .. "line, so the smoothing row would appear to fade the grid row out")
+
+aa.step(aaGame, 1)
+T.eq(aa.value(), "OFF", "and the ladder wraps back to off")
+AntiAlias.expand(320, 200)
+T.eq(AntiAlias.factor(), 1, "leaving nothing behind for the next pass")
+end
 
 -- ------- the animated terrain atlas survives an engine without its seams
 --
@@ -2476,7 +2532,35 @@ T.check(onAt["DRAMATIC_SHAPE:battleBack"], "switched back on, so is the row")
 T.eq(onAt["DRAMATIC_SHAPE:battleBack"] - onAt["DRAMATIC_SHAPE:battles"], 1,
   "directly under the row it belongs to")
 
+-- ------- and which pic is the pinned one is asked with the other side BLANKED
+--
+-- picImage asks this so BattlePics knows whether a pic's feet are on the text
+-- box -- where its bottom edge seals, and its belly stops being see-through --
+-- and it is asked DURING the billboard render, inside which sideTexture has
+-- switched the side it is not drawing off by setting the field to FALSE rather
+-- than to nil (see OFF).
+--
+-- So the read has to be by truthiness. A test against nil passes that `false`
+-- through to the index below it, the error comes back out of sideTexture into
+-- the pcall that calls it, textures() reports no card for the side -- and the
+-- foe is simply not on the field. Which is the whole bug: fixing the player's
+-- back pic took the enemy's billboard out.
+local mine, theirs = {}, {}
+local live = { player = { sprite = mine }, enemy = { sprite = theirs } }
+T.eq(Battles.pinnedPic(live, mine), true,
+  "the player's own mon is the pic on the box")
+T.eq(Battles.pinnedPic(live, theirs), false,
+  "and the foe is geometry out on the map, whatever the mode")
+T.eq(Battles.pinnedPic({ player = false, enemy = { sprite = theirs } }, theirs),
+  false, "asking about the foe while the player is blanked answers, not throws")
+T.eq(Battles.pinnedPic({ playerBackPic = mine }, mine), true,
+  "the trainer back holds the slot until Go!, on the box like the mon")
+T.eq(Battles.pinnedPic({ player = false, playerBackPic = false }, mine), false,
+  "and with the side blanked outright nothing of it is pinned")
+
 Battles.backSetting:setIndex(1, backGame)          -- and off for the rows below
+T.eq(Battles.pinnedPic(live, mine), false,
+  "with BACK SPRITES off the player's mon is out on the map with the foe")
 end
 
 -- ------- the hour reaches the FLAT world too
@@ -2611,21 +2695,35 @@ local BattlePics = run.loader.exports.DRAMATIC_SHAPE.lib.require("BattlePics")
 -- reader over what came out. The pic is faked at the readback seam, which is
 -- the only thing between this and the pixels the engine would have blitted.
 local lastCanvas = nil                  -- what the readback asked newCanvas for
-local function fill(rows)
+-- '#' is ink and '.' the keyed-out nothing. 'W' is ink too, of the pic's
+-- LIGHTEST shade -- a highlight the decoder happened not to key -- which is
+-- what the paper a hole gets filled with is read off.
+local SHADE = { ["#"] = 0.25, ["W"] = 0.75 }
+-- reuse hands the SAME pic back through, which is how the two bottom rules
+-- can be asked of one image the way a running battle would ask them
+local function fill(rows, sealBottom, reuse)
   local W, H = #rows[1], #rows
   local built = nil
   local function fakeData()
-    local px = {}
+    local px, sh = {}, {}
     for y = 0, H - 1 do
       for x = 0, W - 1 do
-        px[y * W + x] = rows[y + 1]:sub(x + 1, x + 1) == "#" and 1 or 0
+        local shade = SHADE[rows[y + 1]:sub(x + 1, x + 1)]
+        px[y * W + x] = shade and 1 or 0
+        sh[y * W + x] = shade or 0
       end
     end
     return {
-      px = px,
+      px = px, sh = sh,
       getDimensions = function() return W, H end,
-      getPixel = function(self, x, y) return 0, 0, 0, self.px[y * W + x] end,
-      setPixel = function(self, x, y, r, g, b, a) self.px[y * W + x] = a end,
+      getPixel = function(self, x, y)
+        local k = y * W + x
+        return self.sh[k], self.sh[k], self.sh[k], self.px[k]
+      end,
+      setPixel = function(self, x, y, r, g, b, a)
+        self.px[y * W + x] = a
+        self.sh[y * W + x] = r
+      end,
     }
   end
 
@@ -2639,12 +2737,14 @@ local function fill(rows)
     built = data
     return { setFilter = function() end }
   end
-  local pic = { getDimensions = function() return W, H end }
-  local out = BattlePics.filled(pic)
+  local pic = reuse or { getDimensions = function() return W, H end }
+  local out = BattlePics.filled(pic, sealBottom)
   love.graphics.newCanvas, love.graphics.newImage = realNewCanvas, realNewImage
   -- deliberately NOT invalidated: each figure brings its own pic, and the
   -- cache check at the bottom needs one of them still in there
-  return out, pic, built and function(x, y) return built.px[y * W + x] > 0.5 end
+  return out, pic,
+         built and function(x, y) return built.px[y * W + x] > 0.5 end,
+         built and function(x, y) return built.sh[y * W + x] end
 end
 
 -- ------- the cut at the feet, which is what the closed bottom edge is for
@@ -2727,6 +2827,75 @@ local drainOut, drainPic, drain = fill({
 T.check(drainOut ~= drainPic and drain and drain(8, 4),
   "a narrow one is where the drawing ran out, and is paper")
 
+-- ------- but a pic ON THE MENU has no mouth at all
+--
+-- The drain/mouth cut is for a pic standing on the MAP, where a wide opening
+-- along the bottom is a stride with real ground behind it. Under BACK SPRITES
+-- the player's mon is drawn in the GB's own slot with its feet flush on the
+-- text box, and the only thing under its lowest row is white box -- so nothing
+-- reaches it from below, whatever the opening's width, and the rule stops
+-- being a heuristic: paper is whatever the background cannot walk to from the
+-- left, the right or the top.
+--
+-- Which is the difference between a Pikachu and a wireframe. The pale-bodied
+-- back pics -- Pikachu, Seel, Dewgong, Chansey, Jigglypuff -- are drawn as
+-- OUTLINES, every shade-0 pixel inside the ink keyed away, and each of them
+-- leaks out through a bottom opening far too wide to read as a drain. On the
+-- map that reading is right; on the box it left the mon a rim with the arena
+-- showing through it.
+--
+-- The same stride figure the map rule leaves open, now standing on the box.
+local boxOut, boxPic, boxOpaque = fill({
+  "..##############..",
+  "..##############..",
+  "..##############..",
+  "..###........###..",
+  "..###........###..",
+  "..###........###..",
+}, true)
+T.check(boxOut ~= boxPic and boxOpaque,
+  "the gap a stride would have shown the world through is paper on the box")
+T.check(boxOpaque(8, 3) and boxOpaque(8, 5),
+  "and it fills right down to the row the feet are on")
+
+-- the seal is the BOTTOM alone: the sides and the top still let the background
+-- in, which is what keeps the silhouette cutting against the arena instead of
+-- standing the mon in a white block
+local boxGapOut, boxGapPic = fill({
+  "..#####.",
+  "..#...#.",
+  "..#...#.",
+  "....###.",   -- opens at the left, and drains out that way
+  "..#####.",
+  "..#####.",
+}, true)
+T.eq(boxGapOut, boxGapPic,
+  "a pocket that drains out to the side is background on the box too")
+
+-- ------- and a hole is filled with the pic's OWN paper, not with white
+--
+-- Shade 0 is white only while the pic is still grays, and by the time one
+-- reaches here it usually is not: picImage hands it over after the bake -- a
+-- species SGB colour, a BGP fade mid-animation, PAL_BLACK across the whole
+-- screen while the blackout text is up -- and shade 0 travels with the rest.
+-- A hardcoded white belly would be the one lit thing on a blacked-out mon.
+--
+-- So the paper is read off the pic: the lightest shade still standing in it,
+-- which is shade 0 wherever the decoder could not reach one. It never has to
+-- guess -- all 151 of this game's back pics keep at least one, an eye or a
+-- highlight down a cheek.
+local _, _, _, paperShade = fill({
+  "..####..",
+  "..#WW#..",   -- a highlight the decoder did not key: this is the paper
+  "..#..#..",
+  "..#..#..",
+  "..####..",
+})
+T.eq(paperShade(3, 2), paperShade(3, 1),
+  "the hole takes the lightest shade the pic still has")
+T.check(paperShade(3, 2) ~= paperShade(2, 2),
+  "which is not the ink beside it")
+
 -- ------- and the readback is measured in PIXELS, which is what kept the mons
 -- the size of the squares they stand on
 --
@@ -2743,12 +2912,31 @@ T.check(drainOut ~= drainPic and drain and drain(8, 4),
 -- scale that was wrong everywhere.
 T.check(lastCanvas and lastCanvas.opts and lastCanvas.opts.dpiscale == 1,
   "the readback canvas is one texel per pic pixel, on a highdpi phone too")
-T.eq(lastCanvas.w, 18, "and it is the size of the pic, in those pixels")
+T.eq(lastCanvas.w, 8, "and it is the size of the pic, in those pixels")
 
 -- the answer is cached on the image, so a pic costs one readback a session
 -- rather than one a frame -- checked on the first figure, which is still in
 -- there because fill() does not clear it
 T.eq(BattlePics.filled(pic), out, "the rebuilt pic is cached on the original")
+-- and cached PER BOTTOM RULE, because one image answers differently on the map
+-- and on the box. A single table for both would hand whichever caller asked
+-- second the other one's answer -- the map's stencil to the menu, or a menu
+-- fill to a mon standing on grass -- which is this section's bug arriving
+-- through the cache rather than through the flood.
+--
+-- The stride figure again, on the SAME pic the map rule already answered for.
+local reOut = fill({
+  "..##############..",
+  "..##############..",
+  "..##############..",
+  "..###........###..",
+  "..###........###..",
+  "..###........###..",
+}, true, stridePic)
+T.check(reOut ~= stridePic,
+  "the pic the map left open still fills when the box asks for it")
+T.eq(BattlePics.filled(stridePic), stridePic,
+  "and the map's own answer for it is still the pic itself")
 BattlePics.invalidate()
 end
 

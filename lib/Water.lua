@@ -1192,7 +1192,7 @@ function Water.begin(ctx)
   if ctx.grid then
     local VoxelGrid = V.require("VoxelGrid")
     send("gridDark", VoxelGrid.DARK)
-    send("gridWidth", VoxelGrid.WIDTH)
+    send("gridWidth", VoxelGrid.width())
   end
 
   Water.sendSky(sh, ctx)

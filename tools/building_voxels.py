@@ -547,6 +547,98 @@ TEMPLATES = {
         roof_rows=17, roof_back=5, roof_front=3, roof_cycle=(5, 9),
         slab=4, front_eave=4, ledge=None, tileset="forest",
     ),
+    # F01: the starter-ball table in Oak's lab -- the first FURNITURE
+    # through the pipeline, and the first drawing whose plot is smaller
+    # than its grid. Rows 0-15 are the tabletop seen from above; 16-18
+    # are the top slab's own front edge (black/#555/black -- exactly
+    # what the rim treatment paints, so slab=3 and those rows fold into
+    # the roof band instead of extruding); 19-21 are the base: corner
+    # feet and the inset dark panel between them. The legs stand on
+    # open FLOOR, so the measured ground line lands two rows short of
+    # the grid; `depth` keeps the plot to the blocked cell row -- the
+    # legs row of the grid is the walkable cell the player faces the
+    # table from, and D = len(tiles) would stand the model in their
+    # path. 16 top rows onto a 16px plot map 1:1: no cycling, and
+    # roof_cycle is unreachable behind roof_back=16.
+    "lab_table": dict(
+        tiles=[
+            [41, 59, 59, 59, 59, 42],
+            [78, 57, 57, 57, 57, 79],
+            [88, 89, 89, 89, 89, 90],
+        ],
+        roof_rows=19, roof_back=16, roof_front=0, roof_cycle=(2, 13),
+        slab=3, front_eave=0, ledge=None, tileset="gym", depth=2,
+    ),
+    # F02: the computer desk in Oak's lab -- and the Hall of Fame's
+    # recording machine, the same drawing on the GYM atlas (one
+    # placement each; both registered in voxel_heights). The one
+    # DESK-SET template: the methodology's region classification at
+    # part granularity. The desk is the sibling lab table (fascia rows
+    # 16-18, base 19-21); on it stand a monitor over its keyboard
+    # (left), a computer tower over a keyboard and mouse (middle), and
+    # a sheet of paper LYING FLAT (right). Upright parts anchor their
+    # drawn bottom row to the desk's top plane and wear their own drawn
+    # tops as lids; flat parts lie one voxel proud with drawn row =
+    # depth row -- the same 1:1 the tabletop itself is drawn with, so
+    # an object's height ON the drawing is its position ON the desk.
+    # The desk's own top is the one synthesized surface (the objects
+    # cover every pixel of it), continued from the sibling tables'
+    # pattern in the drawing's own shades.
+    "lab_computers": dict(
+        tiles=[
+            [91, 92, 93, 94],
+            [54, 55, 85, 95],
+            [88, 89, 89, 90],
+        ],
+        roof_rows=0, roof_back=0, roof_front=0, roof_cycle=(0, 0),
+        slab=0, front_eave=0, ledge=None, tileset="gym", depth=2,
+        desk=dict(fascia=(16, 18), base=(19, 21)),
+        parts=[
+            dict(kind="upright", x=(2, 13), top=(0, 2), facade=(3, 10),
+                 depth=4),                                   # the monitor
+            dict(kind="flat", x=(1, 13), rows=(11, 14)),     # its keyboard
+            dict(kind="upright", x=(14, 21), top=(0, 3), facade=(4, 10),
+                 depth=6),                                   # the tower
+            dict(kind="flat", x=(14, 21), rows=(11, 14)),    # keys + mouse
+            dict(kind="flat", x=(22, 30), rows=(1, 14)),     # the paper
+        ],
+    ),
+    # F03: the empty north table beside it -- the starter table's band
+    # table verbatim on a grid two tiles narrower (one placement).
+    "lab_table_small": dict(
+        tiles=[
+            [41, 59, 59, 42],
+            [78, 57, 57, 79],
+            [88, 89, 89, 90],
+        ],
+        roof_rows=19, roof_back=16, roof_front=0, roof_cycle=(2, 13),
+        slab=3, front_eave=0, ledge=None, tileset="gym", depth=2,
+    ),
+    # F04: the Pokemon Center's PC -- every Center's northeast corner
+    # (11 placements) plus the Indigo Plateau lobby, whose MART tileset
+    # shares this atlas. The lab desk-set read again: a
+    # Mac-style unit drawn face-on -- white top band (rows 0-3), bezel,
+    # screen and drive slot (4-14) -- standing at the back of a low
+    # desk whose front face is rows 20-23 and whose drawn top (the
+    # white sliver of row 15 and the margins beside the unit) names the
+    # lid shade. The keyboard rows 17-19 lie BELOW the desk's 16px top
+    # span, so the flat part carries an authored z origin: it lies at
+    # the desk's front edge, in front of the unit.
+    "center_pc": dict(
+        tiles=[
+            [66, 70],
+            [82, 86],
+            [9, 88],
+        ],
+        roof_rows=0, roof_back=0, roof_front=0, roof_cycle=(0, 0),
+        slab=0, front_eave=0, ledge=None, tileset="pokecenter", depth=2,
+        desk=dict(fascia=(20, 21), base=(22, 23), lid="white"),
+        parts=[
+            dict(kind="upright", x=(2, 13), top=(0, 3), facade=(4, 14),
+                 depth=6),                                   # the unit
+            dict(kind="flat", x=(2, 13), rows=(17, 19), z=13),  # keyboard
+        ],
+    ),
     # B23: the Victory Road entrance on Route 23: a rock face with two
     # barred doors. The roof band is the pale cliff top seen from above.
     "victory_road_gate": dict(
@@ -642,7 +734,14 @@ def profile(sp, t):
         r = next((y for y in range(H) if inside(x, y)), t["roof_rows"])
         top.append(min(r, t["roof_rows"]))
 
-    wall_h = H - t["roof_rows"]
+    # The drawing's own ground line: the row after the last drawn one. A
+    # building ends on the black threshold row it stands on (ground == H),
+    # but furniture is drawn standing on open floor -- the lab table's
+    # legs stop two rows short of its grid -- and extruding against H
+    # would float it that far above its own plot.
+    ground = max((y for y in range(H) for x in range(W) if inside(x, y)),
+                 default=H - 1) + 1
+    wall_h = ground - t["roof_rows"]
     ytop = wall_h - 1 + t["slab"]
 
     # Recesses: the panes the art seals behind a black frame. Non-black
@@ -674,15 +773,136 @@ def profile(sp, t):
             if x1 - x0 + 1 <= RECESS_MAX and y1 - y0 + 1 <= RECESS_MAX:
                 recess.update(cells)
 
+    # Depth is the PLOT. For a whole-drawing building that is the grid
+    # itself; `depth` (in tile rows) names it when the grid runs past the
+    # plot onto ground the drawing merely stands its legs on.
     return dict(top=top, wall_h=wall_h, ytop=ytop, recess=recess,
-                inside=inside, D=H, W=W, H=H)
+                inside=inside, D=t.get("depth", len(t["tiles"])) * 8,
+                ground=ground, W=W, H=H)
 
 
 # --------------------------------------------------------------- stage 3 --
+def build_desk_set(sp, pr, t):
+    """A desk with separately-classified objects on it (the `parts` list):
+    upright parts stand on the desk's top plane wearing their own drawn
+    tops as lids, flat parts lie one voxel proud at drawn row = depth row,
+    and the desk itself is the lab-table slab + base with a synthesized
+    lid (the objects cover every drawn pixel of the tabletop)."""
+    W, H, D = pr["W"], pr["H"], pr["D"]
+    inside = pr["inside"]
+    col, src = sp["col"], sp["src"]
+    ground = pr["ground"]
+    vox = {}
+
+    def put(x, y, z, sx, sy):
+        vox[(x, y, z)] = (col[sy][sx], src[sy][sx])
+
+    shade_px = {}
+    for sy in range(H):
+        for sx in range(W):
+            if inside(sx, sy):
+                shade_px.setdefault(col[sy][sx], (sx, sy))
+
+    def interior(sx, sy, lo, hi):
+        if col[sy][sx] != BLACK:
+            return sx
+        step = 1 if sx < (lo + hi) // 2 else -1
+        for d in range(1, 4):
+            nx = sx + step * d
+            if lo <= nx <= hi and inside(nx, sy) and col[sy][nx] != BLACK:
+                return nx
+        return sx
+
+    f0, f1 = t["desk"]["fascia"]
+    b0, b1 = t["desk"]["base"]
+    plane = (b1 - b0 + 1) + (f1 - f0 + 1)       # the desk's top plane
+
+    # the base band, extruded exactly like every lab table's
+    for sy in range(b0, b1 + 1):
+        y = ground - 1 - sy
+        for sx in range(W):
+            if not inside(sx, sy):
+                continue
+            ix = interior(sx, sy, 0, W - 1)
+            for z in range(D):
+                put(sx, y, z, sx if z in (0, D - 1) else ix, sy)
+    for sx, sy in pr["recess"]:
+        if b0 <= sy <= b1:
+            vox.pop((sx, ground - 1 - sy, D - 1), None)
+
+    # the slab: the fascia rows wrap every side; the lid is the one
+    # synthesized surface in the model -- the drawing never paints the
+    # tabletop (its objects cover it), so the lid continues the sibling
+    # tables' pattern in the drawing's own shades: black rim, white
+    # highlight courses along the north and west, grey field
+    for i, sy in enumerate(range(f0, f1 + 1)):
+        y = plane - 1 - i
+        for sx in range(W):
+            for z in range(D):
+                put(sx, y, z, sx, sy)
+    field = WHITE if t["desk"].get("lid") == "white" else GREY
+    for sx in range(W):
+        for z in range(D):
+            if sx in (0, W - 1) or z in (0, D - 1):
+                shade = BLACK
+            elif sx == 1 or z == 1:
+                shade = WHITE
+            else:
+                shade = field
+            px = shade_px.get(shade) or shade_px[BLACK]
+            put(sx, plane - 1, z, px[0], px[1])
+
+    for p in t["parts"]:
+        x0, x1 = p["x"]
+        if p["kind"] == "flat":
+            r0, r1 = p["rows"]
+            for sy in range(r0, r1 + 1):
+                # drawn row = depth row by default; `z` renames the
+                # origin when the flat sits below the desk's own drawn
+                # top span (the Center PC's keyboard)
+                z = p.get("z", r0) + (sy - r0)
+                if not 0 <= z < D:
+                    continue
+                for sx in range(x0, x1 + 1):
+                    if inside(sx, sy):
+                        put(sx, plane, z, sx, sy)
+            continue
+        tr0, tr1 = p["top"]
+        fr0, fr1 = p["facade"]
+        pd = p["depth"]
+        ytp = plane + (fr1 - fr0)
+        for sx in range(x0, x1 + 1):
+            # the lid: the part's drawn top laid across its depth from
+            # the back, last row continuing forward; the front lid row
+            # is the facade's own top row -- the drawn front-top edge
+            for z in range(pd):
+                sy = fr0 if z == pd - 1 else min(tr0 + z, tr1)
+                while sy <= tr1 and not inside(sx, sy):
+                    sy += 1
+                if sy > tr1 and not (z == pd - 1 and inside(sx, fr0)):
+                    continue
+                put(sx, ytp, z, sx, fr0 if z == pd - 1 else sy)
+            # the body: facade rows anchored to the desk's top plane
+            for sy in range(fr0 + 1, fr1 + 1):
+                y = plane + (fr1 - sy)
+                if not inside(sx, sy):
+                    continue
+                ix = interior(sx, sy, x0, x1)
+                for z in range(pd):
+                    if z == pd - 1:
+                        if (sx, sy) not in pr["recess"]:
+                            put(sx, y, z, sx, sy)
+                    else:
+                        put(sx, y, z, sx if z == 0 else ix, sy)
+    return vox
+
+
 def build(sp, pr, t):
     """The voxel model. Order is load-bearing: walls, ledge, recesses, then
     the roof solid overwrites what it intersects and the walls are trimmed
     to the roof's underside."""
+    if t.get("parts"):
+        return build_desk_set(sp, pr, t)
     W, H, D = pr["W"], pr["H"], pr["D"]
     inside, top, ytop = pr["inside"], pr["top"], pr["ytop"]
     col, src = sp["col"], sp["src"]
@@ -720,7 +940,9 @@ def build(sp, pr, t):
 
     # ---- walls: the facade rows extruded straight back, trimmed under the roof
     for sy in range(t["roof_rows"], H):
-        y = H - 1 - sy
+        y = pr["ground"] - 1 - sy       # rows below the ground line are floor
+        if y < 0:
+            continue
         for sx in range(W):
             if not inside(sx, sy) or trimmed(sx, y):
                 continue
@@ -742,7 +964,7 @@ def build(sp, pr, t):
     if t["ledge"]:
         l0, l1 = t["ledge"]
         for sy in range(l0, l1 + 1):
-            y = H - 1 - sy
+            y = pr["ground"] - 1 - sy
             for sx in range(W):
                 if inside(sx, sy) and not trimmed(sx, y):
                     for z in (-2, -1, D, D + 1):
@@ -750,7 +972,7 @@ def build(sp, pr, t):
 
     # ---- recesses: the front voxel of every pane sinks, its frame stays proud
     for sx, sy in pr["recess"]:
-        vox.pop((sx, H - 1 - sy, D - 1), None)
+        vox.pop((sx, pr["ground"] - 1 - sy, D - 1), None)
 
     # ---- roof: flat top over the plateau, stepped diagonal ends
     z0, z1 = 0, D - 1 + t["front_eave"]
@@ -805,6 +1027,83 @@ def verify(vox, sp, pr, t):
     for (x, y, z), _ in vox.items():
         assert y <= T(x), f"voxel pokes through the roof at {x},{y},{z}"
 
+    # A desk set answers its own asserts; a facade-only template (roof_rows
+    # == 0) has no roof band, so there is no surface to hold level or slope
+    # and no coverage to demand of it; everything with a roof band answers
+    # the full set.
+    if t.get("parts"):
+        verify_desk_set(vox, pr, t)
+    elif t["roof_rows"] == 0:
+        # its one geometric intent: a straight extrusion, so each column
+        # of the drawing is solid from its lowest voxel to its top. NOT
+        # from the ground -- the drawing's base band is inset like every
+        # lab table's, and the body's outer columns legitimately
+        # overhang it -- and not on the recess layer, which sinks panes.
+        lo, hi = {}, {}
+        for (x, y, z) in vox:
+            lo[(x, z)] = min(lo.get((x, z), y), y)
+            hi[(x, z)] = max(hi.get((x, z), y), y)
+        for (x, z), h in hi.items():
+            if z == D - 1:
+                continue
+            assert all((x, y, z) in vox for y in range(lo[(x, z)], h + 1)), \
+                f"facade column has a hole at {x},{z}"
+    else:
+        verify_roof(vox, pr, t)
+
+    shell = [k for k in vox if not all(
+        (k[0] + d[0], k[1] + d[1], k[2] + d[2]) in vox
+        for d in ((1, 0, 0), (-1, 0, 0), (0, 1, 0),
+                  (0, -1, 0), (0, 0, 1), (0, 0, -1)))]
+    return shell
+
+
+def verify_desk_set(vox, pr, t):
+    W, D = pr["W"], pr["D"]
+    f0, f1 = t["desk"]["fascia"]
+    b0, b1 = t["desk"]["base"]
+    plane = (b1 - b0 + 1) + (f1 - f0 + 1)
+
+    # the slab is a full solid under everything on it
+    for x in range(W):
+        for z in range(D):
+            for y in range(b1 - b0 + 1, plane):
+                assert (x, y, z) in vox, f"slab hole at {x},{y},{z}"
+
+    # each part stands where authored -- upright bodies solid from the
+    # desk to their own drawn top (bar the front layer, whose panes
+    # sink) -- and nothing stands anywhere else
+    tops = {}
+    for p in t["parts"]:
+        x0, x1 = p["x"]
+        if p["kind"] == "flat":
+            r0, r1 = p["rows"]
+            z0 = p.get("z", r0)
+            for x in range(x0, x1 + 1):
+                for z in range(max(z0, 0), min(z0 + r1 - r0, D - 1) + 1):
+                    tops[(x, z)] = max(tops.get((x, z), 0), plane)
+        else:
+            fr0, fr1 = p["facade"]
+            ytp = plane + (fr1 - fr0)
+            for x in range(x0, x1 + 1):
+                for z in range(p["depth"]):
+                    tops[(x, z)] = max(tops.get((x, z), 0), ytp)
+                    if z == p["depth"] - 1:
+                        continue
+                    ys = [y for y in range(plane, ytp + 1)
+                          if (x, y, z) in vox]
+                    assert ys == list(range(ys[0], ys[0] + len(ys))) \
+                        if ys else True, f"part column hole at {x},{z}"
+    for (x, y, z) in vox:
+        assert y <= tops.get((x, z), plane - 1), \
+            f"voxel above its part at {x},{y},{z}"
+
+
+def verify_roof(vox, pr, t):
+    W, H, D = pr["W"], pr["H"], pr["D"]
+    ytop, top, slab = pr["ytop"], pr["top"], t["slab"]
+    T = lambda x: ytop - top[max(0, min(W - 1, x))]
+
     # The roof surface reads over the columns the drawing actually paints:
     # a sprite inset from its box says nothing about the rest.
     roofed = [x for x in range(W) if top[x] < t["roof_rows"]]
@@ -844,12 +1143,6 @@ def verify(vox, sp, pr, t):
                     f"wall stands where no roof reaches at {x},{z}"
             elif any((x, y, z) in vox for y in range(0, T(x) - slab + 1)):
                 assert (x, T(x), z) in vox, f"wall uncovered at {x},{z}"
-
-    shell = [k for k in vox if not all(
-        (k[0] + d[0], k[1] + d[1], k[2] + d[2]) in vox
-        for d in ((1, 0, 0), (-1, 0, 0), (0, 1, 0),
-                  (0, -1, 0), (0, 0, 1), (0, 0, -1)))]
-    return shell
 
 
 def preview(shell, vox, sp, name, out, flip, canvas=(1700, 900), pad=20):

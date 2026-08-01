@@ -110,6 +110,9 @@ return {
     bed = 7,
     stool = 8,
     counter = 8,
+    -- the raised back band of low seating (the Center couch's back and
+    -- arm strip): half again the 8px seat it rises over
+    backrest = 12,
     table = 12,
     desk = 24,
     prop = 16,
@@ -579,6 +582,12 @@ return {
       -- auto-extracting into standing prisms, and the ball/Pokedex
       -- sprites ride the table's authored height.
       table = { 41, 42, 57, 59, 78, 79 },
+      -- These tables are drawn 6px tall (3px slab edge over 3px base --
+      -- see the lab_table entry under `buildings`), not the default
+      -- table's 12: the override keeps the volume-built north tables
+      -- and the band-built starter table one height, and stands the
+      -- ball/Pokedex sprites exactly on the top face of both.
+      heights = { table = 6 },
     },
 
     -- Red's room and the Copycat's room (one tileset).  The detector reads
@@ -699,14 +708,25 @@ return {
       -- one clean band, so the drawn front panel stands up and the
       -- counter top stays on top; at 12 they read as wall stubs
       counter = { 8, 10, 24, 25, 56, 90, 91,
-                  -- and the lounge couch with the man sitting on it.
-                  -- Same half-cell box: its bottom row (42/43, the front
-                  -- base) stands up as the couch's front, and the three
-                  -- rows above it -- cushion (38/39) and the man
-                  -- (36/37 head, 52/53 face) -- ride the top face in
+                  -- and the lounge couch's SEAT column with the man
+                  -- sitting on it.  Same half-cell box: its bottom row
+                  -- (43, the front base) stands up as the couch's
+                  -- front, and the rows above it -- cushion (39) and
+                  -- the man (37 head, 53 face) -- ride the top face in
                   -- drawn order, each exactly once.  See the note below
                   -- on why he cannot be stood upright.
-                  36, 37, 38, 39, 42, 43, 52, 53 },
+                  37, 39, 43, 53 },
+      -- The couch's WEST tile column: the drawing's left strip is the
+      -- couch's back and arm running north-south (the seat's cushions
+      -- and seams fill the east column), so it rises over the 8px seat
+      -- the way a couch back does instead of lying flush in the same
+      -- box.  Per-tile granularity puts the drawn ~6px strip plus a
+      -- 2px sliver of cushion on the raised band -- invisible at tile
+      -- scale, and the alternative is no backrest at all.  The figure
+      -- anchor scans for the tallest authored UPRIGHT under the man
+      -- (see Structures.buildFigure), so he keeps sitting at seat
+      -- height beside it.
+      backrest = { 36, 38, 42, 52 },
       -- standing per-pixel props, black-outline segmented: the healing
       -- machines' screen tops (58/59/74/75, drawn above the pinned
       -- bodies so they stand ON them) and the PC (66/70/82/86), which
@@ -3229,6 +3249,171 @@ return {
         },
         roofRows = 17, roofBack = 5, roofFront = 3, roofCycle = { 5, 9 },
         slab = 4, frontEave = 4, ledge = nil,
+      },
+    },
+
+    DOJO = {
+      -- F01: the starter-ball table in Oak's lab (one placement in the
+      -- game: OAKS_LAB cell 6,3) -- the first FURNITURE through the
+      -- band pipeline, and the first drawing whose plot is smaller than
+      -- its grid. Its 24 rows read: 0-15 the tabletop seen from above
+      -- (black rim, white highlight course, grey field); 16-18 the top
+      -- slab's own front edge, black/#555/black -- which is exactly
+      -- what the rim treatment paints, so slab = 3 and those rows fold
+      -- into the roof band instead of extruding under it; 19-21 the
+      -- base band, corner feet and the inset dark panel between them.
+      --
+      -- The legs stand on open FLOOR: the measured ground line lands
+      -- two rows short of the grid (see Buildings measure), and `depth`
+      -- keeps the plot to the blocked cell row -- the grid's third row
+      -- is the walkable cell the player faces the table from, matched
+      -- so the flat leg art is claimed off the floor, not so the model
+      -- stands on it. 16 top rows onto a 16px plot map 1:1: roofBack
+      -- covers the whole depth, nothing cycles, and roofCycle is
+      -- unreachable behind it. The Poke Ball sprites ride the `table`
+      -- pin's height (VoxelScene.groundAt reads the collision tile, not
+      -- this model), so the tileset entry above overrides that height
+      -- to the 6px this drawing actually stands.
+      {
+        id = "lab_table",
+        tiles = {
+          { 41, 59, 59, 59, 59, 42 },
+          { 78, 57, 57, 57, 57, 79 },
+          { 88, 89, 89, 89, 89, 90 },
+        },
+        roofRows = 19, roofBack = 16, roofFront = 0, roofCycle = { 2, 13 },
+        slab = 3, frontEave = 0, ledge = nil, depth = 2,
+      },
+      -- F02: the computer desk on the lab's west side (OAKS_LAB cell
+      -- 0,1) -- the one DESK-SET template: the pipeline's region
+      -- classification at PART granularity (see Buildings
+      -- deskSetModel). The desk is the sibling lab table (fascia rows
+      -- 16-18, base 19-21); on it stand a monitor over its keyboard
+      -- (left), a computer tower over a keyboard and mouse (middle),
+      -- and a sheet of paper LYING FLAT (right). Upright parts anchor
+      -- their drawn bottom row to the desk's top plane and wear their
+      -- own drawn tops as lids; flat parts lie one voxel proud at
+      -- drawn row = depth row -- the same 1:1 the tabletop itself is
+      -- drawn with. The roof fields are inert (roofRows = 0 keeps the
+      -- recess scan over the whole drawing, which is what sinks the
+      -- monitor's screen and the tower's slots). Same drawing, same
+      -- grid, stands in the Hall of Fame on the GYM atlas --
+      -- registered there below.
+      {
+        id = "lab_computers",
+        tiles = {
+          { 91, 92, 93, 94 },
+          { 54, 55, 85, 95 },
+          { 88, 89, 89, 90 },
+        },
+        roofRows = 0, roofBack = 0, roofFront = 0, roofCycle = { 0, 0 },
+        slab = 0, frontEave = 0, ledge = nil, depth = 2,
+        desk = { fascia = { 16, 18 }, base = { 19, 21 } },
+        parts = {
+          { kind = "upright", x = { 2, 13 }, top = { 0, 2 },
+            facade = { 3, 10 }, depth = 4 },              -- the monitor
+          { kind = "flat", x = { 1, 13 }, rows = { 11, 14 } },  -- keyboard
+          { kind = "upright", x = { 14, 21 }, top = { 0, 3 },
+            facade = { 4, 10 }, depth = 6 },              -- the tower
+          { kind = "flat", x = { 14, 21 }, rows = { 11, 14 } }, -- keys+mouse
+          { kind = "flat", x = { 22, 30 }, rows = { 1, 14 } },  -- the paper
+        },
+      },
+      -- F03: the empty north table beside it (OAKS_LAB cell 2,1): the
+      -- starter table's band table verbatim on a grid two tiles
+      -- narrower.
+      {
+        id = "lab_table_small",
+        tiles = {
+          { 41, 59, 59, 42 },
+          { 78, 57, 57, 79 },
+          { 88, 89, 89, 90 },
+        },
+        roofRows = 19, roofBack = 16, roofFront = 0, roofCycle = { 2, 13 },
+        slab = 3, frontEave = 0, ledge = nil, depth = 2,
+      },
+    },
+
+    POKECENTER = {
+      -- F04: the PC in every Center's northeast corner (11
+      -- placements; the Indigo Plateau lobby's twin is registered
+      -- under MART below). The lab desk-set read again: a Mac-style
+      -- unit drawn face-on -- white top band (rows 0-3), bezel, screen
+      -- and drive slot (4-14) -- standing at the back of a low desk
+      -- whose front face is rows 20-23; the drawn top around the unit
+      -- is WHITE, which is what `lid` carries. The keyboard rows 17-19
+      -- are drawn below the desk's 16px top span, so the flat part's
+      -- `z` puts it at the desk's front edge. The old billboard pins
+      -- for these tiles (66/70/82/86, desk 9/88) stay as the
+      -- degradation path -- the claim neutralizes them wherever this
+      -- template stamps.
+      {
+        id = "center_pc",
+        tiles = {
+          { 66, 70 },
+          { 82, 86 },
+          {  9, 88 },
+        },
+        roofRows = 0, roofBack = 0, roofFront = 0, roofCycle = { 0, 0 },
+        slab = 0, frontEave = 0, ledge = nil, depth = 2,
+        desk = { fascia = { 20, 21 }, base = { 22, 23 }, lid = "white" },
+        parts = {
+          { kind = "upright", x = { 2, 13 }, top = { 0, 3 },
+            facade = { 4, 14 }, depth = 6 },                -- the unit
+          { kind = "flat", x = { 2, 13 }, rows = { 17, 19 },
+            z = 13 },                                       -- keyboard
+        },
+      },
+    },
+
+    MART = {
+      -- F04 again: the Indigo Plateau lobby's PC (cell 15,7) -- the
+      -- MART tileset shares the POKECENTER atlas, so this is the same
+      -- drawing tile for tile. Same part table as the POKECENTER entry
+      -- above.
+      {
+        id = "center_pc",
+        tiles = {
+          { 66, 70 },
+          { 82, 86 },
+          {  9, 88 },
+        },
+        roofRows = 0, roofBack = 0, roofFront = 0, roofCycle = { 0, 0 },
+        slab = 0, frontEave = 0, ledge = nil, depth = 2,
+        desk = { fascia = { 20, 21 }, base = { 22, 23 }, lid = "white" },
+        parts = {
+          { kind = "upright", x = { 2, 13 }, top = { 0, 3 },
+            facade = { 4, 14 }, depth = 6 },                -- the unit
+          { kind = "flat", x = { 2, 13 }, rows = { 17, 19 },
+            z = 13 },                                       -- keyboard
+        },
+      },
+    },
+
+    GYM = {
+      -- F02 again: the Hall of Fame's recording machine is the lab's
+      -- computer desk drawing, tile for tile, on the GYM atlas (one
+      -- placement: HALL_OF_FAME cell 4,1). Same part table as the DOJO
+      -- entry above.
+      {
+        id = "lab_computers",
+        tiles = {
+          { 91, 92, 93, 94 },
+          { 54, 55, 85, 95 },
+          { 88, 89, 89, 90 },
+        },
+        roofRows = 0, roofBack = 0, roofFront = 0, roofCycle = { 0, 0 },
+        slab = 0, frontEave = 0, ledge = nil, depth = 2,
+        desk = { fascia = { 16, 18 }, base = { 19, 21 } },
+        parts = {
+          { kind = "upright", x = { 2, 13 }, top = { 0, 2 },
+            facade = { 3, 10 }, depth = 4 },              -- the monitor
+          { kind = "flat", x = { 1, 13 }, rows = { 11, 14 } },  -- keyboard
+          { kind = "upright", x = { 14, 21 }, top = { 0, 3 },
+            facade = { 4, 10 }, depth = 6 },              -- the tower
+          { kind = "flat", x = { 14, 21 }, rows = { 11, 14 } }, -- keys+mouse
+          { kind = "flat", x = { 22, 30 }, rows = { 1, 14 } },  -- the paper
+        },
       },
     },
   },
