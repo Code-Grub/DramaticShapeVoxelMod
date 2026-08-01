@@ -715,7 +715,7 @@ function Voxel3D.beginScene(w, h, cx, cy, vw, vh, sky, slot)
   pcall(sh.send, sh, "sunTexel", { texel, texel })
   if grid then
     pcall(sh.send, sh, "gridDark", VoxelGrid.DARK)
-    pcall(sh.send, sh, "gridWidth", VoxelGrid.WIDTH)
+    pcall(sh.send, sh, "gridWidth", VoxelGrid.width())
   end
   -- ordinary shading until the silhouette pass asks for otherwise. Sent
   -- every frame rather than once, because a scene that opened mid-ghost --

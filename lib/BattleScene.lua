@@ -42,6 +42,7 @@ local BattleCam = V.require("BattleCam")
 local BattleBillboard = V.require("BattleBillboard")
 local VoxelGrid = V.require("VoxelGrid")
 local DayNight = V.require("DayNight")
+local AntiAlias = V.require("AntiAlias")
 local PaletteFX = require("src.render.PaletteFX")
 local Map = require("src.world.Map")
 
@@ -427,7 +428,16 @@ function BattleScene.render(state, arena, textures, token)
     -- its own canvas slot: this renders at the window's pixel size and the
     -- free-roam pass does too, but the two are alive at different moments
     -- and a shared slot would reallocate on every battle entry and exit
-    if not Voxel3D.beginScene(pw, ph, cx, cy, vw, vh, sky, "battle") then
+    --
+    -- AA, if the row asks for it, renders it larger still and folds it back
+    -- to pw x ph below (see AntiAlias). The framing is untouched by that:
+    -- the lens was widened by the window's RATIO to the letterbox and the
+    -- rig solved in the GB's own frame, so a bigger canvas is more samples
+    -- of the identical shot -- which is why the pins below still measure in
+    -- pw and ph, and why the HUDs and the depth of field, drawn onto the
+    -- folded canvas afterwards, stay the chunky GB art they are.
+    local rw, rh = AntiAlias.expand(pw, ph)
+    if not Voxel3D.beginScene(rw, rh, cx, cy, vw, vh, sky, "battle") then
       return
     end
     Voxel3D.draw(terrain, atlasFor(host), nil)
@@ -500,7 +510,7 @@ function BattleScene.render(state, arena, textures, token)
                    Mat4.translate(nb.ox, 0, nb.oy), fpull,
                    ShadowMap.snug(Mat4.translate(nb.ox, 0, nb.oy)))
     end
-    local canvas = Voxel3D.endScene()
+    local canvas = AntiAlias.resolve(Voxel3D.endScene(), pw, ph, "battle")
     if not canvas then return end
 
     local vp = Voxel3D.vp

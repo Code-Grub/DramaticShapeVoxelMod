@@ -145,6 +145,9 @@ T.check(not fullIds["DRAMATIC_SHAPE:daytime"], "and DAYTIME")
 -- back sprite (or no staged fights at all) can still say so from inside FULL
 T.check(fullIds["DRAMATIC_SHAPE:battles"], "3D-BTL is still on the menu under FULL")
 T.check(fullIds["DRAMATIC_SHAPE:battleBack"], "and BACK SPRITES with it")
+-- and AA, for the opposite reason: it is not a knob on the look at all, it is
+-- what the look COSTS, and only the player knows what their machine can carry
+T.check(fullIds["DRAMATIC_SHAPE:aa"], "and AA, which FULL neither sets nor owns")
 
 -- DAYTIME is not only hidden under FULL, it is HELD at SYNC: the row cannot
 -- be reached while FULL owns it, so a value changed underneath (the mod
@@ -379,9 +382,11 @@ end
 Pipelines.setLevel("voxel", 2)
 local hookedRows = Runtime.call("ui.options.rows", function(_, r) return r end,
                                { data = Data }, { { id = "text_speed" } })
-T.eq(#hookedRows, 7, "the options hook added a row per setting")
+T.eq(#hookedRows, 8, "the options hook added a row per setting")
 local grid, curve, water = hookedRows[2], hookedRows[3], hookedRows[4]
 local battles, backRow, daytime = hookedRows[5], hookedRows[6], hookedRows[7]
+-- the AA row is hookedRows[8]; it is read in its own block below, because
+-- this chunk is one main function and has 200 local slots to spend
 T.eq(water.label, "WATER", "the water row carries its label")
 T.eq(water.value(), "FULL",
   "and defaults to FULL -- reflections are the point of having the row")
@@ -458,6 +463,57 @@ curve.step(settingGame, 1)
 curve.step(settingGame, 1)
 curve.step(settingGame, 1)
 T.eq(curve.value(), "OFF", "the curve is left off for the rows below")
+
+-- ------- AA renders the pass larger and folds it back down
+--
+-- The ladder is SAMPLES per display pixel, so the canvas scale each rung asks
+-- for is its square root -- and the scale in force has to be readable after
+-- the fact, because two things are quoted in DISPLAY pixels and have to be
+-- multiplied up into the canvas the pass actually opened: the wireframe's
+-- line width and the FX overlay's sprite scale.
+do
+local AntiAlias = run.loader.exports.DRAMATIC_SHAPE.lib.require("AntiAlias")
+local VoxelGrid = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelGrid")
+local aaGame = { save = { options = {} }, mods = { modOptions = {} } }
+local aa = hookedRows[8]
+T.eq(aa.label, "AA", "the anti-aliasing row carries its label")
+T.eq(aa.value(), "OFF",
+  "and starts off -- supersampling is a cost knob, and a mod must not spend "
+  .. "four times the fill rate of the machine it lands on unasked")
+
+T.eq(AntiAlias.samples(), 0, "AA is off by default")
+local w, h = AntiAlias.expand(320, 200)
+T.eq(w, 320, "an OFF row renders at the window's own width")
+T.eq(h, 200, "and its height")
+T.eq(AntiAlias.factor(), 1, "with nothing to multiply display pixels by")
+T.eq(VoxelGrid.width(), VoxelGrid.WIDTH,
+  "so the wireframe is the one-display-pixel line it has always been")
+
+aa.step(aaGame, 1)
+T.eq(aa.value(), "2X", "stepping the row climbs to two samples a pixel")
+T.eq(aaGame.save.options.modOptions.DRAMATIC_SHAPE.aa, 2,
+  "the sample count persists beside the other settings, not over them")
+w, h = AntiAlias.expand(320, 200)
+T.eq(w, 453, "two samples a pixel is a canvas root-two wider")
+T.eq(h, 283, "and root-two taller")
+T.check(math.abs(AntiAlias.factor() - 453 / 320) < 1e-9,
+  "and the factor is what it MEASURED, not what the row asked for")
+
+aa.step(aaGame, 1)
+T.eq(aa.value(), "4X", "and again to four")
+w, h = AntiAlias.expand(320, 200)
+T.eq(w, 640, "four samples a pixel is a canvas exactly twice the size")
+T.eq(h, 400, "in each direction, which is the 2x2 box the fold reads")
+T.eq(AntiAlias.factor(), 2, "with everything in display pixels doubled")
+T.eq(VoxelGrid.width(), VoxelGrid.WIDTH * 2,
+  "the wireframe among them -- a seam left at 1.0 would fold down to half a "
+  .. "line, so the smoothing row would appear to fade the grid row out")
+
+aa.step(aaGame, 1)
+T.eq(aa.value(), "OFF", "and the ladder wraps back to off")
+AntiAlias.expand(320, 200)
+T.eq(AntiAlias.factor(), 1, "leaving nothing behind for the next pass")
+end
 
 -- ------- the animated terrain atlas survives an engine without its seams
 --

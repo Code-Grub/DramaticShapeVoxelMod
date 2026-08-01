@@ -579,6 +579,12 @@ return {
       -- auto-extracting into standing prisms, and the ball/Pokedex
       -- sprites ride the table's authored height.
       table = { 41, 42, 57, 59, 78, 79 },
+      -- These tables are drawn 6px tall (3px slab edge over 3px base --
+      -- see the lab_table entry under `buildings`), not the default
+      -- table's 12: the override keeps the volume-built north tables
+      -- and the band-built starter table one height, and stands the
+      -- ball/Pokedex sprites exactly on the top face of both.
+      heights = { table = 6 },
     },
 
     -- Red's room and the Copycat's room (one tileset).  The detector reads
@@ -3229,6 +3235,90 @@ return {
         },
         roofRows = 17, roofBack = 5, roofFront = 3, roofCycle = { 5, 9 },
         slab = 4, frontEave = 4, ledge = nil,
+      },
+    },
+
+    DOJO = {
+      -- F01: the starter-ball table in Oak's lab (one placement in the
+      -- game: OAKS_LAB cell 6,3) -- the first FURNITURE through the
+      -- band pipeline, and the first drawing whose plot is smaller than
+      -- its grid. Its 24 rows read: 0-15 the tabletop seen from above
+      -- (black rim, white highlight course, grey field); 16-18 the top
+      -- slab's own front edge, black/#555/black -- which is exactly
+      -- what the rim treatment paints, so slab = 3 and those rows fold
+      -- into the roof band instead of extruding under it; 19-21 the
+      -- base band, corner feet and the inset dark panel between them.
+      --
+      -- The legs stand on open FLOOR: the measured ground line lands
+      -- two rows short of the grid (see Buildings measure), and `depth`
+      -- keeps the plot to the blocked cell row -- the grid's third row
+      -- is the walkable cell the player faces the table from, matched
+      -- so the flat leg art is claimed off the floor, not so the model
+      -- stands on it. 16 top rows onto a 16px plot map 1:1: roofBack
+      -- covers the whole depth, nothing cycles, and roofCycle is
+      -- unreachable behind it. The Poke Ball sprites ride the `table`
+      -- pin's height (VoxelScene.groundAt reads the collision tile, not
+      -- this model), so the tileset entry above overrides that height
+      -- to the 6px this drawing actually stands.
+      {
+        id = "lab_table",
+        tiles = {
+          { 41, 59, 59, 59, 59, 42 },
+          { 78, 57, 57, 57, 57, 79 },
+          { 88, 89, 89, 89, 89, 90 },
+        },
+        roofRows = 19, roofBack = 16, roofFront = 0, roofCycle = { 2, 13 },
+        slab = 3, frontEave = 0, ledge = nil, depth = 2,
+      },
+      -- F02: the computer bank on the lab's west table (OAKS_LAB cell
+      -- 0,1) -- the one FACADE-ONLY template: rows 0-14 are machines
+      -- drawn face-on (monitor and keys, the centre console, the right
+      -- cabinet) over the lab-table fascia and base bands, and nothing
+      -- is drawn from above. roofRows = 0, so the whole drawing
+      -- extrudes -- the house facade treatment with no roof band; the
+      -- roof fields are inert and the recess pass sinks every framed
+      -- pane (screens, keys, the cabinet's inset face) into relief on
+      -- its own. Same drawing, same grid, stands in the Hall of Fame
+      -- on the GYM atlas -- registered there below.
+      {
+        id = "lab_computers",
+        tiles = {
+          { 91, 92, 93, 94 },
+          { 54, 55, 85, 95 },
+          { 88, 89, 89, 90 },
+        },
+        roofRows = 0, roofBack = 0, roofFront = 0, roofCycle = { 0, 0 },
+        slab = 0, frontEave = 0, ledge = nil, depth = 2,
+      },
+      -- F03: the empty north table beside it (OAKS_LAB cell 2,1): the
+      -- starter table's band table verbatim on a grid two tiles
+      -- narrower.
+      {
+        id = "lab_table_small",
+        tiles = {
+          { 41, 59, 59, 42 },
+          { 78, 57, 57, 79 },
+          { 88, 89, 89, 90 },
+        },
+        roofRows = 19, roofBack = 16, roofFront = 0, roofCycle = { 2, 13 },
+        slab = 3, frontEave = 0, ledge = nil, depth = 2,
+      },
+    },
+
+    GYM = {
+      -- F02 again: the Hall of Fame's recording machine is the lab's
+      -- computer bank drawing, tile for tile, on the GYM atlas (one
+      -- placement: HALL_OF_FAME cell 4,1). Same band table as the DOJO
+      -- entry above.
+      {
+        id = "lab_computers",
+        tiles = {
+          { 91, 92, 93, 94 },
+          { 54, 55, 85, 95 },
+          { 88, 89, 89, 90 },
+        },
+        roofRows = 0, roofBack = 0, roofFront = 0, roofCycle = { 0, 0 },
+        slab = 0, frontEave = 0, ledge = nil, depth = 2,
       },
     },
   },

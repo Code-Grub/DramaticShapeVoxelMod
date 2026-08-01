@@ -547,6 +547,57 @@ TEMPLATES = {
         roof_rows=17, roof_back=5, roof_front=3, roof_cycle=(5, 9),
         slab=4, front_eave=4, ledge=None, tileset="forest",
     ),
+    # F01: the starter-ball table in Oak's lab -- the first FURNITURE
+    # through the pipeline, and the first drawing whose plot is smaller
+    # than its grid. Rows 0-15 are the tabletop seen from above; 16-18
+    # are the top slab's own front edge (black/#555/black -- exactly
+    # what the rim treatment paints, so slab=3 and those rows fold into
+    # the roof band instead of extruding); 19-21 are the base: corner
+    # feet and the inset dark panel between them. The legs stand on
+    # open FLOOR, so the measured ground line lands two rows short of
+    # the grid; `depth` keeps the plot to the blocked cell row -- the
+    # legs row of the grid is the walkable cell the player faces the
+    # table from, and D = len(tiles) would stand the model in their
+    # path. 16 top rows onto a 16px plot map 1:1: no cycling, and
+    # roof_cycle is unreachable behind roof_back=16.
+    "lab_table": dict(
+        tiles=[
+            [41, 59, 59, 59, 59, 42],
+            [78, 57, 57, 57, 57, 79],
+            [88, 89, 89, 89, 89, 90],
+        ],
+        roof_rows=19, roof_back=16, roof_front=0, roof_cycle=(2, 13),
+        slab=3, front_eave=0, ledge=None, tileset="gym", depth=2,
+    ),
+    # F02: the computer bank on Oak's lab's west table -- and the Hall
+    # of Fame's recording machine, the same drawing on the GYM atlas
+    # (one placement each; both registered in voxel_heights). The one
+    # FACADE-ONLY template: rows 0-14 are machines drawn face-on over
+    # the lab-table fascia and base bands, nothing is drawn from above,
+    # so roof_rows=0 and the whole drawing extrudes -- the house facade
+    # treatment with no roof band. The recess pass turns every framed
+    # pane (the monitor, its keys, the right cabinet's inset face) into
+    # relief on its own.
+    "lab_computers": dict(
+        tiles=[
+            [91, 92, 93, 94],
+            [54, 55, 85, 95],
+            [88, 89, 89, 90],
+        ],
+        roof_rows=0, roof_back=0, roof_front=0, roof_cycle=(0, 0),
+        slab=0, front_eave=0, ledge=None, tileset="gym", depth=2,
+    ),
+    # F03: the empty north table beside it -- the starter table's band
+    # table verbatim on a grid two tiles narrower (one placement).
+    "lab_table_small": dict(
+        tiles=[
+            [41, 59, 59, 42],
+            [78, 57, 57, 79],
+            [88, 89, 89, 90],
+        ],
+        roof_rows=19, roof_back=16, roof_front=0, roof_cycle=(2, 13),
+        slab=3, front_eave=0, ledge=None, tileset="gym", depth=2,
+    ),
     # B23: the Victory Road entrance on Route 23: a rock face with two
     # barred doors. The roof band is the pale cliff top seen from above.
     "victory_road_gate": dict(
@@ -642,7 +693,14 @@ def profile(sp, t):
         r = next((y for y in range(H) if inside(x, y)), t["roof_rows"])
         top.append(min(r, t["roof_rows"]))
 
-    wall_h = H - t["roof_rows"]
+    # The drawing's own ground line: the row after the last drawn one. A
+    # building ends on the black threshold row it stands on (ground == H),
+    # but furniture is drawn standing on open floor -- the lab table's
+    # legs stop two rows short of its grid -- and extruding against H
+    # would float it that far above its own plot.
+    ground = max((y for y in range(H) for x in range(W) if inside(x, y)),
+                 default=H - 1) + 1
+    wall_h = ground - t["roof_rows"]
     ytop = wall_h - 1 + t["slab"]
 
     # Recesses: the panes the art seals behind a black frame. Non-black
@@ -674,8 +732,12 @@ def profile(sp, t):
             if x1 - x0 + 1 <= RECESS_MAX and y1 - y0 + 1 <= RECESS_MAX:
                 recess.update(cells)
 
+    # Depth is the PLOT. For a whole-drawing building that is the grid
+    # itself; `depth` (in tile rows) names it when the grid runs past the
+    # plot onto ground the drawing merely stands its legs on.
     return dict(top=top, wall_h=wall_h, ytop=ytop, recess=recess,
-                inside=inside, D=H, W=W, H=H)
+                inside=inside, D=t.get("depth", len(t["tiles"])) * 8,
+                ground=ground, W=W, H=H)
 
 
 # --------------------------------------------------------------- stage 3 --
@@ -720,7 +782,9 @@ def build(sp, pr, t):
 
     # ---- walls: the facade rows extruded straight back, trimmed under the roof
     for sy in range(t["roof_rows"], H):
-        y = H - 1 - sy
+        y = pr["ground"] - 1 - sy       # rows below the ground line are floor
+        if y < 0:
+            continue
         for sx in range(W):
             if not inside(sx, sy) or trimmed(sx, y):
                 continue
@@ -742,7 +806,7 @@ def build(sp, pr, t):
     if t["ledge"]:
         l0, l1 = t["ledge"]
         for sy in range(l0, l1 + 1):
-            y = H - 1 - sy
+            y = pr["ground"] - 1 - sy
             for sx in range(W):
                 if inside(sx, sy) and not trimmed(sx, y):
                     for z in (-2, -1, D, D + 1):
@@ -750,7 +814,7 @@ def build(sp, pr, t):
 
     # ---- recesses: the front voxel of every pane sinks, its frame stays proud
     for sx, sy in pr["recess"]:
-        vox.pop((sx, H - 1 - sy, D - 1), None)
+        vox.pop((sx, pr["ground"] - 1 - sy, D - 1), None)
 
     # ---- roof: flat top over the plateau, stepped diagonal ends
     z0, z1 = 0, D - 1 + t["front_eave"]
@@ -805,6 +869,41 @@ def verify(vox, sp, pr, t):
     for (x, y, z), _ in vox.items():
         assert y <= T(x), f"voxel pokes through the roof at {x},{y},{z}"
 
+    # A facade-only template (roof_rows == 0: the lab computer bank) has
+    # no roof band, so there is no surface to hold level or slope and no
+    # coverage to demand of it; the poke-through assert above and the
+    # facade asserts below are what it answers to. Everything with a roof
+    # band answers the full set.
+    if t["roof_rows"] == 0:
+        # its one geometric intent: a straight extrusion, so each column
+        # of the drawing is solid from its lowest voxel to its top. NOT
+        # from the ground -- the drawing's base band is inset like every
+        # lab table's, and the body's outer columns legitimately
+        # overhang it -- and not on the recess layer, which sinks panes.
+        lo, hi = {}, {}
+        for (x, y, z) in vox:
+            lo[(x, z)] = min(lo.get((x, z), y), y)
+            hi[(x, z)] = max(hi.get((x, z), y), y)
+        for (x, z), h in hi.items():
+            if z == D - 1:
+                continue
+            assert all((x, y, z) in vox for y in range(lo[(x, z)], h + 1)), \
+                f"facade column has a hole at {x},{z}"
+    else:
+        verify_roof(vox, pr, t)
+
+    shell = [k for k in vox if not all(
+        (k[0] + d[0], k[1] + d[1], k[2] + d[2]) in vox
+        for d in ((1, 0, 0), (-1, 0, 0), (0, 1, 0),
+                  (0, -1, 0), (0, 0, 1), (0, 0, -1)))]
+    return shell
+
+
+def verify_roof(vox, pr, t):
+    W, H, D = pr["W"], pr["H"], pr["D"]
+    ytop, top, slab = pr["ytop"], pr["top"], t["slab"]
+    T = lambda x: ytop - top[max(0, min(W - 1, x))]
+
     # The roof surface reads over the columns the drawing actually paints:
     # a sprite inset from its box says nothing about the rest.
     roofed = [x for x in range(W) if top[x] < t["roof_rows"]]
@@ -844,12 +943,6 @@ def verify(vox, sp, pr, t):
                     f"wall stands where no roof reaches at {x},{z}"
             elif any((x, y, z) in vox for y in range(0, T(x) - slab + 1)):
                 assert (x, T(x), z) in vox, f"wall uncovered at {x},{z}"
-
-    shell = [k for k in vox if not all(
-        (k[0] + d[0], k[1] + d[1], k[2] + d[2]) in vox
-        for d in ((1, 0, 0), (-1, 0, 0), (0, 1, 0),
-                  (0, -1, 0), (0, 0, 1), (0, 0, -1)))]
-    return shell
 
 
 def preview(shell, vox, sp, name, out, flip, canvas=(1700, 900), pad=20):

@@ -116,6 +116,72 @@
   ever lands half-way between two pixels and changing a wavelength moves the
   speed with it.
 
+- **AA, a new options row: OFF / 2X / 4X.** Everything else in this game is
+  flat art blitted at whole pixels. This mode's world is real geometry seen
+  through a perspective camera, and a polygon edge that lands at an angle
+  across the pixel grid is the one place where a hard stair-step is not a
+  stylistic choice -- a roof ridge, a ledge lip, a tree's silhouette against
+  the sky, the leaning card of a character. At the shallow rungs, where the
+  diorama reads most like a photograph of a model, they crawl as the camera
+  drifts.
+
+  The row is SUPERSAMPLING: the whole pass renders into a canvas larger than
+  the window and is folded back down at the end. The ladder is samples per
+  display pixel, so 2X is a canvas root-two wider and taller and 4X one
+  exactly twice the size -- an honest 2x2 box.
+
+  Two alternatives were tried against what this pass already is, and both
+  lost:
+
+  - **MSAA** would have taken the water with it. The reflections read the
+    frame's own depth buffer as a texture, and a multisampled depth
+    attachment is not something a fragment shader in this dialect can sample.
+    The row would have quietly switched the WATER row off.
+
+  - **An edge filter** (FXAA and its relatives) works from the finished
+    colour alone, so it would be guessing where the edges are out of one
+    sample per pixel -- inventing detail it never rendered, and unable to
+    tell a geometry edge from the boundary between two texels of a tileset.
+
+  Rendering larger has neither problem, and nothing in the frame had to be
+  taught about it: every pass already measures itself in the canvas it was
+  handed, so the sky's dither, the water's ray march, the shadow lookups and
+  the camera itself come out the same picture at a higher sample rate. It
+  antialiases the geometry, the alpha-cut outline of a sprite card, the
+  wireframe and the reflections at once, because none of them know it is
+  happening.
+
+  And it softens the ARTWORK with them, which is worth saying plainly. A
+  tileset texel out here is not a screen pixel, it is a quad in a perspective
+  view, and its boundary crosses the pixel grid at the same arbitrary angle a
+  roof ridge does -- so the fold averages across it exactly as it averages
+  across the ridge. That is what an honest extra sample says about that
+  pixel, and it is also the trade the row is: the diorama comes out smoother,
+  not sharper. Which is why it is a row and not something that is simply on.
+
+  Two things are quoted in DISPLAY pixels rather than canvas ones and are
+  multiplied up to match: the voxel wireframe's line width -- left alone it
+  would fold down to half a line, so turning the smoothing up would appear to
+  fade the grid out -- and the scale the overworld's FX closures draw at.
+
+  The fold is a shader rather than a scaled draw, because the void this pass
+  renders into is a transparent BLACK: averaging a straight-alpha edge against
+  it drags the colour toward black as well as toward transparent, and the
+  engine's composite then multiplies by that alpha a second time. Every
+  silhouette against the sky would have come out ringed with a dark fringe --
+  the exact artefact the row exists to remove. So the taps are premultiplied
+  before they are averaged and divided back out after.
+
+  The staged battle gets it too, on its own canvas: the arena is folded back
+  to the window's pixel size before the depth-of-field pass and the HUDs go
+  on, so the world is smoothed and the pics, panels and text box stay the
+  chunky GB art they are.
+
+  OFF by default, and **FULL neither sets it nor takes the row away** -- it
+  is the one row that is not a knob on the look but on what the look COSTS,
+  and only the player knows what their machine can carry. No hotkey, for the
+  same reason: it is set once, not flicked while walking.
+
 
 ### Changed
 

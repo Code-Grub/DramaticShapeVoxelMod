@@ -190,7 +190,24 @@ local function measure(sp, t)
     top[x] = r
   end
 
-  local wallH = H - roofRows
+  -- The drawing's own ground line: the row after the last drawn one. A
+  -- building ends on the black threshold row it stands on (ground == H),
+  -- but furniture is drawn standing on open floor -- the lab table's
+  -- legs stop two rows short of its grid -- and extruding against H
+  -- would float it that far above its own plot.
+  local ground = roofRows
+  for sy = H - 1, roofRows, -1 do
+    local drawn = false
+    for sx = 0, W - 1 do
+      if sp.inside[sy * W + sx] then drawn = true break end
+    end
+    if drawn then
+      ground = sy + 1
+      break
+    end
+  end
+
+  local wallH = ground - roofRows
   local ytop = wallH - 1 + t.slab
 
   -- Side faces must not come out as slabs of outline black: where the
@@ -279,7 +296,12 @@ local function measure(sp, t)
   -- sprite taller than its footprint -- the tower's 16-row drawing
   -- stands on the 8 rows of it that are actually on the map, and D = H
   -- would have pushed its body 64px south into the town plaza.
-  return { top = top, ytop = ytop, D = #t.tiles * 8,
+  -- `depth` (in tile rows) names the plot when the grid runs PAST it
+  -- onto ground the drawing merely stands its legs on: the lab table's
+  -- third row is the walkable cell the player faces it from, and the
+  -- full-grid depth would stand the model in their path.
+  return { top = top, ytop = ytop, D = (t.depth or #t.tiles) * 8,
+           ground = ground,
            recess = recess, interior = interior, shadeTexel = shadeTexel }
 end
 
@@ -292,7 +314,7 @@ end
 local function model(sp, pr, t)
   local W, H, D = sp.W, sp.H, pr.D
   local slab, roofRows = t.slab, t.roofRows
-  local top, ytop = pr.top, pr.ytop
+  local top, ytop, ground = pr.top, pr.ytop, pr.ground
 
   -- The roof's drawn span. A sprite inset from its box (B03) leaves outer
   -- columns undrawn in the roof band; they carry no roof at all, and the
@@ -367,16 +389,18 @@ local function model(sp, pr, t)
 
     -- the awning: the band juts two voxels past the walls, front and back
     if ledge0 and (z == -2 or z == -1 or z == D or z == D + 1) then
-      local sy = H - 1 - y
+      local sy = ground - 1 - y
       if sy >= ledge0 and sy <= ledge1 and sp.inside[sy * W + x] then
         return sy * W + x
       end
       return nil
     end
 
-    -- the facade, extruded straight back over the footprint
+    -- the facade, extruded straight back over the footprint. Rows map
+    -- against the measured ground line, not the grid's last row: the two
+    -- differ only for furniture standing on open floor (see measure).
     if z < 0 or z >= D then return nil end
-    local sy = H - 1 - y
+    local sy = ground - 1 - y
     local i = sy * W + x
     if y == 0 and not sp.inside[i] and sy > 0 and sp.inside[i - W] then
       -- the drawing's last row is the ground the building stands on, so

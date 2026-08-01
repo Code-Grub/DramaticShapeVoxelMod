@@ -295,6 +295,24 @@ function TileShape.forMap(map)
   if cache[id] then return cache[id] end
 
   local heights = TileShape.heights()
+  -- Per-tileset height overrides (a tileset entry's `heights`): the class
+  -- vocabulary is global but the drawings are not -- the DOJO lab tables
+  -- are drawn 6px tall where the default `table` is 12 -- and the height
+  -- a sprite RIDES at (VoxelScene.groundAt) must be the height the art
+  -- actually stands, or the starter balls float over their own table.
+  -- Same gate as the global list: known classes, numbers only.
+  do
+    local s = load()
+    local entry = s and s.tilesets and s.tilesets[id]
+    local over = entry and entry.heights
+    if type(over) == "table" then
+      for class, h in pairs(over) do
+        if type(h) == "number" and FALLBACK_HEIGHTS[class] then
+          heights[class] = h
+        end
+      end
+    end
+  end
   local authored = authoredGroups(id, heights)
   local count = math.floor((tileset.imageWidth or 128) / 8)
                 * math.floor((tileset.imageHeight or 48) / 8)
