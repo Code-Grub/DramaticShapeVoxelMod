@@ -849,12 +849,31 @@ vec2 waveUV(vec2 tc, vec2 col) {
   return org + (mod(col, 8.0) + 0.5) * texel;
 }
 
-vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
+// The float parameters are pinned to mediump BECAUSE the stage default is
+// not: LOVE's own header forward-declares effect() under its default, and
+// at least one mobile compiler (Samsung's Xclipse, in so many words) holds
+// that a definition whose parameter precisions differ from its prototype's
+// is a second function of the same name, and refuses the pair. The params
+// can afford it -- the colour is a colour, and tc/sc arrived through
+// LOVE's mediump plumbing whatever this signature says -- and the maths
+// below runs on the stage default the moment the values touch a local.
+vec4 effect(mediump vec4 color, Image tex, mediump vec2 tc, mediump vec2 sc) {
   // THE DEPTH TEST, done here because the buffer that would have done it is
   // detached for the length of this pass so it can be READ (see the header).
   // Same comparison, same buffer, same result: a building in front of a pond
   // still hides it.
-  vec2 uv = sc / screen;
+  //
+  // Normalised by LOVE's own screen size, not by the `screen` uniform: `sc`
+  // arrives in canvas PIXELS, and on a highdpi surface (Android's density
+  // is routinely 2.625) a canvas holds that many pixels per canvas UNIT,
+  // which is what `screen` counts. Divided by units, uv runs to 2.6 and
+  // clamps, and the test reads edge texels for two thirds of the frame --
+  // discarding water in blocks and letting the haze backdrop through, which
+  // on a phone looked like lakes with pieces missing. love_ScreenSize.xy is
+  // the bound canvas's own pixel size, the same units sc is measured in, on
+  // every display. (`screen` stays in units: skyPos reads it against cell
+  // and skyEdge, which are unit-measured with it.)
+  vec2 uv = sc / love_ScreenSize.xy;
   if (gl_FragCoord.z > Texel(depthTex, uv).r) discard;
 
   // THE COLUMN THIS FRAGMENT IS LOOKING AT. Every water pixel is a bar of

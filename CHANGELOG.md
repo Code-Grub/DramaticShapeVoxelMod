@@ -149,30 +149,46 @@
 
 ### Fixed
 
-- **On Android the water stayed flat, as if the row were off.** Two GLSL ES
-  defaults the desktop never exercises, both in the water shader:
+- **On Android the water stayed flat, as if the row were off -- and once it
+  did draw, it came up in blocks with the haze showing through the holes.**
+  Three separate faults, every one of them invisible on desktop GL, run down
+  on a Galaxy Z Fold 7 with the driver's own compiler errors in logcat:
 
-  Fragment floats default to **mediump** on GLSL ES, and the vertex stage's
-  default is highp -- and the water shader is the mod's first to declare the
-  same uniform, the frame's `vp` matrix, in BOTH stages, one on each default.
-  GLSL ES refuses to link a uniform whose precision the stages disagree on,
-  so the whole shader failed to build and the pass fell back -- quietly, by
-  design -- to the flat water the mode always drew. The pixel stage now lifts
-  its float default to highp (guarded, so a GPU without fragment highp still
-  compiles and falls back flat), which settles the link and is also simply
-  needed: the march works in world coordinates that run to a few thousand,
-  where fp16 has no fraction left, and the world-position varying is
-  qualified highp for the same reason the wireframe's has been all along.
-  Samplers default to **lowp** no matter what floats are set to, so the depth
-  read is lifted too -- eight bits of depth is a march with nothing to land
-  on.
+  **The shader would not build.** Fragment floats default to **mediump** on
+  GLSL ES while the vertex stage's default is highp, and the water shader is
+  the mod's first to declare the same uniform -- the frame's `vp` matrix --
+  in BOTH stages, one on each default; GLSL ES refuses to link that, and the
+  pass fell back, quietly and by design, to the flat water the mode always
+  drew. The pixel stage now lifts its float default to highp (guarded, so a
+  GPU without fragment highp still compiles and falls back flat), which
+  settles the link and is also simply needed: the march works in world
+  coordinates that run to a few thousand, where fp16 has no fraction left.
+  The world-position varying is qualified highp for the same reason the
+  wireframe's always was, and the depth sampler too -- samplers default to
+  **lowp** whatever the floats are set to, and eight bits of depth is a
+  march with nothing to land on. One wrinkle inside the fix: LOVE's header
+  forward-declares `effect()` under ITS default, and Samsung's Xclipse
+  compiler treats a definition whose parameter precisions have drifted from
+  the prototype's as an illegal overload -- so effect()'s own float
+  parameters stay pinned to mediump, matching the declaration, and the
+  maths above them runs highp regardless.
 
-  And the readable depth canvas -- the one hardware requirement the rest of
-  the mode does not already have -- now tries four formats before giving up:
-  depth24, depth24 riding a stencil (a pairing some mobile drivers will
-  texture when they refuse the bare format), depth32f, and depth16 as the
-  floor every GLES3 device can read. Refused all four, the reflections are
-  lost and nothing else, exactly as before.
+  **The depth test read the wrong texels.** The shader's own depth test
+  normalised LOVE's pixel coordinate by the `screen` uniform, which counts
+  canvas UNITS -- and on a highdpi phone (Android's density here is 2.625)
+  a canvas holds that many PIXELS per unit, so the lookup ran to 2.6,
+  clamped, and read edge texels across two thirds of the frame. Water
+  discarded itself in blocks wherever the mis-read depth landed in front,
+  and the haze backdrop showed through the holes. The coordinate is now
+  normalised by `love_ScreenSize.xy` -- the bound canvas's own pixel size,
+  measured in the same units on every display.
+
+  **And the readable depth canvas** -- the one hardware requirement the
+  rest of the mode does not already have -- now tries four formats before
+  giving up: depth24, depth24 riding a stencil (a pairing some mobile
+  drivers will texture when they refuse the bare format), depth32f, and
+  depth16 as the floor every GLES3 device can read. Refused all four, the
+  reflections are lost and nothing else, exactly as before.
 
 ### Known
 

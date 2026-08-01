@@ -1796,6 +1796,17 @@ T.check(plain:find("LOVE_HIGHP_OR_MEDIUMP vec3 vBent", 1, true) ~= nil,
   .. "rather than left to the fragment default")
 T.check(plain:find("LOVE_HIGHP_OR_MEDIUMP Image depthTex", 1, true) ~= nil,
   "and the depth sampler is lifted off lowp, which is eight bits of depth")
+T.check(plain:find(
+    "effect(mediump vec4 color, Image tex, mediump vec2 tc, mediump vec2 sc)",
+    1, true) ~= nil,
+  "effect()'s own floats stay pinned to LOVE's prototype precision -- the "
+  .. "Xclipse compiler reads a definition that drifted from the forward "
+  .. "declaration as an illegal overload and refuses the whole shader")
+T.check(plain:find("sc / love_ScreenSize.xy", 1, true) ~= nil,
+  "the depth test normalises the pixel coord by the canvas's own pixel "
+  .. "size -- `screen` counts canvas UNITS, and on a highdpi phone the two "
+  .. "differ by the density, which clamped the lookup and cut the water "
+  .. "into blocks")
 
 -- ------- the lift itself
 --
