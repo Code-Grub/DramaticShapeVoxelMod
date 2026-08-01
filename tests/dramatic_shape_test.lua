@@ -298,7 +298,7 @@ local order = {}
 for i, row in ipairs(grouped) do order[row.id] = i end
 T.check(order["pipeline:tiltshift"] < order["DRAMATIC_SHAPE:grid"],
   "the mode's settings follow its pipeline rows")
-T.eq(order["DRAMATIC_SHAPE:battles"] - order["pipeline:tiltshift"], 3,
+T.eq(order["DRAMATIC_SHAPE:battles"] - order["pipeline:tiltshift"], 4,
   "and sit in one unbroken block, not scattered to the end of the list")
 T.check(order["void_fill"] > order["DRAMATIC_SHAPE:battles"],
   "with the engine's own later rows still after them")
@@ -379,9 +379,15 @@ end
 Pipelines.setLevel("voxel", 2)
 local hookedRows = Runtime.call("ui.options.rows", function(_, r) return r end,
                                { data = Data }, { { id = "text_speed" } })
-T.eq(#hookedRows, 6, "the options hook added a row per setting")
-local grid, curve, battles = hookedRows[2], hookedRows[3], hookedRows[4]
-local backRow, daytime = hookedRows[5], hookedRows[6]
+T.eq(#hookedRows, 7, "the options hook added a row per setting")
+local grid, curve, water = hookedRows[2], hookedRows[3], hookedRows[4]
+local battles, backRow, daytime = hookedRows[5], hookedRows[6], hookedRows[7]
+T.eq(water.label, "WATER", "the water row carries its label")
+T.eq(water.value(), "FULL",
+  "and defaults to FULL -- reflections are the point of having the row")
+water.step({ save = { options = {} }, mods = { modOptions = {} } }, 1)
+T.eq(water.value(), "SKY",
+  "stepping down drops the screen-space march and keeps the sky, sun and moon")
 T.eq(daytime.label, "DAYTIME", "the day/night row carries its label")
 T.eq(daytime.value(), "SYNC",
   "and defaults to SYNC -- no value set follows the clock on the wall")
@@ -1480,6 +1486,359 @@ T.eq(Sky.paint(320, 288, { 0, 0, 1, 1 }, 40, 7), false,
   "a descriptor with no bands on it is the old flat sky, untouched")
 T.eq(Sky.paint(320, 0, skyGrad, 40, 7), false,
   "and a frame with no height paints nothing at all")
+end
+
+-- ------- reflections on water
+--
+-- Water is the one surface in this mode that cannot be drawn with the rest
+-- of the world: it is a mirror, and a mirror needs what it reflects to
+-- already be down. So it is lifted out of the terrain mesh at BUILD time and
+-- drawn as its own pass. That lift is the load-bearing part -- get it wrong
+-- and a lake is either a hole in the world or is drawn twice -- and it is
+-- pure geometry, so it is driven here against a hand-drawn map.
+do
+local Water = run.loader.exports.DRAMATIC_SHAPE.lib.require("Water")
+local Sky = run.loader.exports.DRAMATIC_SHAPE.lib.require("Sky")
+local ChunkMesher = run.loader.exports.DRAMATIC_SHAPE.lib.require("ChunkMesher")
+local Structures = run.loader.exports.DRAMATIC_SHAPE.lib.require("Structures")
+local Shapes = run.loader.exports.DRAMATIC_SHAPE.lib.require("TileShape")
+local TileShapeHeights = Shapes.heights()
+
+-- ------- the ladder
+--
+-- Three rungs, not a toggle: the sky half of this costs a handful of
+-- instructions and the screen-space half costs a ray march, so a machine
+-- that wants the sunset on the lake but not the march has somewhere to sit.
+T.eq(Water.setting.values[1], "full",
+  "FULL is the default -- reflections are the point of having the row")
+Water.setting:sync("full")            -- the row test above stepped it
+T.eq(Water.level(), 2, "and it reads back as the full pass")
+T.eq(Water.enabled(), true, "which is on")
+Water.setting:sync("sky")
+T.eq(Water.level(), 1, "SKY keeps the pass but drops the screen-space march")
+T.eq(Water.enabled(), true, "and is still a reflection")
+Water.setting:sync("off")
+T.eq(Water.level(), 0, "OFF is no pass at all")
+T.eq(Water.enabled(), false,
+  "which is what puts the water back in the ordinary scene shader")
+Water.setting:sync("full")
+
+-- ------- the waves are geometry, not shading -- and they step at 15fps
+--
+-- The surface is a heightfield of one-world-pixel columns, each standing a
+-- WHOLE number of pixels tall -- a voxel like every other voxel in this
+-- mode -- and it advances in STEPS rather than sliding: 15 a second, the
+-- cadence hand-drawn pixel art is animated at. A surface built out of whole
+-- pixels that crawls smoothly between them gives away that the quantisation
+-- is only skin deep.
+do
+local TerrainAtlas = run.loader.exports.DRAMATIC_SHAPE.lib.require("TerrainAtlas")
+local realClock = TerrainAtlas._animFrame
+local frame = 0
+TerrainAtlas._animFrame = function() return frame end
+local function at(f)
+  frame = f
+  return Water._waveTime()
+end
+
+local period = 60 / Water.WAVE_FPS
+T.eq(period, 4, "15 steps a second is one every four engine frames")
+-- inside one step nothing moves; crossing one, it does
+T.eq(at(0), at(period - 1),
+  "every frame inside one wave step gets the same phase -- the surface "
+  .. "steps rather than crawling between its own pixels")
+T.neq(at(0), at(period), "and the step boundary is where it moves")
+
+local steps = {}
+for f = 0, 59 do steps[at(f)] = true end
+local n = 0
+for _ in pairs(steps) do n = n + 1 end
+T.eq(n, Water.WAVE_FPS, "which is WAVE_FPS distinct positions in a second")
+TerrainAtlas._animFrame = realClock
+
+-- and the step is worth taking: one world pixel of the dominant train per
+-- step, DERIVED from that train rather than tuned beside it, so a change of
+-- wavelength moves the speed with it. A step the surface cannot resolve is
+-- a smooth crawl wearing a quantised clock.
+local t = Water.WAVE_TRAINS[1]
+local freq = math.sqrt(t[1] * t[1] + t[2] * t[2])
+local travel = (Water.waveRate() / Water.WAVE_FPS) * math.abs(t[3]) / freq
+T.check(math.abs(travel - Water.WAVE_PIXELS_PER_STEP) < 1e-9,
+  "each step advances the dominant crest by exactly WAVE_PIXELS_PER_STEP "
+  .. "world pixels, so nothing ever lands half-way between two")
+
+-- the trains reach the shader as source, off the same table the rate above
+-- is derived from -- one list, so the two cannot drift
+local trains = Water._trainSource()
+T.eq(select(2, trains:gsub("h %+= sin", "")), #Water.WAVE_TRAINS,
+  "every train in the table is summed by the shader")
+T.check(trains:find(("%.4f"):format(t[1]), 1, true) ~= nil,
+  "at the frequency the table states")
+
+T.check(Water.WAVE_HEIGHT > -TileShapeHeights.water,
+  "the crests stand taller than the recess TileShape sinks water into -- "
+  .. "they are RELIEF inside the quad's own footprint, so a bar that reaches "
+  .. "above the bank is clipped at the water's edge rather than spilling")
+end
+
+-- ------- the moon on the water is the moon in the sky
+--
+-- The reflected disc is drawn by a shader and the painted one by rectangles,
+-- so nothing but shared DATA can keep them the same moon. The crater list is
+-- pasted into the shader source from Sky's own table, which is the seam that
+-- makes "they cannot drift" true rather than merely intended.
+local craters = Water._craterSource()
+local craterLines = select(2, craters:gsub("crater%(", ""))
+T.eq(craterLines, #Sky.MOON_CRATERS,
+  "the shader gets one crater per crater the painted moon has")
+for _, c in ipairs(Sky.MOON_CRATERS) do
+  T.check(craters:find(("%.4f"):format(c[1]), 1, true) ~= nil,
+    "and each one at the offset the painted moon puts it at")
+end
+T.check(craters:find(("%.4f"):format(Sky.CRATER_FRAC), 1, true) ~= nil,
+  "at the same fraction of the disc's radius")
+
+-- and the disc is the same SIZE, which is the other half of being the same
+-- moon: one function answers for the painted radius and for the angle the
+-- reflection subtends it at
+local px, cells = Sky.discRadius(288, 7, { moon = true })
+T.eq(cells, Sky.DISC_MIN,
+  "a small frame floors the disc at its minimum radius in cells")
+T.eq(px, Sky.DISC_MIN * 7, "reported in canvas pixels on that cell grid")
+T.eq(select(2, Sky.discRadius(288, 7, { glowAmt = 0.9 })), Sky.DISC_MIN + 1,
+  "and the low sun looms, exactly as the painted one does")
+T.eq(select(2, Sky.discRadius(288, 7, { glowAmt = 0.9, moon = true })),
+  Sky.DISC_MIN, "which is a SUNSET exaggeration -- the moon never looms")
+
+-- the same band ramp, too: one texture, so the sky on the lake cannot be a
+-- different palette from the sky over it
+local rampImg, rampCount = Sky.ramp()
+T.check(rampImg == nil or rampCount == #Sky.bands(),
+  "the reflection reads the sky off the very ramp the sky is painted from")
+
+-- ------- the horizon lean: the reflection has to have something IN it at
+-- every rung, not just the one whose horizon is in frame
+--
+-- The rungs are named for the camera's tilt off VERTICAL, so at 15 the eye
+-- meets the water nearly head-on and the mirror ray points 75 degrees UP --
+-- where the sky's bands are darkest, the sun and moon (squashed to about 6
+-- degrees) are nowhere near, and a screen-space ray leaves the frame in two
+-- steps. All three are correct and together they are an empty lake. The lean
+-- tips the reflection toward the way the camera looks by however far that
+-- camera is from having a horizon in frame.
+do
+local Voxel3D = run.loader.exports.DRAMATIC_SHAPE.lib.require("Voxel3D")
+local VoxelState = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelState")
+local wasAngle, wasCam = VoxelState.angle, Voxel3D.camera
+Voxel3D.camera = nil
+
+local lean = {}
+for _, deg in ipairs({ 15, 35, 50, 75 }) do
+  VoxelState.angle = math.rad(deg)
+  Voxel3D.viewProjection(256, 256, 320, 288)
+  lean[deg] = { Water.lean(Voxel3D.descent), Voxel3D.descent }
+  -- the orbit looks NORTH, so the flattened view direction is -Z and level
+  T.check(math.abs(Voxel3D.lookFlat[3] + 1) < 1e-6,
+    ("the %d rung looks north along the ground plane"):format(deg))
+  T.eq(Voxel3D.lookFlat[2], 0,
+    "flattened onto it, so the lean can never tip a reflection underground")
+end
+
+-- descent is the SINE of how far below horizontal the view runs, and the
+-- rungs are the camera's tilt off vertical -- so the two are complements
+for _, deg in ipairs({ 15, 35, 50, 75 }) do
+  T.check(math.abs(lean[deg][2] - math.cos(math.rad(deg))) < 1e-6,
+    ("the %d rung descends by cos(%d)"):format(deg, deg))
+end
+
+T.eq(lean[75][1], 0,
+  "at the rung whose horizon is in frame there is NO lean -- the one place "
+  .. "the join can be seen (the waterline, where the lake meets the painted "
+  .. "sky) is still the exact reflection it always was")
+T.check(lean[50][1] > 0, "and it comes in as the camera tips over")
+T.check(lean[35][1] >= lean[50][1] and lean[15][1] >= lean[35][1],
+  "growing with every rung further from the horizon")
+T.eq(lean[15][1], 1,
+  "and complete well before the steepest rung, so every rung under the top "
+  .. "one aims its reflection where the top one's already lands")
+
+-- a camera looking dead level has nothing to lean
+T.eq(Water.lean(0), 0, "a level camera leans not at all")
+T.eq(Water.lean(1), 1, "and one looking straight down leans all the way")
+T.eq(Water.lean(Water.LEAN_FROM), 0,
+  "the ramp starts exactly where the top rung sits, so that rung is the one "
+  .. "the lean never touches")
+T.check(math.abs(math.sin(Water.LEAN_ELEV) - Water.LEAN_FROM) < 1e-12,
+  "and the elevation it aims at IS that rung's own, stated as the same "
+  .. "number rather than beside it")
+
+VoxelState.angle, Voxel3D.camera = wasAngle, wasCam
+end
+
+-- ------- the compiled variants
+local plain = Water._source(false)
+local gridded = Water._source(true)
+T.check(plain:find("#define WAVE_STEPS " .. Water.WAVE_STEPS, 1, true) ~= nil,
+  "the relief march's step count is compiled in too")
+-- the whole surface is answered per COLUMN: the ray picks one, and the art,
+-- the shading, the reflection and the dither all read that one rather than
+-- the fragment's own place on the flat quad. A smoothly-shaded reflection
+-- over hard-edged 8-bit water is two pictures stacked.
+T.check(plain:find("floor(waveRaw(q) * waveHeight + 0.5)", 1, true) ~= nil,
+  "column heights are floored to WHOLE world pixels -- a fractional step is "
+  .. "a smooth wave with extra arithmetic, not a bar")
+-- and the normal is read off the SMOOTH field underneath, which is the
+-- difference between a moon on the water and confetti: integer heights give
+-- integer differences, so a normal built from them can only point in about
+-- five directions and a two-degree disc falls between them
+T.check(plain:find("float h = waveRaw(q);", 1, true) ~= nil,
+  "but the reflection's normal comes off the smooth surface the columns are "
+  .. "a quantisation of, so the ray sweeps instead of jumping")
+T.check(plain:find("waveNormal(vec2 q, float tilt)", 1, true) ~= nil
+        and plain:find("waveNormal(col,", 1, true) ~= nil,
+  "still one answer per column, so the surface stays pixel-quantised in "
+  .. "space while the value it reflects with is continuous")
+T.check(plain:find("relief(vBent, view, hit, col, face, axis)", 1, true) ~= nil,
+  "and the visible column is found by walking the view ray through the "
+  .. "slab, which is what makes a tall bar hide the short ones behind it")
+-- the march's reach grows as one over the ray's descent, so a grazing camera
+-- asks for hundreds of world pixels of it from a fixed number of samples --
+-- which stepped over whole crests and smeared the surface into streaks
+T.check(plain:find("#define WAVE_STRIDE", 1, true) ~= nil
+        and plain:find("float maxSpan = float(WAVE_STEPS) * WAVE_STRIDE;",
+                       1, true) ~= nil,
+  "and its span is capped to a stride a sample can actually resolve")
+T.check(Water.WAVE_STRIDE <= 1,
+  "which is at most ONE world pixel, because a column is one world pixel "
+  .. "wide -- a longer stride steps over columns, and which ones it misses "
+  .. "changes fragment to fragment, which is the peppery noise")
+-- and the art is read off the COLUMN rather than by offsetting the
+-- fragment's own uv by however far the march happened to travel: one world
+-- pixel is one texel, so a column's texel follows from where it stands and
+-- two fragments landing on the same column cannot disagree about it
+T.check(plain:find("org + (mod(col, 8.0) + 0.5) * texel", 1, true) ~= nil,
+  "a column's art follows from its own world position, so it cannot swim "
+  .. "with the camera or speckle between neighbouring fragments")
+T.check(plain:find("waveUV(tc, col)", 1, true) ~= nil,
+  "and the column is what is handed to it")
+
+-- the wireframe is ruled on the COLUMNS, not on the flat sheet they stand on
+T.check(gridded:find("columnSeam(hit, vBent, axis)", 1, true) ~= nil,
+  "with V-GRID on, the seams outline the column the ray landed on -- every "
+  .. "voxel of water its own block -- rather than ruling a grid across the "
+  .. "flat quad underneath and ignoring the bars entirely")
+T.check(gridded:find("vec3 w = fwidth(base);", 1, true) ~= nil,
+  "measured off the smooth plane, because the hit jumps a whole column "
+  .. "between neighbouring fragments and its own derivative is a step")
+T.check(plain:find("march(surf, r)", 1, true) ~= nil,
+  "the reflection marches from that column, not from the raw fragment")
+T.check(plain:find("mod(col.x + col.y, 2.0)", 1, true) ~= nil,
+  "and the dither's checkerboard is cut from the columns too, so a camera "
+  .. "pan slides the world through nothing")
+T.check(plain:find("#define RAY_STEPS " .. Water.RAY_STEPS, 1, true) ~= nil,
+  "the march's step count is compiled in -- GLSL wants a constant bound")
+T.check(plain:find("VOXEL_GRID", 1, true) ~= nil,
+  "the wireframe is guarded in the source")
+T.check(plain:find("#define VOXEL_GRID", 1, true) == nil,
+  "and off in the plain variant")
+T.check(gridded:find("#define VOXEL_GRID", 1, true) ~= nil,
+  "so a frame with the seams on gets its own compilation, like the scene "
+  .. "shader -- a driver that refuses derivatives loses the seams and not "
+  .. "the water")
+T.check(plain:find("//@CRATERS", 1, true) == nil,
+  "and the crater placeholder is gone by the time a driver sees the source")
+
+-- ------- the lift itself
+--
+-- A pond in a field: four water cells recessed below flat ground. The
+-- shipped maps are the real thing but a picture states the invariant
+-- exactly, and this one needs no atlas, no GPU and no fixture.
+local WATER_TILE, GRASS_TILE = 20, 3
+local pond = {
+  { GRASS_TILE, GRASS_TILE, GRASS_TILE, GRASS_TILE },
+  { GRASS_TILE, WATER_TILE, WATER_TILE, GRASS_TILE },
+  { GRASS_TILE, WATER_TILE, WATER_TILE, GRASS_TILE },
+  { GRASS_TILE, GRASS_TILE, GRASS_TILE, GRASS_TILE },
+}
+local pondMap = {
+  id = "DS_TEST_POND",
+  tileset = { id = "DS_TEST_SET", image = "gfx/tilesets/ds_test.png",
+              tilesPerRow = 16, imageWidth = 128, imageHeight = 48,
+              blocks = {}, grassTile = -1 },
+  def = { width = 1, height = 1, tileset = "DS_TEST_SET" },
+  walkable = { [GRASS_TILE] = true },
+  waterTiles = { [WATER_TILE] = true },
+  doorTiles = {},
+  tileAt = function(_, tx, ty)
+    return pond[(ty % 4) + 1][(tx % 4) + 1]
+  end,
+  cellTile = function(self, cx, cy) return self:tileAt(cx * 2, cy * 2 + 1) end,
+  isWaterCell = function(self, cx, cy)
+    return self:cellTile(cx, cy) == WATER_TILE
+  end,
+  isWalkableCell = function(self, cx, cy)
+    return self:cellTile(cx, cy) == GRASS_TILE
+  end,
+  inBounds = function(_, cx, cy)
+    return cx >= 0 and cy >= 0 and cx < 2 and cy < 2
+  end,
+}
+
+-- body-only, so the border ring is out of it and the count is the picture
+local _, _, whole = ChunkMesher.geometry(pondMap, true, nil)
+Structures.invalidate(pondMap.id)
+local landVerts, _, land, waterVerts, _, wet =
+  ChunkMesher.geometry(pondMap, true, nil, true)
+
+T.check(wet > 0, "the pond's surface comes out as water quads")
+T.eq(land + wet, whole,
+  "and the split is a MOVE, not a copy: every quad the one-sink build "
+  .. "emitted is in exactly one of the two")
+T.eq(#waterVerts, wet * 4, "the water sink holds whole quads")
+
+-- every water vertex sits on the recessed plane, which is what says the
+-- surface and only the surface was lifted -- the shoreline faces that drop
+-- from the ground down to it belong to the GROUND that exposes them, and
+-- must stay in the terrain mesh or a lake is ringed by a slit into the sky
+local heights = Shapes.heights()
+for _, v in ipairs(waterVerts) do
+  T.check(v[2] == heights.water,
+    "a water vertex stands on the water plane, not on a shoreline face")
+end
+local shore = 0
+for _, v in ipairs(landVerts) do
+  if v[2] < 0 then shore = shore + 1 end
+end
+T.check(shore > 0,
+  "and the shoreline bands below ground level stayed with the terrain")
+
+-- a map with no water at all splits into everything and nothing, rather
+-- than into an empty terrain mesh
+Structures.invalidate(pondMap.id)
+local dry = {}
+for y = 1, 4 do
+  dry[y] = {}
+  for x = 1, 4 do dry[y][x] = GRASS_TILE end
+end
+pond = dry
+local _, _, dryLand, _, _, dryWet = ChunkMesher.geometry(pondMap, true, nil,
+                                                         true)
+T.check(dryLand > 0, "a map with no water still meshes its ground")
+T.eq(dryWet, 0, "and hands back no water surface at all")
+
+-- ------- and the pairing
+--
+-- The terrain mesh and the water lifted out of it are ONE answer: they came
+-- from the same build, so a caller must never end up holding a full mesh
+-- beside a body build's water (the ring's ponds twice, the body's as holes).
+-- pair() is the only way to ask, which is what makes that unpairable.
+local mesh, wetMesh = ChunkMesher.pair({ id = "DS_NOT_A_MAP" }, false)
+T.eq(mesh, nil, "an unbuilt map pairs to nothing")
+T.eq(wetMesh, nil, "on both halves, so a caller cannot half-draw one")
+
+Structures.invalidate(pondMap.id)
+ChunkMesher.invalidate(pondMap.id)
+Shapes.invalidate()
 end
 
 Voxel.angle = 0

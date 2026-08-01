@@ -21,6 +21,7 @@ return {
       "VOXEL options row and hotkey 3 (OFF / 15 / 35 / 50 / 75 degrees)",
       "T-SHIFT options row and hotkey 6 (OFF / 1 / 2 / 3), the miniature blur",
       "V-GRID on hotkey 5 and V-CURVE on hotkey 7",
+      "WATER on hotkey 9 (FULL / SKY / OFF, FULL by default): the water surface becomes a field of pixel-tall voxel columns rising and falling as waves, reflecting the sky, the sun, the moon and the cast standing beside it -- and, on FULL, the shoreline, trees and buildings behind it, by a screen-space ray march",
       "3D-BTL on hotkey 8 (ON / OFF, on by default), battles fought on the world map",
       "BACK SPRITES options row (OFF / ON, off by default), which keeps your own Pokemon on the battle menu in its classic slot while the foe stands out on the map",
       "a day/night clock that reaches the flat 2D overworld as well as the diorama -- outdoor maps only, and only when the hour is not midday",
@@ -30,6 +31,9 @@ return {
     },
     known = {
       "needs shader and depth-canvas support; without them the rows still cycle but the world stays 2D and battles draw plainly",
+      "water reflections additionally need a READABLE depth canvas; a driver without one draws the flat animated water this mode always drew",
+      "WATER on FULL ray-marches the depth buffer per water pixel, so a map that is mostly sea costs real fill rate on a weak GPU -- SKY is the same look minus the ray march, and OFF is the flat water",
+      "a screen-space reflection can only reflect what is in the frame: a tree just off the top edge is not in the water below it, and a ray that runs off the side fades into the sky rather than ending on a line",
       "a map with no 3x6 clearing falls back to a 1x4 one, and a map with neither draws the plain battle screen",
       "the arena is where the CAMERA goes -- nobody is moved, so a fight staged across the map is a shot of that ground, not a trip to it",
       "the battle backdrop renders at the GB's 160x144 to match the pics composited over it, so it is chunkier than the free-roam pass",

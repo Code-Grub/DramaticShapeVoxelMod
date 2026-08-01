@@ -141,9 +141,10 @@ local function prefetchArena(state, host)
   for _, nb in ipairs(state.neighbors or {}) do live[nb.map.id] = true end
   ChunkMesher.setLive(live)
   TerrainAtlas.setLive(live)
-  local terrain = ChunkMesher.request(host, false, nil, true)
-                  or ChunkMesher.peek(host, true)
-  return terrain, {}
+  ChunkMesher.request(host, false, nil, true)
+  local terrain, water = ChunkMesher.pair(host, false)
+  if not terrain then terrain, water = ChunkMesher.pair(host, true) end
+  return terrain, {}, water, {}
 end
 
 -- ------- the sun
@@ -227,7 +228,8 @@ local function shadowSignature(state, arena, terrain, nbMesh, token)
 end
 
 local function castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh,
-                           atlasFor, cards, token, host, neighbors)
+                           atlasFor, cards, token, host, neighbors,
+                           water, nbWater)
   if not ShadowMap.available() then return end
   local sig = shadowSignature(state, arena, terrain, nbMesh, token)
   if not ShadowMap.stale(sig) then return end
@@ -236,6 +238,14 @@ local function castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh,
   ShadowMap.draw(terrain, atlasFor(host), nil)
   for i, nb in ipairs(neighbors) do
     ShadowMap.draw(nbMesh[i], atlasFor(nb.map), Mat4.translate(nb.ox, 0, nb.oy))
+  end
+  -- the water surface is its own reflective pass now (see Water) and so is
+  -- no longer inside the terrain mesh; the sun still has to see it, or the
+  -- light's map has a hole at every lake
+  ShadowMap.draw(water, atlasFor(host), nil)
+  for i, nb in ipairs(neighbors) do
+    ShadowMap.draw(nbWater and nbWater[i], atlasFor(nb.map),
+                   Mat4.translate(nb.ox, 0, nb.oy))
   end
   -- thin cards are snugged toward the sun (ShadowMap.snug) so their shadows
   -- keep contact with their bases instead of starting a bias-width away
@@ -326,7 +336,7 @@ function BattleScene.render(state, arena, textures, token)
 
   -- shares the free-roam mode's request/evict bookkeeping, so a battle warms
   -- exactly the meshes walking around would have and nothing extra
-  local terrain, nbMesh = prefetchArena(state, host)
+  local terrain, nbMesh, water, nbWater = prefetchArena(state, host)
   if not terrain then return nil end
 
   local lx, ly, s, pw, ph = BattleScene.letterbox()
@@ -356,7 +366,7 @@ function BattleScene.render(state, arena, textures, token)
   local cards = monCards(arena, groundY, textures)
   Voxel3D.camera = nil
   castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh, atlasFor,
-              cards, token, host, neighbors)
+              cards, token, host, neighbors, water, nbWater)
 
   -- An opaque void either way. Outdoors the camera is low enough that the
   -- horizon is genuinely in frame, so it is sky; indoors it is the dark end
@@ -392,6 +402,31 @@ function BattleScene.render(state, arena, textures, token)
     for i, nb in ipairs(neighbors) do
       Voxel3D.draw(nbMesh[i], atlasFor(nb.map),
                    Mat4.translate(nb.ox, 0, nb.oy))
+    end
+    -- and the water over it, reflecting the arena and the hour's sky (see
+    -- VoxelScene.drawWater -- the arena fights on the same lakes). The two
+    -- mons are this shot's cast: painted into the reflection copy alone, so
+    -- a fight staged at the water's edge has both of them in the water while
+    -- they still composite over it, exactly as the overworld's walkers do.
+    local waterDraws = {}
+    if water then waterDraws[#waterDraws + 1] = { water, atlasFor(host) } end
+    for i, nb in ipairs(neighbors) do
+      if nbWater and nbWater[i] then
+        waterDraws[#waterDraws + 1] = { nbWater[i], atlasFor(nb.map),
+                                        Mat4.translate(nb.ox, 0, nb.oy) }
+      end
+    end
+    if #waterDraws > 0 then
+      VoxelScene.drawWater(waterDraws, function()
+        Voxel3D.seams(false)
+        Voxel3D.glass(false)
+        for _, card in ipairs(monCards(arena, groundY, textures)) do
+          Voxel3D.draw(BattleBillboard.mesh(), card.tex, card.model,
+                       BattleBillboard.PULL, ShadowMap.snug(card.model))
+        end
+        Voxel3D.glass(true)
+        Voxel3D.seams(true)
+      end)
     end
     -- The mons, standing on their tiles. Depth-tested like everything else,
     -- so a ledge or a tree between the camera and a Pokemon really is in
