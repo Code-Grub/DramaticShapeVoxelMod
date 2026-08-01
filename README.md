@@ -61,8 +61,10 @@ art. Missing or unreadable files fall straight back to the ROM art.
 The four battle-art directories are intentionally ignored by Git except for
 their README contracts. `tools/package_mod.ps1` nevertheless includes local
 PNGs from them in a test ZIP, so artwork can stay private and uncommitted.
-Animated atlas decoding is being added behind the stable `ANIMATED` option;
-until an atlas is recognised, that selection safely uses ROM art.
+`BATTLE ART: ANIMATED` reads the PNG atlases described by
+`data/animated_battle_sprites.lua`. The authoring importer generates both;
+the runtime extracts native-resolution cells without a DPI-scaled canvas and
+falls back per missing or malformed atlas to ROM art.
 
 Trainer cards are always static. Opponent trainer fronts use class filenames
 in `front-static` (for example `youngster.png`, `cooltrainer-f.png`, and

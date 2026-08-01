@@ -46,6 +46,7 @@ local BattleDOF = V.require("BattleDOF")
 local BattleHud = V.require("BattleHud")
 local BattlePics = V.require("BattlePics")
 local BattleArt = V.require("BattleArt")
+local AnimatedBattleArt = V.require("AnimatedBattleArt")
 local Voxel3D = V.require("Voxel3D")
 local ChunkMesher = V.require("ChunkMesher")
 
@@ -386,6 +387,7 @@ end
 
 function OverworldBattle.finish()
   if not session then return end
+  AnimatedBattleArt.finish(session.battle)
   restoreCast()
   session = nil
   Voxel3D.camera = nil
@@ -423,6 +425,7 @@ function OverworldBattle.update(dt)
   -- the battle only exists once it has been pushed; a session opened at
   -- pushBattle time has it, one opened from battle.started was handed it
   session.battle = session.battle or (top ~= ow and top or nil)
+  AnimatedBattleArt.update(session.battle, dt)
   -- the world pass is hidden behind the battle, so mesh builds get the wide
   -- slice: nothing visible can hitch on them
   ChunkMesher.pump(true)
@@ -494,7 +497,12 @@ function OverworldBattle.invalidate()
   BattleDOF.invalidate()
   BattleHud.invalidate()
   BattlePics.invalidate()
+  -- Put the ROM image back before BattleArt drops the frame registry. A map
+  -- or palette rebuild during a battle can then recreate filtered frames
+  -- without mistaking an old animation frame for the battler's original.
+  AnimatedBattleArt.finish(session and session.battle)
   BattleArt.invalidate()
+  AnimatedBattleArt.invalidate()
 end
 
 -- ------- the battle screen's background

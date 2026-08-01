@@ -16,6 +16,11 @@
 - **Static trainer cards.** Opponent trainer classes resolve from
   `front-static`; the player, Professor Oak, and Old Man backs resolve from
   `back-static`. Trainer art never uses either animated folder.
+- **Native-resolution animated atlas playback.** `BATTLE ART: ANIMATED`
+  extracts timed PNG-atlas cells through `ImageData`, avoiding canvas DPI
+  scaling, and sends every frame through the same transparency, display
+  filtering, world lighting, depth and shadow path as static art. Missing or
+  malformed atlases fall back per Pokemon to ROM art.
 
 ## 1.3.0
 

@@ -1,8 +1,16 @@
 # Back animated battle art
 
-Reserved for optional animated player-back atlases. Local PNG files are
-ignored by Git. Authored back art faces right and is never mirrored. Until an
-atlas is recognized, BATTLE ART: ANIMATED falls back to the ROM.
+Optional animated player-back battle atlases go here. Local PNG files are
+ignored by Git. Authored back art faces right and is never mirrored. The
+decoder expects the atlas cell dimensions and frame timings recorded in
+`data/animated_battle_sprites.lua`; the supplied metadata recognizes the
+atlases produced by `tools/import_animated_back_sprite.py`. Missing or
+malformed art falls back to the ROM sprite for that Pokemon.
+
+GIF decoding is authoring-only. The game reads PNG atlases, extracts every
+cell at its native logical resolution, and uses nearest-neighbour filtering.
+The importer creates both the atlases and their single shared metadata file;
+users do not write one Lua file per Pokemon.
 
 ## Gen 1 filename exceptions
 

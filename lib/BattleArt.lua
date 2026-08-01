@@ -76,6 +76,7 @@ local function displayMode()
   local ok, fx = pcall(require, "src.render.PaletteFX")
   return ok and fx and fx.mode or "gbc"
 end
+BattleArt.displayMode = displayMode
 
 local function applyDisplayFilter(data, mode)
   if mode == "gbc_inv" then
@@ -98,13 +99,12 @@ local function applyDisplayFilter(data, mode)
   end)
 end
 
-local function prepare(path, mode)
-  local cacheKey = path .. "#" .. mode
-  local hit = cache[cacheKey]
-  if hit ~= nil then return hit or nil end
+-- Turn one logical sprite image into battle-ready art. Animated atlases use
+-- this same path after extracting a cell, so static and animated art receive
+-- identical transparency keying, display-palette filtering and anchoring.
+function BattleArt.prepareData(data, mode)
   local made
   local ok = pcall(function()
-    local data = love.image.newImageData(path)
     local w, h = data:getDimensions()
     if w < 1 or h < 1 then return end
 
@@ -164,6 +164,17 @@ local function prepare(path, mode)
     metrics[made] = { x0 = x0, x1 = x1, y0 = y0, y1 = y1,
                       w = w, h = h, padBottom = h - 1 - y1,
                       center = (x0 + x1 + 1) / 2 }
+  end)
+  return (ok and made) or nil
+end
+
+local function prepare(path, mode)
+  local cacheKey = path .. "#" .. mode
+  local hit = cache[cacheKey]
+  if hit ~= nil then return hit or nil end
+  local made
+  local ok = pcall(function()
+    made = BattleArt.prepareData(love.image.newImageData(path), mode)
   end)
   cache[cacheKey] = (ok and made) or false
   return made
@@ -227,6 +238,14 @@ function BattleArt.apply(battle)
   local function applyOne(battler, side)
     local species = battler and battler.mon and battler.mon.species
     if not species then return end
+    -- AnimatedBattleArt owns Pokemon sprites in this mode. Trainers still
+    -- pass through applyTrainers below because trainer art is always static.
+    if BattleArt.setting:get() == "animated" then
+      if original[battler] then
+        battler.sprite, original[battler] = original[battler], nil
+      end
+      return
+    end
     local img = BattleArt.image(species, side)
     if img then
       if not BattleArt.isExternal(battler.sprite) then
