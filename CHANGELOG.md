@@ -147,6 +147,33 @@
   painted. The reflection lands a hair off the sprite's own depth and exactly
   on its colour, which at a lake's worth of wave is the same picture.
 
+### Fixed
+
+- **On Android the water stayed flat, as if the row were off.** Two GLSL ES
+  defaults the desktop never exercises, both in the water shader:
+
+  Fragment floats default to **mediump** on GLSL ES, and the vertex stage's
+  default is highp -- and the water shader is the mod's first to declare the
+  same uniform, the frame's `vp` matrix, in BOTH stages, one on each default.
+  GLSL ES refuses to link a uniform whose precision the stages disagree on,
+  so the whole shader failed to build and the pass fell back -- quietly, by
+  design -- to the flat water the mode always drew. The pixel stage now lifts
+  its float default to highp (guarded, so a GPU without fragment highp still
+  compiles and falls back flat), which settles the link and is also simply
+  needed: the march works in world coordinates that run to a few thousand,
+  where fp16 has no fraction left, and the world-position varying is
+  qualified highp for the same reason the wireframe's has been all along.
+  Samplers default to **lowp** no matter what floats are set to, so the depth
+  read is lifted too -- eight bits of depth is a march with nothing to land
+  on.
+
+  And the readable depth canvas -- the one hardware requirement the rest of
+  the mode does not already have -- now tries four formats before giving up:
+  depth24, depth24 riding a stencil (a pairing some mobile drivers will
+  texture when they refuse the bare format), depth32f, and depth16 as the
+  floor every GLES3 device can read. Refused all four, the reflections are
+  lost and nothing else, exactly as before.
+
 ### Known
 
 - Screen-space reflections can only reflect what is in the frame. A tree just

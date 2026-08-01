@@ -74,7 +74,8 @@ return function(game)
   --    hardware requirement the rest of the mode does not already have.
   say("depth canvas readable: %s", tostring(Voxel3D.depthReadable()))
   if not Voxel3D.depthReadable() then
-    say("STOP: no readable depth canvas on this driver (depth24/readable).")
+    say("STOP: no readable depth canvas on this driver (tried depth24, ")
+    say("      depth24stencil8, depth32f and depth16).")
     say("      The water falls back to the flat scene shader, which is")
     say("      exactly what it looked like before this feature existed.")
     return

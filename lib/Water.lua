@@ -345,7 +345,12 @@ Water.EDGE_FADE = 0.14         -- reflection eased off over this much of the fra
 local SHADER_SRC = [[
 varying float vShade;
 varying vec3 vSun;
-varying vec3 vBent;          // world position, as drawn
+// World position, as drawn -- and a varying that cannot ride GLSL ES's
+// mediump fragment default: everything below floors it into columns and
+// marches it through the frame's matrices, and a route's coordinates run
+// to a few thousand, where fp16 has no fraction left at all. The same
+// reasoning the scene shader's vGrid states at length.
+varying LOVE_HIGHP_OR_MEDIUMP vec3 vBent;
 
 #ifdef VERTEX
 uniform mat4 vp;
@@ -368,6 +373,21 @@ vec4 position(mat4 transform_projection, vec4 vertex_position) {
 #endif
 
 #ifdef PIXEL
+// Everything below works in WORLD units through the frame's own matrices,
+// and GLSL ES defaults fragment floats to mediump -- fp16, out of fraction
+// by a coordinate of two thousand and quantising a depth into steps the
+// march falls straight through. Worse than wrong pictures: `vp` is
+// declared by BOTH stages, the vertex side's default is highp, and GLSL ES
+// refuses to LINK a uniform whose precision the two stages disagree on --
+// which is not broken water but NO water shader at all, the flat fallback
+// with nothing in the log. One statement lifts the whole stage; the guard
+// keeps the odd GPU without fragment highp compiling, and such a driver
+// falls back to flat water exactly as it did before this pass existed.
+#ifdef GL_ES
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#endif
+#endif
 uniform mat4 vp;
 uniform vec3 eye;
 uniform vec2 screen;         // the canvas, in pixels
@@ -381,9 +401,12 @@ uniform float sunBias;
 uniform vec2 sunTexel;
 uniform vec3 dayTint;
 
-// the frame as it stood before the water went down, and its depth
+// the frame as it stood before the water went down, and its depth. The
+// depth sampler is qualified because GLSL ES defaults samplers to LOWP no
+// matter what floats are set to, and eight bits of depth is a march with
+// nothing to land on. The frame copy is honest 8-bit colour and can stay.
 uniform Image reflectTex;
-uniform Image depthTex;
+uniform LOVE_HIGHP_OR_MEDIUMP Image depthTex;
 
 uniform float rays;          // 0 = sky only, 1 = march the screen too
 uniform vec3 lookFlat;       // the way the horizon lies from this camera

@@ -295,15 +295,24 @@ local active = false
 -- never be sampled. An explicit canvas is the same buffer with a texture
 -- handle on it, and costs the same memory.
 --
--- nil where the driver will not make one -- the format is optional in GLES
--- and a canvas is the only honest test of it -- and beginScene falls
--- straight back to the internal buffer, which is exactly the old behaviour
--- minus the reflections.
+-- nil where the driver will not make one -- every depth format is optional
+-- in GLES and a canvas is the only honest test of any of them, so this asks
+-- for several in order of preference: 24 bits, the same 24 riding a stencil
+-- (a pairing some mobile drivers will texture when the bare format they
+-- refuse), 32-bit float, and 16 as the floor every GLES3 device can read.
+-- Refused all four, beginScene falls straight back to the internal buffer,
+-- which is exactly the old behaviour minus the reflections.
+local DEPTH_FORMATS = { "depth24", "depth24stencil8", "depth32f", "depth16" }
+
 local function newDepth(w, h)
   if not (love.graphics and love.graphics.newCanvas) then return nil end
-  local ok, c = pcall(love.graphics.newCanvas, w, h,
-                      { format = "depth24", readable = true })
-  if not (ok and c) then return nil end
+  local c = nil
+  for _, format in ipairs(DEPTH_FORMATS) do
+    local ok, made = pcall(love.graphics.newCanvas, w, h,
+                           { format = format, readable = true })
+    if ok and made then c = made break end
+  end
+  if not c then return nil end
   -- nearest: a depth is a distance, and a blend of two of them is a
   -- distance to nothing. The march wants the texel it landed on.
   pcall(c.setFilter, c, "nearest", "nearest")

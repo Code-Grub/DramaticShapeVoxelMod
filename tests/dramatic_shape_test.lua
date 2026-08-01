@@ -1778,6 +1778,25 @@ T.check(gridded:find("#define VOXEL_GRID", 1, true) ~= nil,
 T.check(plain:find("//@CRATERS", 1, true) == nil,
   "and the crater placeholder is gone by the time a driver sees the source")
 
+-- ANDROID. GLSL ES defaults fragment floats to mediump and samplers to
+-- lowp, and this shader is the one place in the mod where both defaults
+-- are fatal: world coordinates run past fp16's fraction, the depth read
+-- rounds to steps the march falls straight through, and -- the sharp edge
+-- -- `vp` is declared by BOTH stages, whose defaults disagree, which GLSL
+-- ES answers by refusing to LINK the shader at all. Flat lakes, empty log.
+-- The sky's band ramp is this same lesson learned once already.
+T.check(plain:find("precision highp float;", 1, true) ~= nil,
+  "the pixel stage lifts GLSL ES's mediump default to highp, so the march "
+  .. "keeps its fraction and the dual-declared vp links at one precision")
+T.check(plain:find("GL_FRAGMENT_PRECISION_HIGH", 1, true) ~= nil,
+  "guarded, so the odd GPU without fragment highp still compiles and "
+  .. "falls back flat instead of failing loudly")
+T.check(plain:find("LOVE_HIGHP_OR_MEDIUMP vec3 vBent", 1, true) ~= nil,
+  "the world-position varying is qualified like the scene shader's vGrid "
+  .. "rather than left to the fragment default")
+T.check(plain:find("LOVE_HIGHP_OR_MEDIUMP Image depthTex", 1, true) ~= nil,
+  "and the depth sampler is lifted off lowp, which is eight bits of depth")
+
 -- ------- the lift itself
 --
 -- A pond in a field: four water cells recessed below flat ground. The
