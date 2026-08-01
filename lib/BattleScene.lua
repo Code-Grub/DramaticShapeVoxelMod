@@ -435,30 +435,21 @@ function BattleScene.render(state, arena, textures, token)
       Voxel3D.draw(nbMesh[i], atlasFor(nb.map),
                    Mat4.translate(nb.ox, 0, nb.oy))
     end
-    -- and the water over it, reflecting the arena and the hour's sky (see
-    -- VoxelScene.drawWater -- the arena fights on the same lakes). The two
-    -- mons are this shot's cast: painted into the reflection copy alone, so
-    -- a fight staged at the water's edge has both of them in the water while
-    -- they still composite over it, exactly as the overworld's walkers do.
-    local waterDraws = {}
-    if water then waterDraws[#waterDraws + 1] = { water, atlasFor(host) } end
+    -- and the water over it -- PLAIN, always: the flat animated tiles, never
+    -- the reflective pass, whatever the WATER row says. The reflection is
+    -- tuned for the overworld's ladder of cameras; this shot's is PLACED --
+    -- low, tilted and framed like a picture -- and under it the pass reads
+    -- wrong: Fresnel opens all the way up, the leaned sky lands on bands the
+    -- framing never shows, and a lake-sized arena comes out as murk wearing
+    -- the tile art. The battle is a stage set, and stage water is painted.
+    -- (No mirror also means the mons need no second draw into one -- they
+    -- just composite over the water below, like everything else on the set.)
+    if water then Voxel3D.draw(water, atlasFor(host)) end
     for i, nb in ipairs(neighbors) do
       if nbWater and nbWater[i] then
-        waterDraws[#waterDraws + 1] = { nbWater[i], atlasFor(nb.map),
-                                        Mat4.translate(nb.ox, 0, nb.oy) }
+        Voxel3D.draw(nbWater[i], atlasFor(nb.map),
+                     Mat4.translate(nb.ox, 0, nb.oy))
       end
-    end
-    if #waterDraws > 0 then
-      VoxelScene.drawWater(waterDraws, function()
-        Voxel3D.seams(false)
-        Voxel3D.glass(false)
-        for _, card in ipairs(monCards(arena, groundY, textures)) do
-          Voxel3D.draw(BattleBillboard.mesh(), card.tex, card.model,
-                       BattleBillboard.PULL, ShadowMap.snug(card.model))
-        end
-        Voxel3D.glass(true)
-        Voxel3D.seams(true)
-      end)
     end
     -- The mons, standing on their tiles. Depth-tested like everything else,
     -- so a ledge or a tree between the camera and a Pokemon really is in

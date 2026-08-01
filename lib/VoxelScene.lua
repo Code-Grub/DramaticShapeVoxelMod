@@ -580,8 +580,9 @@ end
 -- with the row OFF, no depth texture to read, or a shader that would not
 -- build, the same meshes go through the ordinary scene shader and come out
 -- as the flat animated water this mode always drew.
--- Shared with the overworld battle, which stages its fights on the same
--- lakes and wants the same water under them.
+-- The overworld's alone: the staged battle draws its water plain, always --
+-- its placed camera reads this pass wrong, and a stage set wants painted
+-- water anyway (see BattleScene, where the choice is argued).
 function VoxelScene.drawWater(draws, cast)
   local plain = true
   if Water.enabled() and Voxel3D.depthReadable() then

@@ -237,14 +237,56 @@ Water.WAVE_TRAINS = {
   { -0.041, 0.033, 0.55, 0.11 },
 }
 
+-- ------- and what keeps them from reading as one pattern
+--
+-- Three fixed trains are still an exactly periodic field: every forty-odd
+-- pixels of sea wears the same crest at the same height, and a lake's worth
+-- of that reads as wallpaper. Real swell varies two ways a sum of sines
+-- cannot: waves arrive in SETS -- a few tall ones, then a lull -- and a
+-- crest line curves as it runs rather than ruling itself across the whole
+-- surface. Both are put back with one long-wavelength field each, riding
+-- the DOMINANT train only; the two lesser trains stay plain, because they
+-- are texture rather than structure and three modulators is soup again.
+--
+-- Both wear the trains' own shape, { fx, fz, speed, x }: a direction whose
+-- length is the spatial frequency, a phase rate, and what the field does.
+-- Their wavelengths sit four to five times the carrier's, far enough apart
+-- that neither reads as a wave itself -- the swell as slow weather over the
+-- crests, the bend as the crests' own drift.
+--
+-- THE SWELL scales the dominant train's amplitude; `x` is the DEPTH of the
+-- deepest lull, as the fraction of the train it takes away. It runs roughly
+-- along the carrier's own direction and slower than it, which is a wave
+-- group's honest habit (deep-water groups travel at about half the phase
+-- speed) -- so sets of crests swell up, march a while, and hand over to a
+-- calm patch that is itself moving.
+Water.WAVE_SWELL = { 0.0325, 0.0134, 0.55, 0.35 }
+
+-- THE BEND adds a slow wobble to the dominant train's phase; `x` is the
+-- wobble's reach in RADIANS of carrier phase. 1.1 radians against a carrier
+-- of about forty pixels bows a crest some seven pixels off its line over
+-- the bend's own hundred-and-seventy-five -- a visible curve, not a
+-- scribble -- and it runs ACROSS the carrier, which is the direction a
+-- crest line actually wanders. What it costs is exactness in waveRate's
+-- derivation: the carrier's local frequency now breathes around the number
+-- the rate is derived from, so the one-pixel step is the average step
+-- rather than every step's. The step CLOCK is untouched; only how far a
+-- bowed stretch of crest moves on one tick varies, and by under a pixel.
+Water.WAVE_BEND = { -0.0138, 0.0333, 0.35, 1.10 }
+
 -- ------- and the beat they move on
 --
--- The surface does not slide, it advances in STEPS -- 15 a second, off the
--- engine's own frame counter, which is the cadence hand-drawn pixel art is
--- animated at and the reason this reads as art rather than as a simulation
--- someone forgot to stylise. A surface built out of whole pixels that crawls
--- between them smoothly gives away that the quantisation is only skin deep.
-Water.WAVE_FPS = 15
+-- The surface does not slide, it advances in STEPS, off the engine's own
+-- frame counter -- the move that makes this read as art rather than as a
+-- simulation someone forgot to stylise. A surface built out of whole pixels
+-- that crawls between them smoothly gives away that the quantisation is
+-- only skin deep.
+--
+-- 12 a second, a shade under the 15 hand-drawn pixel art is usually
+-- animated at: the crests were hurrying, and a big wave is slower than a
+-- sprite's walk cycle. Still a clean divisor of the engine's 60, so every
+-- step spans the same whole number of frames.
+Water.WAVE_FPS = 12
 
 -- How far the dominant train advances each of those steps, in WORLD PIXELS.
 -- One is the honest choice for a stepped surface: the whole field shifts by
@@ -984,12 +1026,30 @@ Water._craterSource = craterSource     -- named for the suite
 
 -- and the wave trains, pasted in for the same reason: the rate is derived
 -- from this table (Water.waveRate), so the field the shader sums has to be
--- the one that table describes rather than a copy of it kept in step by hand
+-- the one that table describes rather than a copy of it kept in step by hand.
+--
+-- The dominant train carries the swell and the bend (see WAVE_SWELL): its
+-- phase wobbles by the bend field and its amplitude breathes with the swell
+-- envelope, both off the same tables the constants above document. One
+-- statement per train either way, which is what the suite counts.
 local function trainSource()
   local out = {}
-  for _, t in ipairs(Water.WAVE_TRAINS) do
-    out[#out + 1] = ("  h += sin(dot(q, vec2(%.4f, %.4f)) + waveT * %.4f)"
-                     .. " * %.4f;"):format(t[1], t[2], t[3], t[4])
+  for i, t in ipairs(Water.WAVE_TRAINS) do
+    if i == 1 then
+      local s = Water.WAVE_SWELL
+      local b = Water.WAVE_BEND
+      out[#out + 1] = (
+        "  h += sin(dot(q, vec2(%.4f, %.4f)) + waveT * %.4f\n"
+        .. "           + %.4f * sin(dot(q, vec2(%.4f, %.4f)) + waveT * %.4f))\n"
+        .. "       * %.4f * (1.0 - %.4f * (0.5 + 0.5 *\n"
+        .. "           sin(dot(q, vec2(%.4f, %.4f)) + waveT * %.4f)));")
+        :format(t[1], t[2], t[3],
+                b[4], b[1], b[2], b[3],
+                t[4], s[4], s[1], s[2], s[3])
+    else
+      out[#out + 1] = ("  h += sin(dot(q, vec2(%.4f, %.4f)) + waveT * %.4f)"
+                       .. " * %.4f;"):format(t[1], t[2], t[3], t[4])
+    end
   end
   return table.concat(out, "\n")
 end

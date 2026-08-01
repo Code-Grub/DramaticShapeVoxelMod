@@ -147,6 +147,32 @@
   painted. The reflection lands a hair off the sprite's own depth and exactly
   on its colour, which at a lake's worth of wave is the same picture.
 
+### Changed
+
+- **The waves arrive in sets now, and a little slower.** Three fixed trains
+  are an exactly periodic field -- every forty-odd pixels of sea wore the
+  same crest at the same height, which reads as wallpaper the moment a lake
+  is bigger than the repeat. Two long-wavelength fields now ride the
+  dominant train, four to five carrier wavelengths apiece so neither reads
+  as a wave itself: a SWELL that breathes its amplitude, so a few tall
+  crests march through and hand over to a lull that is itself moving, and a
+  BEND that bows its phase, so a crest line curves across the surface
+  instead of ruling itself over all of it. The two lesser trains stay
+  plain: they are texture rather than structure, and a third modulator is
+  the soup the train weights exist to avoid. The step beat comes down from
+  15 to 12 a second -- the crests were hurrying, and a big wave is slower
+  than a walk cycle -- still a clean divisor of the engine's 60, and still
+  exactly one world pixel of dominant-crest travel per step.
+
+- **Staged battles draw their water plain, whatever the WATER row says.**
+  The reflective pass is tuned for the overworld's ladder of cameras; a
+  battle's camera is PLACED -- low, tilted, framed like a picture -- and
+  under it the pass read wrong: Fresnel opened all the way up, the leaned
+  sky landed on bands the framing never shows, and a lake-sized arena came
+  out as murk wearing the tile art. The battle is a stage set, and stage
+  water is painted: the flat animated tiles the mode always drew, with the
+  mons compositing over them like everything else on the set.
+
 ### Fixed
 
 - **On Android the water stayed flat, as if the row were off -- and once it

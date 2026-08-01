@@ -1542,7 +1542,10 @@ local function at(f)
 end
 
 local period = 60 / Water.WAVE_FPS
-T.eq(period, 4, "15 steps a second is one every four engine frames")
+T.eq(period, 5, "12 steps a second is one every five engine frames")
+T.eq(math.floor(period), period,
+  "and the beat divides the engine's 60 exactly, so every step spans the "
+  .. "same whole number of frames")
 -- inside one step nothing moves; crossing one, it does
 T.eq(at(0), at(period - 1),
   "every frame inside one wave step gets the same phase -- the surface "
@@ -1574,6 +1577,24 @@ T.eq(select(2, trains:gsub("h %+= sin", "")), #Water.WAVE_TRAINS,
   "every train in the table is summed by the shader")
 T.check(trains:find(("%.4f"):format(t[1]), 1, true) ~= nil,
   "at the frequency the table states")
+
+-- the variation that keeps three periodic trains from reading as wallpaper:
+-- the dominant train's amplitude breathes with the swell and its crests bow
+-- with the bend, both pasted from their own tables like the trains are
+T.check(trains:find(("%.4f"):format(Water.WAVE_SWELL[1]), 1, true) ~= nil
+        and trains:find(("%.4f"):format(Water.WAVE_BEND[1]), 1, true) ~= nil,
+  "the swell and the bend reach the shader off the tables that document "
+  .. "them, not off copies kept in step by hand")
+T.check(Water.WAVE_SWELL[4] > 0 and Water.WAVE_SWELL[4] < 1,
+  "the swell's deepest lull thins the dominant train without deleting or "
+  .. "inverting it -- a sea with sets in it, not a sea that turns off")
+for _, mod in ipairs({ Water.WAVE_SWELL, Water.WAVE_BEND }) do
+  local mf = math.sqrt(mod[1] * mod[1] + mod[2] * mod[2])
+  T.check(mf * 3.5 < freq,
+    "a modulator's wavelength sits several times the carrier's, far enough "
+    .. "apart that it reads as weather over the waves rather than as a "
+    .. "fourth wave -- which would be the soup the weights exist to avoid")
+end
 
 T.check(Water.WAVE_HEIGHT > -TileShapeHeights.water,
   "the crests stand taller than the recess TileShape sinks water into -- "
