@@ -614,6 +614,31 @@ TEMPLATES = {
         roof_rows=19, roof_back=16, roof_front=0, roof_cycle=(2, 13),
         slab=3, front_eave=0, ledge=None, tileset="gym", depth=2,
     ),
+    # F04: the Pokemon Center's PC -- every Center's northeast corner
+    # (11 placements) plus the Indigo Plateau lobby, whose MART tileset
+    # shares this atlas. The lab desk-set read again: a
+    # Mac-style unit drawn face-on -- white top band (rows 0-3), bezel,
+    # screen and drive slot (4-14) -- standing at the back of a low
+    # desk whose front face is rows 20-23 and whose drawn top (the
+    # white sliver of row 15 and the margins beside the unit) names the
+    # lid shade. The keyboard rows 17-19 lie BELOW the desk's 16px top
+    # span, so the flat part carries an authored z origin: it lies at
+    # the desk's front edge, in front of the unit.
+    "center_pc": dict(
+        tiles=[
+            [66, 70],
+            [82, 86],
+            [9, 88],
+        ],
+        roof_rows=0, roof_back=0, roof_front=0, roof_cycle=(0, 0),
+        slab=0, front_eave=0, ledge=None, tileset="pokecenter", depth=2,
+        desk=dict(fascia=(20, 21), base=(22, 23), lid="white"),
+        parts=[
+            dict(kind="upright", x=(2, 13), top=(0, 3), facade=(4, 14),
+                 depth=6),                                   # the unit
+            dict(kind="flat", x=(2, 13), rows=(17, 19), z=13),  # keyboard
+        ],
+    ),
     # B23: the Victory Road entrance on Route 23: a rock face with two
     # barred doors. The roof band is the pale cliff top seen from above.
     "victory_road_gate": dict(
@@ -815,6 +840,7 @@ def build_desk_set(sp, pr, t):
         for sx in range(W):
             for z in range(D):
                 put(sx, y, z, sx, sy)
+    field = WHITE if t["desk"].get("lid") == "white" else GREY
     for sx in range(W):
         for z in range(D):
             if sx in (0, W - 1) or z in (0, D - 1):
@@ -822,7 +848,7 @@ def build_desk_set(sp, pr, t):
             elif sx == 1 or z == 1:
                 shade = WHITE
             else:
-                shade = GREY
+                shade = field
             px = shade_px.get(shade) or shade_px[BLACK]
             put(sx, plane - 1, z, px[0], px[1])
 
@@ -831,11 +857,15 @@ def build_desk_set(sp, pr, t):
         if p["kind"] == "flat":
             r0, r1 = p["rows"]
             for sy in range(r0, r1 + 1):
-                if not 0 <= sy < D:
+                # drawn row = depth row by default; `z` renames the
+                # origin when the flat sits below the desk's own drawn
+                # top span (the Center PC's keyboard)
+                z = p.get("z", r0) + (sy - r0)
+                if not 0 <= z < D:
                     continue
                 for sx in range(x0, x1 + 1):
                     if inside(sx, sy):
-                        put(sx, plane, sy, sx, sy)
+                        put(sx, plane, z, sx, sy)
             continue
         tr0, tr1 = p["top"]
         fr0, fr1 = p["facade"]
@@ -1048,8 +1078,9 @@ def verify_desk_set(vox, pr, t):
         x0, x1 = p["x"]
         if p["kind"] == "flat":
             r0, r1 = p["rows"]
+            z0 = p.get("z", r0)
             for x in range(x0, x1 + 1):
-                for z in range(max(r0, 0), min(r1, D - 1) + 1):
+                for z in range(max(z0, 0), min(z0 + r1 - r0, D - 1) + 1):
                     tops[(x, z)] = max(tops.get((x, z), 0), plane)
         else:
             fr0, fr1 = p["facade"]

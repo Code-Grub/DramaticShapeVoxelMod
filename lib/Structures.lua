@@ -2253,14 +2253,22 @@ local function buildFigure(S, map, fig, tx, ty, perRow)
   -- He stands ON the furniture he was drawn into -- the same lift a pinned
   -- prop above a pinned box takes (see buildObject), and gated the same
   -- way: a thing set down on furniture occupies a BLOCKED cell, while a
-  -- seat you merely walk up to is in a walkable one.
+  -- seat you merely walk up to is in a walkable one.  The row under his
+  -- card is SCANNED for the tallest authored upright rather than read at
+  -- its west corner: the corner tile can be furniture that is not his
+  -- seat (the couch's raised backrest column stands there, `top` art and
+  -- taller than the cushion he actually sits on).
   local baseY = 0
-  local bs = S.shapeAt[keyOf(tx, ty + fig.h)]
   local blocked = not map:isWalkableCell(math.floor(tx / 2),
                                          math.floor((ty + fig.h - 1) / 2))
-  if blocked and bs and bs.authored and bs.art == "upright"
-     and (bs.h or 0) > 0 then
-    baseY = bs.h
+  if blocked then
+    for dx = 0, fig.w - 1 do
+      local bs = S.shapeAt[keyOf(tx + dx, ty + fig.h)]
+      if bs and bs.authored and bs.art == "upright"
+         and (bs.h or 0) > baseY then
+        baseY = bs.h
+      end
+    end
   end
 
   local atlasW = map.tileset.imageWidth or 128

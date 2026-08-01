@@ -1,5 +1,66 @@
 # Changelog
 
+## 1.4.1
+
+### Added
+
+- **Furniture through the building pipeline.** The band-table voxelizer
+  that models whole buildings from their own drawings (lib/Buildings.lua)
+  now reads interior furniture too, and the first four drawings are in:
+
+  - **F01, the starter-ball table in Oak's lab** -- the tabletop's 16
+    drawn rows lay flat over a 16px plot (1:1, the first template that
+    never cycles), the black/#555/black edge band folds into the slab's
+    own rim, and the base extrudes with its corner feet. Six voxels
+    tall, exactly the drawn elevation.
+  - **F03, the empty north table beside it** -- the same band table on a
+    grid two tiles narrower.
+  - **F02, the lab's computer desk** -- the first DESK-SET template: the
+    drawing segments into PARTS, each classified by the surface it
+    depicts. The monitor and the computer tower stand upright on the
+    desk wearing their own drawn tops as lids; the keyboards and the
+    mouse lie flat in front of them; the sheet of paper on the right
+    lies flat across the desk. Flat parts keep the drawing's own rule --
+    drawn row IS depth row, the same 1:1 the tabletop is drawn with --
+    so an object's height on the drawing is its position on the desk.
+    The Hall of Fame's recording machine is this drawing tile for tile
+    on the GYM atlas, and models identically for free.
+  - **F04, the Center PC** -- the desk-set read again: a Mac-style unit
+    with its screen and drive slot in relief, standing at the back of a
+    low white-topped desk with its keyboard lying at the front edge.
+    Eleven Pokemon Centers, plus the Indigo Plateau lobby, whose MART
+    tileset shares the atlas.
+
+  Two measurements had to stop being assumptions for furniture to fit
+  the pipeline: the GROUND LINE is now read off the drawing (a building
+  ends on the black threshold row it stands on; a table's legs stop two
+  rows short of theirs, and extruding against the grid floated them in
+  the air), and a template may name its PLOT (`depth`) when the matched
+  grid runs past it onto the walkable floor the legs merely stand on.
+  Both are identities for every existing building.
+
+- **The Center couch has a backrest.** The couch is drawn from above --
+  back-and-arm strip down the west side, cushions and seams on the east
+  -- and rendered as one seat-high box. The new `backrest` class raises
+  the drawn back strip to 12px over the 8px seat, in every Center and
+  the Celadon Hotel. The man sitting on it keeps his seat: the figure
+  anchor now scans under his card for the tallest authored upright (his
+  cushion) instead of reading the corner tile, which is the backrest
+  now.
+
+### Changed
+
+- **Sprites ride at the height the art actually stands.** Class heights
+  can now be overridden per tileset (a tileset entry's `heights`), and
+  DOJO's lab tables use it: they are drawn 6px tall, not the default
+  table's 12, so the starter balls sit exactly on the modelled tabletop
+  -- and the volume-built north tables drop to the same height, keeping
+  every table in the room level.
+- The Center PC's old rendering -- a 12px table box with the unit as a
+  flat standee on it -- retires wherever the F04 template stamps; the
+  pins stay only as the degradation path when the shape profile is
+  absent.
+
 ## 1.4.0
 
 ### Added

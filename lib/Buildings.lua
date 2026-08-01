@@ -378,9 +378,10 @@ local function deskSetModel(sp, pr, t)
       for z = 0, D - 1 do put(sx, y, z, sy * W + sx) end
     end
   end
+  local field = t.desk.lid == "white" and WHITE or GREY
   for sx = 0, W - 1 do
     for z = 0, D - 1 do
-      local shade = GREY
+      local shade = field
       if sx == 0 or sx == W - 1 or z == 0 or z == D - 1 then
         shade = BLACK
       elseif sx == 1 or z == 1 then
@@ -395,10 +396,16 @@ local function deskSetModel(sp, pr, t)
     Budget.tick()
     local x0, x1 = p.x[1], p.x[2]
     if p.kind == "flat" then
-      for sy = p.rows[1], p.rows[2] do
-        if sy >= 0 and sy < D then
+      -- drawn row = depth row by default; `z` renames the origin when
+      -- the flat sits below the desk's own drawn top span (the Center
+      -- PC's keyboard)
+      local r0 = p.rows[1]
+      local z0 = p.z or r0
+      for sy = r0, p.rows[2] do
+        local z = z0 + (sy - r0)
+        if z >= 0 and z < D then
           for sx = x0, x1 do
-            if inside[sy * W + sx] then put(sx, plane, sy, sy * W + sx) end
+            if inside[sy * W + sx] then put(sx, plane, z, sy * W + sx) end
           end
         end
       end

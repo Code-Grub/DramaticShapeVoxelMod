@@ -83,6 +83,10 @@ local FALLBACK_HEIGHTS = {
   bed = 7,
   stool = 8,
   counter = 8,
+  -- the raised back band of low seating: the Center couch's west strip
+  -- is drawn from above like the rest of the couch, but depicts the
+  -- back and arm rising over the 8px seat
+  backrest = 12,
   table = 12,
   desk = 24,
   prop = 16,
@@ -145,6 +149,9 @@ local ART = {
   -- profile archetype Structures builds real steps for -- rising flights
   -- for stairs leading up, sunken stairwells for stairs leading down
   bed = "top",
+  -- a backrest's art is the couch seen from above, so like the bed it
+  -- rides the top face of its taller box
+  backrest = "top",
   stool = "billboard",
   -- half-cell furniture: a service counter, a low couch.  One 8px band,
   -- so exactly the drawing's bottom row stands up as the front and
