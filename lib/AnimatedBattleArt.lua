@@ -1,14 +1,17 @@
 -- Runtime playback for authoring-time GIF conversions.
 --
 -- LÖVE does not decode animated GIFs. The importer flattens each GIF into a
--- PNG atlas and data/animated_battle_sprites.lua records the logical cell and
+-- PNG atlas and one generated data table per set records the logical cell and
 -- timing data. This module extracts exact ImageData rectangles: no Canvas DPI
 -- participates, so one source pixel remains one logical battle-art pixel.
 local V = ...
 
 local BattleArt = V.require("BattleArt")
-local DEFINITIONS = V.data("animated_battle_sprites")
-local CRYSTAL = V.data("animated_battle_sprites_crystal")
+local SETS = {
+  gen2 = V.data("animated_battle_sprites_gen2"),
+  gen3 = V.data("animated_battle_sprites_gen3"),
+  gen5 = V.data("animated_battle_sprites_gen5"),
+}
 local AnimatedBattleArt = {}
 
 local loaded, loadOrder = {}, {}
@@ -87,10 +90,8 @@ end
 local function definition(battler, side)
   local species = battler and battler.mon and battler.mon.species
   local key = species and tostring(species):upper()
-  local crystal = key and CRYSTAL[key]
-  local preferred = crystal and crystal[side]
-  if preferred and atlasPath(preferred) then return preferred end
-  local bySide = key and DEFINITIONS[key]
+  local selected = SETS[BattleArt.animationSetting:get()]
+  local bySide = selected and key and selected[key]
   return bySide and bySide[side] or nil
 end
 

@@ -1,16 +1,17 @@
 # Back animated battle art
 
-Optional animated player-back battle atlases go here. Local PNG files are
-ignored by Git. Authored back art faces right and is never mirrored. The
-decoder expects the atlas cell dimensions and frame timings recorded in
-`data/animated_battle_sprites.lua`; the supplied metadata recognizes the
-atlases produced by `tools/import_animated_back_sprite.py`. Missing or
-malformed art falls back to the ROM sprite for that Pokemon.
+Optional animated player-back battle atlases are grouped here by generation.
+Local PNG files are ignored by Git. Authored back art faces right and is never
+mirrored. Gen 5 currently supplies `gen5/` back atlases; Gen 2 and Gen 3 have
+front metadata only, so `PLAYER VIEW: BACK` falls back to the ROM back sprite
+when either is selected.
 
 GIF decoding is authoring-only. The game reads PNG atlases, extracts every
 cell at its native logical resolution, and uses nearest-neighbour filtering.
-The importer creates both the atlases and their single shared metadata file;
-users do not write one Lua file per Pokemon.
+The importer creates both the atlases and the selected set's shared metadata;
+users do not write one Lua file per Pokemon. Run
+`python tools/import_animated_sprites.py --set gen5` from the repository root
+to generate both Gen 5 fronts and backs.
 
 ## Gen 1 filename exceptions
 

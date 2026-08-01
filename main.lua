@@ -342,6 +342,10 @@ local SETTINGS = {
     "Use optional PNGs from assets/battle in fights. Missing art falls "
     .. "back to the ROM. STATIC is the zero-configuration default.",
     when = function() return stagedBattles() end, full = true },
+  { BattleArt.animationSetting,
+    "Choose the generation folder used by BATTLE ART: ANIMATED. Missing "
+    .. "art falls directly back to ROM rather than mixing generations.",
+    when = function() return stagedBattles() end, full = true },
   { BattleArt.viewSetting,
     "Show the player's Pokemon from the front or back. Both choices stay "
     .. "world-placed, lit, shadowed and depth-occluded.",

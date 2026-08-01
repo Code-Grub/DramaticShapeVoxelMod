@@ -21,11 +21,13 @@
   scaling, and sends every frame through the same transparency, display
   filtering, world lighting, depth and shadow path as static art. Missing or
   malformed atlases fall back per Pokemon to ROM art.
-- **Optional Crystal front collection.** Local atlases in
-  `front-animated/crystal` are preferred per species, with the ordinary
-  animated atlas and ROM art as successive fallbacks. The authoring importer
-  downloads #001-#151, preserves their 56x56 logical canvases and original
-  frame delays, and commits only generated timing metadata—not artwork.
+- **Generation-scoped animation sets.** `ANIM SET` selects GEN 2, GEN 3, or
+  GEN 5 from matching generation subfolders. Missing art falls directly back
+  to ROM instead of mixing visual styles. One authoring importer builds all
+  three formats; only generated dimensions/timings are committed, never art.
+- **Crystal and Emerald front collections.** The local imports cover #001-#151
+  while preserving every source frame's native canvas and delay. Gen 5 keeps
+  its existing animated fronts and backs in the same folder convention.
 
 ## 1.3.0
 

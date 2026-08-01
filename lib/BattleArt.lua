@@ -7,6 +7,8 @@ local BattleArt = {}
 
 BattleArt.setting = ModSetting.new("battleArt", "BATTLE ART",
   { "static", "animated", "rom" }, { "STATIC", "ANIMATED", "ROM" })
+BattleArt.animationSetting = ModSetting.new("animatedSet", "ANIM SET",
+  { "gen2", "gen3", "gen5" }, { "GEN 2", "GEN 3", "GEN 5" })
 BattleArt.viewSetting = ModSetting.new("playerView", "PLAYER VIEW",
   { "front", "back" }, { "FRONT", "BACK" })
 
