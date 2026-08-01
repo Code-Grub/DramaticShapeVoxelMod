@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Battle Art
+
+### Added
+
+- **Zero-configuration bring-your-own battle PNGs.** `BATTLE ART: STATIC`
+  looks in `front-static` and `back-static`, uses native image dimensions,
+  preserves alpha or keys a border-connected corner matte, and falls back per
+  species to ROM art. No Pokémon art is distributed or tracked.
+- **World-placed player front/back choice.** `PLAYER VIEW` replaces the old
+  UI-pinned back-sprite toggle. Both views use the depth buffer, world and
+  day/night tint, display filtering, hit flash and alpha-shaped shadow.
+- **Private test packaging.** The four battle-art folders ignore local art in
+  Git while `tools/package_mod.ps1` deliberately includes those PNGs in a ZIP.
+
 ## 1.3.0
 
 ### Added

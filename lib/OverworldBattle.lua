@@ -45,6 +45,7 @@ local BattleScene = V.require("BattleScene")
 local BattleDOF = V.require("BattleDOF")
 local BattleHud = V.require("BattleHud")
 local BattlePics = V.require("BattlePics")
+local BattleArt = V.require("BattleArt")
 local Voxel3D = V.require("Voxel3D")
 local ChunkMesher = V.require("ChunkMesher")
 
@@ -72,36 +73,21 @@ function OverworldBattle.enabled()
   return OverworldBattle.setting:get() and true or false
 end
 
--- ------- BACK SPRITES: the player's own mon stays on the menu
+-- ------- battle-art view
 --
 -- The staged shot stands BOTH mons on the map, which is the mode's whole
 -- claim -- but it costs the one piece of framing Gen 1 is most recognisable
 -- by: your own Pokemon, seen from behind, sitting on top of the battle menu
 -- with its feet on the box. That silhouette is the series' shot.
 --
--- So BACK SPRITES is offered as a middle setting rather than a compromise
--- imposed on everyone. With it on the foe is still geometry standing on its
--- tile at the far end of the arena, and the player's side goes back to being
--- the GB's own flat back pic in the GB's own slot: same art, same 2x, same
--- feet on row 96.
--- Nothing else about the shot moves -- the arena, the camera and the drift are
--- solved exactly as they were, so the foe stands where it always stood and the
--- player's cell is simply empty ground in the foreground.
---
--- OFF by default: what the mode advertises is the pair of them out there.
-OverworldBattle.BACK_KEY = "battleBack"
-OverworldBattle.BACK_LABEL = "BACK SPRITES"
-
-OverworldBattle.backSetting = ModSetting.new(OverworldBattle.BACK_KEY,
-                                             OverworldBattle.BACK_LABEL,
-                                             { false, true }, { "OFF", "ON" })
+-- Kept as a compatibility query for older callers. Both FRONT and BACK are
+-- now world cards; neither is pinned to the UI layer.
 
 -- Gated on 3D-BTL rather than read alone: with staged battles off there is no
 -- staged shot for a back pic to be pinned in FRONT of, and the engine's own
 -- battle screen already draws exactly this.
 function OverworldBattle.backPinned()
-  if not OverworldBattle.enabled() then return false end
-  return OverworldBattle.backSetting:get() and true or false
+  return false
 end
 
 -- ------- both mons face you
@@ -113,9 +99,7 @@ end
 -- through the engine's own pokemon.sprite hook -- the seam that exists for
 -- exactly this, so no battle code has to be touched to get it.
 --
--- Unless BACK SPRITES is on, the setting that asks for the back pic back:
--- that mon is drawn in its own slot on the menu, seen from behind, and the
--- front art would be it turned round to face the player it belongs to.
+-- PLAYER VIEW chooses whether the near card asks for front or back art.
 --
 -- Answered BEFORE a battle exists, because the battler is built before the
 -- battle is pushed. So it cannot ask whether this fight is staged; it asks
@@ -127,7 +111,7 @@ local staged = { mapId = nil, ok = false }
 
 function OverworldBattle.wantsFront()
   if not OverworldBattle.enabled() then return false end
-  if OverworldBattle.backPinned() then return false end
+  if BattleArt.playerSide() ~= "front" then return false end
   if not Voxel3D.available() then return false end
   -- required here rather than through the file's own helper: this runs
   -- while a battler is being built, which is before that helper is defined
@@ -510,6 +494,7 @@ function OverworldBattle.invalidate()
   BattleDOF.invalidate()
   BattleHud.invalidate()
   BattlePics.invalidate()
+  BattleArt.invalidate()
 end
 
 -- ------- the battle screen's background
@@ -664,16 +649,18 @@ OverworldBattle.TEX_AX, OverworldBattle.TEX_AY = TEX_AX, TEX_AY
 
 -- Which side is being rendered, or nil. The placement wrappers read it.
 local texturing = nil
+local texturingMetric = nil
+local texturingAx, texturingAy = TEX_AX, TEX_AY
 
 local texCanvas = {}
 local innerPics = nil                   -- captured by install()
 local innerHUDs = nil                   -- likewise, for the snapped HUD layer
 
-local function texCanvasFor(side)
+local function texCanvasFor(side, w, h)
   local c = texCanvas[side]
-  if c then return c end
-  local ok, made = pcall(love.graphics.newCanvas, BattleScene.GB_W,
-                         BattleScene.GB_H, { dpiscale = 1 })
+  w, h = w or BattleScene.GB_W, h or BattleScene.GB_H
+  if c and c:getWidth() == w and c:getHeight() == h then return c end
+  local ok, made = pcall(love.graphics.newCanvas, w, h, { dpiscale = 1 })
   if not ok then return nil end
   made:setFilter("nearest", "nearest")
   texCanvas[side] = made
@@ -706,8 +693,24 @@ local OFF = {
 -- feet ended up, in canvas coordinates.
 function OverworldBattle.sideTexture(battle, side)
   if not (innerPics and battle) then return nil end
+  BattleArt.apply(battle)
   if not sideVisible(battle, side) then return nil end
-  local canvas = texCanvasFor(side)
+  local battler = side == "enemy" and battle.enemy or battle.player
+  local showingTrainer = (side == "enemy" and battle.showEnemyTrainer
+                           and battle.trainerPic)
+                         or (side == "player" and battle.showPlayerBack
+                             and battle.playerBackPic)
+  local metric = not showingTrainer and BattleArt.metrics(battler and battler.sprite)
+                 or nil
+  local cw, ch = BattleScene.GB_W, BattleScene.GB_H
+  local ax, ay = TEX_AX, TEX_AY
+  if metric then
+    cw = math.max(cw, metric.w + 2)
+    ch = math.max(ch, metric.h + 2)
+    ax = cw / 2
+    ay = math.max(TEX_AY, metric.h + 1)
+  end
+  local canvas = texCanvasFor(side, cw, ch)
   if not canvas then return nil end
 
   local g = love.graphics
@@ -726,6 +729,8 @@ function OverworldBattle.sideTexture(battle, side)
   local saved = {}
   for k, v in pairs(OFF[side]) do saved[k] = battle[k]; battle[k] = v end
   texturing = side
+  texturingMetric = metric
+  texturingAx, texturingAy = ax, ay
 
   local ok, err = pcall(function()
     g.setCanvas(canvas)
@@ -736,6 +741,8 @@ function OverworldBattle.sideTexture(battle, side)
   end)
 
   texturing = nil
+  texturingMetric = nil
+  texturingAx, texturingAy = TEX_AX, TEX_AY
   for k in pairs(OFF[side]) do battle[k] = saved[k] end
   g.setScissor, g.intersectScissor, g.getScissor =
     setScissor, intersectScissor, getScissor
@@ -743,7 +750,6 @@ function OverworldBattle.sideTexture(battle, side)
   g.setBlendMode(prevBlend or "alpha", prevAlpha)
   if not ok then error(err, 0) end
 
-  local ax, ay = TEX_AX, TEX_AY
   local trainer = false
   -- The intro trainer pic draws itself straight into its own 7x7 slot rather
   -- than through the placement helpers, so it is hung from that slot instead.
@@ -752,7 +758,8 @@ function OverworldBattle.sideTexture(battle, side)
   elseif side == "player" and battle.showPlayerBack and battle.playerBackPic then
     trainer = true
   end
-  return { canvas = canvas, ax = ax, ay = ay, trainer = trainer }
+  return { canvas = canvas, ax = ax, ay = ay, trainer = trainer,
+           noMirror = side == "player" and BattleArt.playerSide() == "back" }
 end
 
 -- Whether the hit flash is showing this frame.
@@ -835,6 +842,7 @@ function OverworldBattle.install()
   function BattleState:picImage(img)
     local out = innerPic(self, img)
     if not OverworldBattle.shot() then return out end
+    if BattleArt.isExternal(out) then return out end
     return BattlePics.filled(out)
   end
 
@@ -847,14 +855,23 @@ function OverworldBattle.install()
   function BattleState.backPlacement(w, h, pad, padL, scale)
     local x, y, s = innerBack(w, h, pad, padL, scale)
     if not texturing then return x, y, s end
-    return TEX_AX - w * scale / 2, TEX_AY - (h - pad) * scale, s
+    if texturingMetric then
+      return texturingAx - texturingMetric.center * scale,
+             texturingAy - (texturingMetric.y1 + 1) * scale, s
+    end
+    return texturingAx - w * scale / 2,
+           texturingAy - (h - pad) * scale, s
   end
 
   local innerFront = BattleState.frontPlacement
   function BattleState.frontPlacement(ex, ey, w, h, scale)
     local x, y, s = innerFront(ex, ey, w, h, scale)
     if not texturing then return x, y, s end
-    return TEX_AX - w * scale / 2, TEX_AY - h * scale, s
+    if texturingMetric then
+      return texturingAx - texturingMetric.center * scale,
+             texturingAy - (texturingMetric.y1 + 1) * scale, s
+    end
+    return texturingAx - w * scale / 2, texturingAy - h * scale, s
   end
 
   local innerDraw = BattleState.draw

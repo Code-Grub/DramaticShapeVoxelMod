@@ -78,6 +78,7 @@ local ChunkMesher = V.require("ChunkMesher")
 local VoxelGrid = V.require("VoxelGrid")
 local WorldCurve = V.require("WorldCurve")
 local OverworldBattle = V.require("OverworldBattle")
+local BattleArt = V.require("BattleArt")
 local BattleExit = V.require("BattleExit")
 local DayNight = V.require("DayNight")
 local DayTint = V.require("DayTint")
@@ -290,10 +291,8 @@ applyFull = function(level)
   -- battle rows stay on the menu under FULL (see the rows hook), so this is
   -- where the preset puts them and not where they are held.
   OverworldBattle.setting:setIndex(1, Game)
-  -- with both mons out there on it: BACK SPRITES keeps the player's own on the
-  -- menu, which is the one part of the old screen FULL is least about. Set the
-  -- same way, and changed back on the same row a keypress later.
-  OverworldBattle.backSetting:setIndex(1, Game)
+  -- default to the player's front view, with both battlers world-placed.
+  BattleArt.viewSetting:setIndex(1, Game)
   -- and the battle screen the staged fight is composed for. WIDE re-lays that
   -- screen out on a 304x144 surface, which moves every anchor the arena camera
   -- is solved against (OverworldBattle.forceOG); FULL has just switched staged
@@ -338,13 +337,14 @@ local SETTINGS = {
     "Fight on the map: the battle draws over the nearest clear ground, "
     .. "shot over the shoulder with a slow parallax drift.",
     full = true },
-  -- Only offered while a fight can actually be staged on the map: with 3D-BTL
-  -- off the engine draws the classic screen, which is this row's ON already,
-  -- and a row that no longer decides anything is worse than no row.
-  { OverworldBattle.backSetting,
-    "Keep your own Pokemon on the battle menu, seen from behind in its "
-    .. "original slot, instead of standing it on the map facing the foe. "
-    .. "The foe is still out there on its own tile.",
+  -- Only offered while a fight can actually be staged on the map.
+  { BattleArt.setting,
+    "Use optional PNGs from assets/battle in fights. Missing art falls "
+    .. "back to the ROM. STATIC is the zero-configuration default.",
+    when = function() return stagedBattles() end, full = true },
+  { BattleArt.viewSetting,
+    "Show the player's Pokemon from the front or back. Both choices stay "
+    .. "world-placed, lit, shadowed and depth-occluded.",
     when = function() return stagedBattles() end, full = true },
   { DayNight.setting,
     "What time it is outdoors: pin the sky to DAY, NIGHT, DUSK or DAWN, "
@@ -575,13 +575,13 @@ mod.hooks:wrap("ui.options.rows", function(next, game, rows)
     --
     -- FULL: a preset that owns the look, so the rows that describe the look go
     -- with it. The BATTLE rows are not that -- 3D-BTL decides what a fight is
-    -- drawn OVER and BACK SPRITES how it is framed, and neither is a knob on
+    -- drawn over and BATTLE ART how its world cards are sourced, neither a knob on
     -- the diorama FULL is a preset for. FULL still SETS them on arrival (see
     -- applyFull); it does not hold them, so leaving them on the menu is the
     -- difference between a preset and a lock.
     --
-    -- And a row whose own switch is off the table this frame (BACK SPRITES,
-    -- which needs a staged fight to be about) is left off with it. The mod
+    -- And a row whose own switch is off the table this frame (battle-art rows
+    -- need a staged fight to be about) is left off with it. The mod
     -- manager's page carries every one of them either way.
     local offered = (entry.full or not full)
                     and (not entry.when or entry.when())
@@ -773,7 +773,9 @@ mod.hooks:wrap("pokemon.sprite", function(next, path, ctx)
   if not (ctx and ctx.kind == "battle" and ctx.side == "back") then
     return out
   end
-  if not OverworldBattle.wantsFront() then return out end
+  if BattleArt.playerSide() ~= "front" or not OverworldBattle.wantsFront() then
+    return out
+  end
   local def = ctx.data and ctx.data.pokemon and ctx.data.pokemon[ctx.species]
   return (def and def.spriteFront) or out
 end)
