@@ -216,6 +216,36 @@
   depth16 as the floor every GLES3 device can read. Refused all four, the
   reflections are lost and nothing else, exactly as before.
 
+- **Under BACK SPRITES some of your own Pokemon were see-through -- Pikachu,
+  Seel, Dewgong, Chansey, Jigglypuff -- with the arena showing through the
+  middle of them.** Those back pics are drawn as OUTLINES: everything inside
+  the ink is the lightest shade, the decoder keys that shade to nothing, and
+  on hardware it did not matter because the field behind them was white too.
+
+  BattlePics already put that paper back by flooding the background inward and
+  filling whatever it could not reach, and along the bottom of a figure it told
+  a narrow opening (a belly the drawing ran out of, sealed) from a wide one (a
+  stride, left open for the world to show through). Right for a mon standing
+  on the map -- but the pinned back pic is not on the map, it is on the text
+  box with its feet on row 96, and there is white box under its lowest row
+  rather than arena. Every one of those mons leaks out through an opening far
+  too wide to read as a drain, so the flood walked straight up inside them.
+
+  A pic on the box is now told so, and its bottom edge seals: nothing reaches
+  it from below at any width, and the rule stops being a heuristic -- paper is
+  whatever the background cannot walk to from the left, the right or the top.
+  Twelve of the game's 151 back pics turn on this; the other 139 come back
+  byte-identical, and no front pic is touched at all.
+
+  **And a hole is filled with the pic's own paper rather than with white.**
+  Shade 0 is only white while the pic is still grays, and pics arrive here
+  after the bake -- a species SGB colour, a BGP fade mid-animation, PAL_BLACK
+  across the whole screen while the blackout text is up. A hardcoded white
+  belly would have been the one lit thing on a blacked-out mon. The lightest
+  shade still standing in the pic is that colour, and every one of the game's
+  battler pics keeps at least one such pixel -- an eye, a highlight down a
+  cheek -- so what goes back is the baked shade itself.
+
 ### Known
 
 - Screen-space reflections can only reflect what is in the frame. A tree just
