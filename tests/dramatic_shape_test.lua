@@ -1900,10 +1900,12 @@ T.check(wide > band, "marks further apart hold a deeper slab in focus")
 -- they are drawn in cannot reach past its own 160 columns.
 do
 local hudShot = { lx = 100, ly = 12, scale = 3, pw = 1000, ph = 500 }
-local hudRects, bandX = Battles.snapRects(hudShot)
+local hudRects, bandPlacement = Battles.snapRects(hudShot)
 local hudRect = Battles.HUD_RECT
+local playerScale = hudShot.scale - 1
 
-T.eq(hudRects.enemy[1], 0, "the foe's panel starts at the window's left edge")
+T.eq(hudRects.enemy[1], 2 * hudShot.scale,
+  "the foe's panel keeps its two-logical-pixel left inset")
 T.eq(hudRects.player[1] + hudRects.player[3], hudShot.pw,
   "and the player's ends at the right one")
 T.check(hudRects.enemy[1] < hudShot.lx,
@@ -1917,27 +1919,35 @@ T.eq(hudRects.enemy[2], hudShot.ly + hudRect.enemy[2] * hudShot.scale,
 T.eq(hudRects.player[2], hudShot.ly + hudRect.player[2] * hudShot.scale,
   "and so does the player's")
 
--- and their size: a block is the same GB tiles at the same scale as the rest of
--- the art, moved and not stretched
+-- The foe retains the frame scale. The near/player block takes one smaller
+-- INTEGER rung, keeping every source pixel square without covering the foe.
 T.eq(hudRects.enemy[3], hudRect.enemy[3] * hudShot.scale,
   "a block is its own width at the frame's scale")
-T.eq(hudRects.player[4], hudRect.player[4] * hudShot.scale,
-  "and its own height")
+T.eq(hudRects.player[3], hudRect.player[3] * playerScale,
+  "the player block is one integer display rung narrower")
+T.eq(hudRects.player[4], hudRect.player[4] * playerScale,
+  "and one integer display rung shorter")
 
 -- the band each block is cut out of is placed so the block lands on the rect
 -- above; that is what the panel and the glyphs agreeing depends on
-T.eq(bandX.enemy + hudRect.enemy[1] * hudShot.scale, hudRects.enemy[1],
+T.eq(bandPlacement.enemy.x
+     + hudRect.enemy[1] * bandPlacement.enemy.scale, hudRects.enemy[1],
   "the foe's band is offset so its block lands on its panel")
-T.eq(bandX.player + hudRect.player[1] * hudShot.scale, hudRects.player[1],
+T.eq(bandPlacement.player.x
+     + hudRect.player[1] * bandPlacement.player.scale, hudRects.player[1],
   "and the player's likewise")
+T.eq(bandPlacement.player.y
+     + (hudRect.player[2] - Battles.HUD_BAND.player[2])
+       * bandPlacement.player.scale,
+     hudRects.player[2], "the compact band preserves the player's top row")
 
--- a window the shape of the GB screen has nowhere to snap TO, and the player's
--- block already ends at column 160, so it must not move at all
+-- Even on a GB-shaped window the compact player block remains right-anchored.
 local snug = { lx = 0, ly = 0, scale = 4, pw = 160 * 4, ph = 144 * 4 }
 local snugRects = Battles.snapRects(snug)
-T.eq(snugRects.player[1], hudRect.player[1] * snug.scale,
-  "on a GB-shaped window the player's block stays exactly where it was")
-T.eq(snugRects.enemy[1], 0, "and the foe's is flush with a left edge it already met")
+T.eq(snugRects.player[1] + snugRects.player[3], snug.pw,
+  "on a GB-shaped window the compact player block keeps the right edge")
+T.eq(snugRects.enemy[1], 2 * snug.scale,
+  "and the foe retains its readable left inset")
 
 -- the bands together cover every row drawHUDs draws into (0-96: the two HUDs,
 -- the pokeball rows and the safari ball count) and never overlap, so nothing it

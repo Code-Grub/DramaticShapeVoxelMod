@@ -239,10 +239,11 @@ end
 -- screenshot pasted over a diorama rather than as the diorama's own furniture.
 --
 -- So each block is snapped to its own side: the foe's to the left edge of the
--- window, the player's to the right. Nothing about either block changes -- same
--- tiles, same size, same rows, drawn by the engine's own DrawEnemyHUDAndHPBar
--- and DrawPlayerHUDAndHPBar -- only where the pair sits. On a window the shape
--- of the GB screen there is nowhere to go and the snap is a no-op.
+-- window, the player's to the right. The near/player block is one INTEGER
+-- display rung smaller than the battle letterbox. At the common 2x layout it
+-- is therefore native 1x: every source pixel stays a sharp screen pixel while
+-- the block no longer reaches halfway across the arena and covers the foe.
+-- The enemy block retains the letterbox scale.
 --
 -- They cannot simply be MOVED there: the engine draws them into the 160x144 UI
 -- canvas and everything outside it is clipped away. So the layer is rendered to
@@ -269,17 +270,30 @@ OverworldBattle.HUD_BAND = {
 -- which is the whole cost of the snap and is invisible.
 function OverworldBattle.snapRects(shot)
   local s = shot.scale
+  local ps = math.max(1, s - 1)
   local e, p = OverworldBattle.HUD_RECT.enemy, OverworldBattle.HUD_RECT.player
   -- Leave two logical pixels between the foe's name and the window edge.
   -- The whole enemy band moves with the panel, so long names and HUD shakes
   -- keep their original internal alignment instead of being clipped.
   local ex = (2 - e[1]) * s
-  local px = shot.pw - (p[1] + p[3]) * s     -- player: right edge to the far side
+  local px = shot.pw - (p[1] + p[3]) * ps    -- player: right edge to the far side
   local rects = {
     enemy = { ex + e[1] * s, shot.ly + e[2] * s, e[3] * s, e[4] * s },
-    player = { px + p[1] * s, shot.ly + p[2] * s, p[3] * s, p[4] * s },
+    player = { px + p[1] * ps, shot.ly + p[2] * s,
+               p[3] * ps, p[4] * ps },
   }
-  return rects, { enemy = ex, player = px }
+  local playerBand = OverworldBattle.HUD_BAND.player
+  return rects, {
+    enemy = { x = ex, y = shot.ly, scale = s },
+    -- Preserve the HUD's original top row while shrinking its internal
+    -- distance from the band boundary. This leaves clear world between its
+    -- lower bracket and the live textbox rather than placing it underneath.
+    player = {
+      x = px,
+      y = shot.ly + p[2] * s - (p[2] - playerBand[2]) * ps,
+      scale = ps,
+    },
+  }
 end
 
 -- A rect measured in the GB frame, in WORLD-canvas pixels: where the letterbox
@@ -1231,7 +1245,7 @@ function OverworldBattle.snapHUDs(battle, shot)
     return false
   end
   local slide = (battle.introSlide or 0) * 4
-  local rects, bandX = OverworldBattle.snapRects(shot)
+  local rects, bandPlacement = OverworldBattle.snapRects(shot)
   local enemy, player = OverworldBattle.hudLive(battle, slide)
   local live = {}
   if enemy then live.enemy = rects.enemy end
@@ -1262,10 +1276,11 @@ function OverworldBattle.snapHUDs(battle, shot)
     end
     g.setColor(1, 1, 1, 1)
     for side, band in pairs(OverworldBattle.HUD_BAND) do
+      local placement = bandPlacement[side]
       local quad = g.newQuad(band[1], band[2], band[3], band[4],
                              BattleScene.GB_W, BattleScene.GB_H)
-      g.draw(layer, quad, bandX[side] + band[1] * shot.scale,
-             shot.ly + band[2] * shot.scale, 0, shot.scale, shot.scale)
+      g.draw(layer, quad, placement.x + band[1] * placement.scale,
+             placement.y, 0, placement.scale, placement.scale)
     end
   end)
   if prevCanvas then g.setCanvas(prevCanvas) else g.setCanvas() end

@@ -60,6 +60,10 @@
   active battle, and post-battle frames instead of switching through gray.
   The obsolete zero-alpha frost composite is skipped entirely, preventing a
   driver-dependent dim veil over the arena.
+- **Lossless compact player HUD.** The right-side player status block renders
+  one integer display rung below the battle letterbox (2x becomes native 1x),
+  stays pixel-sharp and right-anchored, and no longer stretches across the
+  arena far enough to cover the opposing Pokemon or the live textbox.
 - **No stale battle-entry dimmer.** Staged battles suppress the engine's
   translucent world-fade rectangle at the compositor boundary as well as
   clearing its fade state. The normal battle wipe, deliberate battle-exit
