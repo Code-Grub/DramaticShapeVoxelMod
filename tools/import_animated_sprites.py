@@ -108,14 +108,28 @@ def download_gen4(base: str, number: int) -> bytes:
 
 
 def convert(raw: bytes, destination: Path, columns: int = 16,
-            max_dimension: int = 2048) -> dict:
+            max_dimension: int = 2048, *, coalesce: bool = False,
+            minimum_duration: int = 0) -> dict:
     with Image.open(BytesIO(raw)) as gif:
         frames, durations = [], []
         for frame in ImageSequence.Iterator(gif):
-            durations.append(
-                int(frame.info.get("duration", gif.info.get("duration", 100)))
-            )
-            frames.append(frame.convert("RGBA"))
+            duration = max(1, round(float(
+                frame.info.get("duration", gif.info.get("duration", 100))
+            )))
+            rgba = frame.convert("RGBA")
+            # APNGs may carry arbitrary RGB values behind fully transparent
+            # pixels. Normalize them before equality checks and atlas packing:
+            # those hidden bytes have no visual meaning and LÖVE never sees
+            # them after alpha compositing.
+            normalized = Image.new("RGBA", rgba.size)
+            normalized.alpha_composite(rgba)
+            if coalesce and frames and normalized.tobytes() == frames[-1].tobytes():
+                durations[-1] += duration
+            else:
+                frames.append(normalized)
+                durations.append(duration)
+    if minimum_duration > 0:
+        durations = [max(minimum_duration, duration) for duration in durations]
     if not frames:
         raise ValueError("GIF contains no frames")
     width, height = frames[0].size

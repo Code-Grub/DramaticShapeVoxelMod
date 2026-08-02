@@ -18,9 +18,15 @@ local BACK_SETS = {
   gen5 = SETS.gen5,
 }
 -- Gen 1 SGB, Gen 2 Crystal, and Gen 4 backs are intentionally single-frame
--- collections even while BATTLE ART is ANIMATED. Keeping this allowlist
--- narrow prevents a static generation folder from being decoded as an atlas.
-local ANIMATED_BACK_SETS = { gen3 = true, gen5 = true }
+-- collections even while BATTLE ART is ANIMATED. An explicit source table
+-- prevents a static generation folder from being decoded as an atlas.
+local BACK_SOURCE_KIND = {
+  gen1 = "static",
+  gen2 = "static",
+  gen3 = "animated",
+  gen4 = "static",
+  gen5 = "animated",
+}
 local PLAYER_SETS = V.data("animated_player_trainers")
 local AnimatedBattleArt = {}
 
@@ -258,7 +264,7 @@ function AnimatedBattleArt.update(battle, dt)
   local playerSide = BattleArt.playerSide()
   if playerSide == "back" then
     local generation = BattleArt.backAnimationSetting:get()
-    if ANIMATED_BACK_SETS[generation] then
+    if BACK_SOURCE_KIND[generation] == "animated" then
       updateBattler(battle.player, "back", dt, mode)
     else
       updateStaticBack(battle.player, generation, mode)

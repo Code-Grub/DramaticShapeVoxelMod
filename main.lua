@@ -371,8 +371,9 @@ local SETTINGS = {
     end, full = true },
   { BattleArt.backAnimationSetting,
     "Choose the player back-art generation. STATIC reads only a PNG from "
-    .. "back-static/GEN for every choice. ANIMATED reads static GEN 1-4 "
-    .. "PNGs or GEN 5 atlases. Missing art falls back to the ROM.",
+    .. "back-static/GEN for every choice. ANIMATED reads static GEN 1, 2, "
+    .. "and 4 PNGs, or animated GEN 3 and 5 atlases. Missing art falls "
+    .. "back to the ROM.",
     when = function()
       return stagedBattles() and BattleArt.setting:get() ~= "rom"
     end, full = true },

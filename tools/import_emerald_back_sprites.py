@@ -50,7 +50,16 @@ def main() -> None:
         animated_name = f"Spr b 3e {number:03d}.png"
         animated = archive_png(args.base_url, animated_name)
         animated_rel = f"assets/battle/back-animated/gen3/{slug}.png"
-        info = convert(animated, root / animated_rel)
+        # The archive APNGs frequently encode holds as repeated cells and use
+        # one-tick (~16 ms) poses. Merge only consecutive visual duplicates,
+        # retaining their combined time, then keep every remaining pose on
+        # screen for at least two 60 Hz updates so it is visible in LÖVE.
+        info = convert(
+            animated,
+            root / animated_rel,
+            coalesce=True,
+            minimum_duration=33,
+        )
 
         static_name = f"Spr b 3r {number:03d}.png"
         static_path = root / "assets" / "battle" / "back-static" / "gen3" / f"{slug}.png"

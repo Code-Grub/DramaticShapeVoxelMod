@@ -38,6 +38,10 @@
   scaling, and sends every frame through the same transparency, display
   filtering, world lighting, depth and shadow path as static art. Missing or
   malformed atlases fall back per Pokemon to ROM art.
+- **Readable Emerald back animation timing.** Consecutive duplicate APNG
+  frames are coalesced while retaining their combined hold time, and distinct
+  Gen 3 back poses remain visible for at least 33 ms instead of disappearing
+  within a single 60 Hz update.
 - **Independent front/back sets.** `ANIM FRONT GEN` selects animated GEN 2,
   GEN 3, GEN 4, or GEN 5 fronts. `BACK ART SET` selects the static GEN 1–5 folder in
   STATIC mode; ANIMATED uses animated GEN 3/5 atlases or static GEN 1/2/4 PNGs.
