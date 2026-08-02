@@ -95,6 +95,10 @@ Run `python tools/import_crystal_back_sprites.py --root .` to import the first
 still select the static Yellow SGB and Crystal folders respectively; only GEN
 3 and GEN 5 invoke an animated back-atlas decoder.
 
+Run `python tools/import_platinum_back_sprites.py --root .` to populate the
+static GEN 4 back set. It follows the Platinum category's mixture of `4p` and
+reused `4d` files and chooses the male image for a dimorphic species.
+
 `BACK PLACEMENT: AUTO` keeps STATIC-mode player backs in the world, including
 ROM fallbacks. Under ANIMATED, supplied Gen 1–4 PNGs and Gen 5 atlases stay in
 the world while a missing selection leaves the ROM backsprite on its OG UI

@@ -49,6 +49,13 @@ and copies its first 151 ordinary PNGs unchanged into `back-static/gen2`. The
 importer discovers each species' mixed `Spr b 2c`, `Spr b 2g`, or `Spr b 2s`
 archive prefix and excludes shiny and Japanese variants automatically.
 
+For Gen 4, `python tools/import_platinum_back_sprites.py --root .` imports the
+first 151 ordinary backs from the
+[Platinum category](https://archives.bulbagarden.net/wiki/Category:Platinum_back_sprites).
+It discovers both Platinum `Spr b 4p` files and reused Diamond/Pearl `Spr b
+4d` files. When the archive provides a male/female pair, the male image is the
+predictable Gen 1 default, matching the animated Gen 4 front importer.
+
 `BACK PLACEMENT` can override the layer for comparison. AUTO uses supplied
 generation PNGs in the world and keeps a missing ANIMATED fallback on OG UI;
 WORLD and OG UI force either presentation.

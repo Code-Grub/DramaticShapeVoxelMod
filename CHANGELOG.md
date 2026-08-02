@@ -66,6 +66,9 @@
 - **Mixed-prefix Crystal back importer.** The Gen 2 authoring tool discovers
   ordinary `2c`, `2g`, and `2s` archive filenames per species and preserves
   each source PNG's indexed pixels and transparency without resampling.
+- **Platinum static back importer.** The Gen 4 authoring tool resolves reused
+  `4d` sprites and `4p` replacements per species, selecting the male member of
+  a dimorphic pair as the deterministic Gen 1 default.
 
 ## 1.3.0
 
