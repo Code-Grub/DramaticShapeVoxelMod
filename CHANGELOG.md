@@ -42,6 +42,9 @@
   frames are coalesced while retaining their combined hold time, and distinct
   Gen 3 back poses remain visible for at least 33 ms instead of disappearing
   within a single 60 Hz update.
+- **Emerald movement-preserving anchors.** Gen 3 back atlases share the final
+  neutral frame's placement anchor across their animation, preserving authored
+  translation and scaling instead of re-centering every pose into stillness.
 - **Independent front/back sets.** `ANIM FRONT GEN` selects animated GEN 2,
   GEN 3, GEN 4, or GEN 5 fronts. `BACK ART SET` selects the static GEN 1–5 folder in
   STATIC mode; ANIMATED uses animated GEN 3/5 atlases or static GEN 1/2/4 PNGs.

@@ -157,12 +157,13 @@ def convert(raw: bytes, destination: Path, columns: int = 16,
     }
 
 
-def lua_definition(path: str, info: dict) -> str:
+def lua_definition(path: str, info: dict, *, stable_anchor: bool = False) -> str:
     durations = ",".join(map(str, info["durations"]))
+    anchor = ", stableAnchor = true" if stable_anchor else ""
     return (
         f'{{ image = "{path}", width = {info["width"]}, '
         f'height = {info["height"]}, columns = {info["columns"]}, '
-        f'frames = {info["frames"]}, durations = {{{durations}}} }}'
+        f'frames = {info["frames"]}, durations = {{{durations}}}{anchor} }}'
     )
 
 

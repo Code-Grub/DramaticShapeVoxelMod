@@ -378,6 +378,29 @@ end
 
 function BattleArt.isExternal(img) return external[img] and true or false end
 function BattleArt.metrics(img) return metrics[img] end
+-- Animated transforms are authored inside a fixed logical canvas. Gen 3 back
+-- APNGs in particular translate the same opaque drawing across that canvas;
+-- recomputing the placement anchor from every frame's opaque bounds cancels
+-- the motion. Copy only the neutral reference frame's placement coordinates
+-- while retaining each frame's own bounds and pixels.
+function BattleArt.shareFrameAnchor(images, referenceIndex)
+  local reference = images and images[referenceIndex or #images]
+  local anchor = reference and metrics[reference]
+  if not anchor then return false end
+  for _, image in ipairs(images) do
+    local metric = metrics[image]
+    if not metric or metric.w ~= anchor.w or metric.h ~= anchor.h then
+      return false
+    end
+  end
+  for _, image in ipairs(images) do
+    local metric = metrics[image]
+    metric.center = anchor.center
+    metric.y1 = anchor.y1
+    metric.padBottom = anchor.padBottom
+  end
+  return true
+end
 function BattleArt.isStaticFront(img)
   local m = img and metrics[img]
   return m and m.staticFront == true or false

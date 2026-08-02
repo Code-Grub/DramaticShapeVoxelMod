@@ -107,7 +107,12 @@ local function loadFrames(def, mode)
       if not image then return end
       frames[#frames + 1] = image
     end
-    if #frames == count then result = frames end
+    if #frames == count then
+      if def.stableAnchor then
+        BattleArt.shareFrameAnchor(frames, #frames)
+      end
+      result = frames
+    end
   end)
   if not ok or not result then return nil end
   remember(def, mode, result)

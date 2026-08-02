@@ -87,7 +87,9 @@ def main() -> None:
     ]
     for engine_name, path, info in records:
         lines.append(f"  {engine_name} = {{")
-        lines.append(f"    back = {lua_definition(path, info)},")
+        lines.append(
+            f"    back = {lua_definition(path, info, stable_anchor=True)},"
+        )
         lines.append("  },")
     lines.append("}")
     metadata = root / "data" / "animated_battle_backs_gen3.lua"
