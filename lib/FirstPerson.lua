@@ -528,13 +528,35 @@ function FirstPerson.install()
   -- pair on the same class of device. Real gamepads are excluded -- they
   -- already spoke through the mapped rightx/righty above, and their RAW
   -- axis 3 is as likely a trigger as a stick.
+  --
+  -- Two more exclusions, both learned the hard way on Android, where this
+  -- wrap runs BEFORE the engine's own generic-joystick guards:
+  --
+  --   the accelerometer arrives as a joystick named for what it is, with
+  --   gravity pinning an axis well past any deadzone -- the same device
+  --   Game:joystickaxis refuses for movement (#459), refused here by the
+  --   same name test, or the view spins on its own the moment 1ST opens.
+  --
+  --   and a raw axis is only BELIEVED after it has been seen near centre
+  --   once. A stick at rest sits at zero, so a real one earns trust with
+  --   its first touch; a gravity-pinned sensor axis or a trigger resting
+  --   at an extreme never centres and so never steers the look.
+  local function isAccelerometer(joystick)
+    local ok, name = pcall(function() return joystick:getName() end)
+    return ok and type(name) == "string"
+           and name:lower():find("accelerometer", 1, true) ~= nil
+  end
+  local rawCentred = {}
   do
     local inner = Game.joystickaxis
     function Game:joystickaxis(joystick, axis, value)
       local mapped = joystick and joystick.isGamepad and joystick:isGamepad()
-      if not mapped then
-        if axis == 3 then stick.x = value
-        elseif axis == 4 then stick.y = value end
+      if not mapped and (axis == 3 or axis == 4)
+         and not isAccelerometer(joystick) then
+        if math.abs(value) < 0.3 then rawCentred[axis] = true end
+        if rawCentred[axis] then
+          if axis == 3 then stick.x = value else stick.y = value end
+        end
       end
       return inner(self, joystick, axis, value)
     end
@@ -673,6 +695,17 @@ function FirstPerson.install()
       stick.x, stick.y = 0, 0
       mouseDX, mouseDY = 0, 0
       return inner(self, f)
+    end
+  end
+  -- a disconnected controller cannot send the centering event for whatever
+  -- its stick last held -- the engine drops all input state here, and the
+  -- look rate (plus the raw axes' earned trust) goes with it
+  do
+    local inner = Game.joystickremoved
+    function Game:joystickremoved(joystick)
+      stick.x, stick.y = 0, 0
+      rawCentred[3], rawCentred[4] = nil, nil
+      return inner(self, joystick)
     end
   end
 end
