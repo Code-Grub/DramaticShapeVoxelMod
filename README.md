@@ -71,6 +71,9 @@ files fall straight back to the ROM art.
 The four battle-art directories are intentionally ignored by Git except for
 their README contracts. `tools/package_mod.ps1` nevertheless includes local
 PNGs from them in a test ZIP, so artwork can stay private and uncommitted.
+Use `tools/package_clean_mod.ps1` for a shareable install ZIP that preserves
+the documented battle-art folder layout but excludes every PNG below
+`assets/battle`.
 `BATTLE ART: ANIMATED` reads independent `ANIM FRONT GEN` and `BACK ART SET`
 choices. GEN 1 fronts are ordinary single-frame PNGs from
 `front-animated/gen1`; Gen 2–5 fronts remain animated atlases, including
