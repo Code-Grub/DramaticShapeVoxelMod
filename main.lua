@@ -364,8 +364,9 @@ local SETTINGS = {
       return stagedBattles() and BattleArt.setting:get() == "animated"
     end, full = true },
   { BattleArt.frontAnimationSetting,
-    "Choose the front generation used by BATTLE ART: ANIMATED. STATIC "
-    .. "ignores this row. Missing art falls directly back to ROM.",
+    "Choose the front generation used by BATTLE ART: ANIMATED. GEN 1 reads "
+    .. "single-frame PNGs; GEN 2-5 read atlases. STATIC ignores this row. "
+    .. "Missing art falls directly back to ROM.",
     when = function()
       return stagedBattles() and BattleArt.setting:get() == "animated"
     end, full = true },

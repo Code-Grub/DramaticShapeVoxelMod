@@ -17,6 +17,15 @@ local BACK_SETS = {
   gen3 = V.data("animated_battle_backs_gen3"),
   gen5 = SETS.gen5,
 }
+-- Gen 1 fronts are ordinary single-frame PNGs. Later generations retain the
+-- atlas decoder and timing metadata they have always used.
+local FRONT_SOURCE_KIND = {
+  gen1 = "static",
+  gen2 = "animated",
+  gen3 = "animated",
+  gen4 = "animated",
+  gen5 = "animated",
+}
 -- Gen 1 SGB, Gen 2 Crystal, and Gen 4 backs are intentionally single-frame
 -- collections even while BATTLE ART is ANIMATED. An explicit source table
 -- prevents a static generation folder from being decoded as an atlas.
@@ -254,6 +263,38 @@ local function updateStaticBack(battler, generation, mode)
   battler.sprite = state.image
 end
 
+local function updateStaticFront(battler, generation, mode)
+  if not (battler and battler.sprite) then return end
+  local species = battler.mon and battler.mon.species
+  local image = species and BattleArt.generationFrontImage(species, generation)
+  local state = states[battler]
+  if state and (state.kind ~= "static" or state.side ~= "front"
+                or state.generation ~= generation or state.mode ~= mode
+                or state.image ~= image) then
+    restore(battler)
+    state = nil
+  end
+  if not image then restore(battler); return end
+  if not state then
+    state = { kind = "static", side = "front", generation = generation,
+              mode = mode, original = battler.sprite, image = image }
+    states[battler] = state
+  elseif battler.sprite ~= state.image and battler.sprite ~= state.original then
+    -- A transform or battle effect owns the sprite for this frame.
+    states[battler] = nil
+    return
+  end
+  battler.sprite = state.image
+end
+
+local function updateFront(battler, generation, dt, mode)
+  if FRONT_SOURCE_KIND[generation] == "static" then
+    updateStaticFront(battler, generation, mode)
+  else
+    updateBattler(battler, "front", dt, mode)
+  end
+end
+
 function AnimatedBattleArt.update(battle, dt)
   if not battle then return end
   if BattleArt.setting:get() ~= "animated" then
@@ -265,7 +306,8 @@ function AnimatedBattleArt.update(battle, dt)
   -- captures the engine portrait, then leave managed animation frames alone.
   BattleArt.applyTrainers(battle)
   updatePlayerTrainer(battle, mode)
-  updateBattler(battle.enemy, "front", dt, mode)
+  local frontGeneration = BattleArt.frontAnimationSetting:get()
+  updateFront(battle.enemy, frontGeneration, dt, mode)
   local playerSide = BattleArt.playerSide()
   if playerSide == "back" then
     local generation = BattleArt.backAnimationSetting:get()
@@ -275,7 +317,7 @@ function AnimatedBattleArt.update(battle, dt)
       updateStaticBack(battle.player, generation, mode)
     end
   else
-    updateBattler(battle.player, "front", dt, mode)
+    updateFront(battle.player, frontGeneration, dt, mode)
   end
 end
 

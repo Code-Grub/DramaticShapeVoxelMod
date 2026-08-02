@@ -38,7 +38,7 @@ menu.
 | the **TRAINER ART** options row | GEN 1 / GEN 2 / GEN 3 — choose a static opponent-trainer collection |
 | the **PLAYER ART** options row | PNG / GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 / ASH / GARY / ROM — choose the static player trainer battle-intro portrait; BATTLE ART: ROM pins it to ROM |
 | the **PLAYER ANIM** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 / ASH / GARY / ROM — choose a five-pose player intro while ANIMATED is selected |
-| the **ANIM FRONT GEN** options row | GEN 2 / GEN 3 / GEN 4 / GEN 5 — choose the animated front collection |
+| the **ANIM FRONT GEN** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 — choose a single-frame Gen 1 compatibility set or an animated Gen 2–5 collection |
 | the **BACK ART SET** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 — STATIC always uses generation PNGs; ANIMATED uses Gen 3/5 atlases and Gen 1/2/4 PNGs |
 | the **PLAYER** options row | FRONT SPRITES / BACK SPRITES — supplied art is world-placed; a missing selected back uses the ROM's UI-attached pic |
 | the **BACK PLACEMENT** options row | AUTO / WORLD / OG UI — use the mode-aware default or force every player back onto one layer |
@@ -72,10 +72,11 @@ The four battle-art directories are intentionally ignored by Git except for
 their README contracts. `tools/package_mod.ps1` nevertheless includes local
 PNGs from them in a test ZIP, so artwork can stay private and uncommitted.
 `BATTLE ART: ANIMATED` reads independent `ANIM FRONT GEN` and `BACK ART SET`
-choices. Front choices remain animated atlases, including converted
-Diamond/Pearl APNGs for GEN 4. Animated back GEN 3 and GEN 5 read atlases from
-`back-animated/gen3` and `back-animated/gen5`. Back GEN 1, GEN 2 and GEN 4 read
-ordinary species PNGs from their `back-static` generation folders. A
+choices. GEN 1 fronts are ordinary single-frame PNGs from
+`front-animated/gen1`; Gen 2–5 fronts remain animated atlases, including
+converted Diamond/Pearl APNGs for GEN 4. Animated back GEN 3 and GEN 5 read
+atlases from `back-animated/gen3` and `back-animated/gen5`. Back GEN 1, GEN 2
+and GEN 4 read ordinary species PNGs from their `back-static` generation folders. A
 loaded back is world-placed, lit, depth-occluded and shadowed. If its selected
 PNG or atlas is missing or malformed, the unmodified ROM backsprite remains in
 the original UI layer, including its normal battle motion and filtering.

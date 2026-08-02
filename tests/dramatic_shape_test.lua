@@ -1842,6 +1842,13 @@ T.eq(rig.curve, 0, "the battle camera switches the world curve off")
 -- a white battle field and a whiteout of the map, the HUD and the text box
 -- over a world. It is dropped on the way past and put back on the two cards.
 local Battles = run.loader.exports.DRAMATIC_SHAPE.lib.require("OverworldBattle")
+local Art = run.loader.exports.DRAMATIC_SHAPE.lib.require("BattleArt")
+T.eq(Art.frontAnimationSetting.values[1], "gen1",
+  "animated fronts expose the single-frame Gen 1 compatibility collection")
+T.eq(Art.frontAnimationSetting.labels[1], "GEN 1",
+  "the new collection has the expected options-menu label")
+T.eq(Art.frontAnimationSetting.defaultIndex, 2,
+  "adding Gen 1 does not change the established Gen 2 default")
 T.eq(Battles.flashing(nil), false, "no battle, no flash")
 T.eq(Battles.flashing({ fx = {}, frame = 0 }), false,
   "a battle with no flash counter is not flashing")

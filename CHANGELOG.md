@@ -68,6 +68,10 @@
   1x instead of the ROM-only 2x default, sit on the classic left-side anchor,
   and use their opaque bottom edge rather than transparent canvas padding to
   meet the textbox. ROM backs and trainer intros retain upstream placement.
+- **Gen 1 fronts alongside animated intros.** `ANIM FRONT GEN: GEN 1` reads
+  ordinary single-frame species PNGs from `front-animated/gen1`, while the
+  selected five-frame player-trainer introduction continues independently.
+  Missing species retain their ROM front sprite; Gen 2–5 keep atlas playback.
 - **No stale battle-entry dimmer.** Staged battles suppress the engine's
   translucent world-fade rectangle at the compositor boundary as well as
   clearing its fade state. The normal battle wipe, deliberate battle-exit

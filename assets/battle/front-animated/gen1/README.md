@@ -1,7 +1,7 @@
 # Generation 1 front compatibility set
 
-This folder is reserved for single-frame Gen 1, Super Game Boy, and ROM-hack
-front sprites used alongside the otherwise ANIMATED battle-art mode. Unlike
+This folder supplies single-frame Gen 1, Super Game Boy, and ROM-hack front
+sprites for `BATTLE ART: ANIMATED` with `ANIM FRONT GEN: GEN 1`. Unlike
 the Gen 2–5 collections, these are ordinary PNGs rather than animation
 atlases: no Lua sidecar, frame grid, or timing metadata is required.
 
@@ -27,12 +27,9 @@ The intended `FRONT PLACEMENT` choices are:
 Large or unusually padded art may crop when forced into `OG UI`; native
 Game Boy and Super Game Boy dimensions are the natural fit there.
 
-## Implementation status
-
-The folder contract is documented ahead of the renderer change. The current
-runtime still offers `ANIM FRONT GEN` choices Gen 2–5 only and does not yet
-load this directory. `ANIM FRONT GEN: GEN 1` and `FRONT PLACEMENT` must be
-implemented before these files appear in-game.
+Front Pokémon remain world-placed in the current renderer. A separate
+`FRONT PLACEMENT` selector is not implemented yet; the placement list above
+documents the intended follow-up behavior rather than a current menu row.
 
 Local artwork in this folder is ignored by Git and is not covered by the
 mod's MIT license. Verify that you have the right to use and distribute it.

@@ -8,8 +8,8 @@ local BattleArt = {}
 BattleArt.setting = ModSetting.new("battleArt", "BATTLE ART",
   { "static", "animated", "rom" }, { "STATIC", "ANIMATED", "ROM" })
 BattleArt.frontAnimationSetting = ModSetting.new("frontAnimatedSet", "ANIM FRONT GEN",
-  { "gen2", "gen3", "gen4", "gen5" },
-  { "GEN 2", "GEN 3", "GEN 4", "GEN 5" })
+  { "gen1", "gen2", "gen3", "gen4", "gen5" },
+  { "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5" }, 2)
 -- The selected generation names the static back folder in STATIC mode. In
 -- ANIMATED mode uses atlases for Gen 3 and Gen 5; Gen 1, 2 and 4 use their
 -- single images. The mode, not just the generation, decides the decoder.
@@ -246,6 +246,20 @@ function BattleArt.generationBackImage(species, generation)
   if not tostring(generation or ""):match("^gen[1-5]$") then return nil end
   local rel = ("assets/battle/back-static/%s/%s.png"):format(
     generation, slug(species))
+  local path = V.mod.assets:path(rel)
+  local fs = love and love.filesystem
+  if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
+  return prepare(path, displayMode())
+end
+
+-- Gen 1 has no animated front atlas. ANIMATED mode still offers it as a
+-- compatibility collection so SGB and ROM-hack fronts can coexist with the
+-- independently animated player-trainer intro. Each species is one ordinary
+-- image; no metadata or timing sidecar is involved.
+function BattleArt.generationFrontImage(species, generation)
+  if generation ~= "gen1" then return nil end
+  local rel = ("assets/battle/front-animated/gen1/%s.png"):format(
+    slug(species))
   local path = V.mod.assets:path(rel)
   local fs = love and love.filesystem
   if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
