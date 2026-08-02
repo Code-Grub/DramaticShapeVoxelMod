@@ -289,9 +289,10 @@ OverworldBattle.HUD_BAND = {
 -- Where each block lands, in WORLD-canvas pixels: the panel rect the frosted
 -- glass is cut to, plus the x its band is blitted at.
 --
--- The foe's panel starts at the window's left edge and the player's ends at the
--- right one. The vertical is untouched, so both stay on the rows the GB put
--- them on. A band's own origin sits outside the window by the panel's inset --
+-- The foe's panel starts near the window's left edge and the player panel keeps
+-- one logical pixel clear of the right one. The vertical is untouched, so both
+-- stay on the rows the GB put them on. A band's own origin sits outside the
+-- window by the panel's inset --
 -- the couple of pixels a HUD shake can push past the edge are clipped there,
 -- which is the whole cost of the snap and is invisible.
 function OverworldBattle.snapRects(shot)
@@ -302,7 +303,8 @@ function OverworldBattle.snapRects(shot)
   -- The whole enemy band moves with the panel, so long names and HUD shakes
   -- keep their original internal alignment instead of being clipped.
   local ex = (2 - e[1]) * hs
-  local px = shot.pw - (p[1] + p[3]) * hs    -- player: right edge to the far side
+  -- Keep one logical pixel of breathing room at the right window edge.
+  local px = shot.pw - (p[1] + p[3] + 1) * hs
   local rects = {
     enemy = { ex + e[1] * hs, shot.ly + e[2] * s, e[3] * hs, e[4] * hs },
     player = { px + p[1] * hs, shot.ly + p[2] * s,
@@ -988,10 +990,14 @@ function OverworldBattle.install()
     -- The engine's trainer/back slot defaults to 2x because ROM back pictures
     -- are authored at half display resolution. Supplied species backs and
     -- custom player-trainer PNGs are already full-display art, so both static
-    -- images and atlas frames stay native 1x on OG UI. ROM backs retain their
-    -- intended 2x scale.
+    -- PLAYER ART images and animated atlas frames stay native 1x on OG UI.
+    -- ROM backs retain their intended 2x scale.
     local battle = session and session.battle
     if side == "back" and pinnedSpeciesMetric() then return 1 end
+    if side == "back" and battle and battle.showPlayerBack
+       and BattleArt.isExternal(battle.playerBackPic) then
+      return 1
+    end
     if side == "back" and AnimatedBattleArt.hasPlayerTrainerFrame(battle) then
       return 1
     end

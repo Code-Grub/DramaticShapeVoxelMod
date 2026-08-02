@@ -78,6 +78,11 @@
 - **Matched compact battle HUDs.** Enemy and player Pokémon status blocks now
   share the same smaller integer display scale and retain their left/right
   screen-edge anchors.
+- **Native static player portraits on OG UI.** Supplied `PLAYER ART` PNGs now
+  remain at native 1x when OG UI placement is forced. Only the deliberately
+  half-resolution ROM player portrait receives the engine's 2x UI scale.
+- **Player HUD edge spacing.** The compact player status block now sits one
+  logical pixel left of the right window edge, retaining integer pixel scale.
 - **No stale battle-entry dimmer.** Staged battles suppress the engine's
   translucent world-fade rectangle at the compositor boundary as well as
   clearing its fade state. The normal battle wipe, deliberate battle-exit

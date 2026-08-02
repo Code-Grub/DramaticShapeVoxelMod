@@ -128,7 +128,7 @@ AUTO placement keeps this intro on OG UI, while WORLD and OG UI remain
 explicit overrides.
 Both the original five-by-64 strips and normalized five-by-80 strips are read
 at native resolution. Unlike the ROM's half-resolution player back, a custom
-animated trainer remains 1x when attached to OG UI. Use
+static or animated trainer remains 1x when attached to OG UI. Use
 `tools/player-animation-template-400x80.png` as the authoring guide, then
 remove its coloured dividers from the finished atlas.
 `back-static/oak.png` and `back-static/old-man.png` remain the scripted demo

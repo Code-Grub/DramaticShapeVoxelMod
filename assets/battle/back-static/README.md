@@ -105,3 +105,7 @@ selection tries `player.png`, then retains the ROM trainer backsprite. PNG
 tries `player.png` directly; ROM deliberately bypasses it. `PLAYER ART` is independent of species
 `BATTLE ART`, so its ROM choice does not disable custom Pokémon or opponent
 trainer art. Opponent trainers never read from a back folder.
+
+When forced onto `BACK PLACEMENT: OG UI`, supplied player PNGs use their native
+1x logical size at the normal left-side UI slot. Only the ROM player portrait
+receives the engine's legacy 2x back-picture scale.

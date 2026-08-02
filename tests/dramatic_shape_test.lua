@@ -1919,8 +1919,8 @@ local hudScale = hudShot.scale - 1
 
 T.eq(hudRects.enemy[1], 2 * hudScale,
   "the foe's panel keeps its two-logical-pixel left inset")
-T.eq(hudRects.player[1] + hudRects.player[3], hudShot.pw,
-  "and the player's ends at the right one")
+T.eq(hudRects.player[1] + hudRects.player[3], hudShot.pw - hudScale,
+  "and the player's keeps a one-logical-pixel right margin")
 T.check(hudRects.enemy[1] < hudShot.lx,
   "so the foe's block has left the letterbox it used to sit in")
 T.check(hudRects.player[1] > hudShot.lx + hudRect.player[1] * hudShot.scale,
@@ -1956,11 +1956,12 @@ T.eq(bandPlacement.player.y
        * bandPlacement.player.scale,
      hudRects.player[2], "the compact band preserves the player's top row")
 
--- Even on a GB-shaped window the compact player block remains right-anchored.
+-- Even on a GB-shaped window the compact player block remains right-anchored,
+-- with the same one-logical-pixel breathing room.
 local snug = { lx = 0, ly = 0, scale = 4, pw = 160 * 4, ph = 144 * 4 }
 local snugRects = Battles.snapRects(snug)
-T.eq(snugRects.player[1] + snugRects.player[3], snug.pw,
-  "on a GB-shaped window the compact player block keeps the right edge")
+T.eq(snugRects.player[1] + snugRects.player[3], snug.pw - (snug.scale - 1),
+  "on a GB-shaped window the player block keeps its one-pixel margin")
 T.eq(snugRects.enemy[1], 2 * (snug.scale - 1),
   "and the compact foe retains its readable left inset")
 
