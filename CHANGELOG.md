@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.5.0
+
+### Added
+
+- **1ST: a first-person camera, played like a modern one.** A seventh
+  rung on the VOXEL ladder (hotkey 3 walks it; the OPTIONS row carries
+  it). Stepping onto it dives the camera from wherever the orbit was
+  into the player's own head over half a second, and stepping off flies
+  it back out. The rig rides the same placed-camera seam the staged
+  battle proved out, so the sky's bands meet the horizon, the sun and
+  moon hang where their shadows say, and the water reflects at eye
+  level -- all through math that was already there.
+
+  - **Free look.** Relative mouse motion (the cursor is captured while
+    the rung is on; left click is A, right click is B), the right
+    stick at a rate with a squared response curve, or a touch dragged
+    across any open screen -- the overlay's d-pad and buttons still
+    work, and a second finger can drag the view while the first
+    walks. Pitch clamps short of straight up and straight down.
+
+  - **Free movement.** While 1ST drives, the grid walk is replaced by
+    a continuous, camera-relative one: push forward and you go where
+    you look, at any angle, sliding along whatever you graze. The left
+    stick's raw deflection, the touch d-pad's true vector, or the held
+    keys (forward / backpedal / strafe) all steer it. The grid is
+    still the game: the walk asks the engine's own collision the same
+    per-cell questions a grid step asks, the logical cell tracks the
+    body, and every cell crossed runs the engine's own landing
+    pipeline -- warps, encounters, spinners, gates, poison, repel, the
+    step counters. Walking off the map edge, into a ledge or into a
+    boulder hands the push to the engine's own handlers, so
+    connections cross, ledges hop and boulders shove exactly as
+    themselves. Speed is the grid walker's own (bike included), so
+    distance per second and encounters per tile are unchanged.
+
+  - **Billboards seen from inside the world.** Character cards stop
+    leaning and start turning: upright, yawed about their feet to face
+    the eye, wearing the frame their pose shows *this* viewer -- walk
+    behind an NPC and you see their back, circle to a flank and you
+    get the profile, exactly the four frames Gen 1 drew. The authored
+    figures (the couch sitters) turn the same way, about their own
+    middle. The sun pass swaps frames in step, so a card never reads
+    its own shadow through a mirror-flipped record of itself. The
+    player's own card is left out of the camera draw -- the eye stands
+    in it -- but still casts its shadow on the ground ahead.
+
+  - The shadow map's box follows the look (the orbit's fit reaches far
+    north and barely south, which is wrong for a head facing south);
+    the world curve is declined outright while the head owns the
+    camera; and the whole rung falls back to the 75-degree orbit on
+    hardware without the 3D pass.
+
 ## 1.4.3
 
 ### Added

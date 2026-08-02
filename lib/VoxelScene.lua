@@ -24,6 +24,7 @@ local Sky = V.require("Sky")
 local Water = V.require("Water")
 local VoxelGrid = V.require("VoxelGrid")
 local DayNight = V.require("DayNight")
+local FirstPerson = V.require("FirstPerson")
 local PaletteFX = require("src.render.PaletteFX")
 local Map = require("src.world.Map")
 
@@ -214,6 +215,22 @@ local function frameFor(def, facing, phase, flip)
   return frame, mirror
 end
 
+-- The facing a pose SHOWS this camera. The flat frames are "how this pose
+-- looks from the south", which is where the orbit always stands; a
+-- first-person eye stands anywhere, so deep enough into the blend the
+-- facing is remapped to how the pose looks from THERE -- walk behind an
+-- NPC and their card wears the back sprite. Used by the camera draw and
+-- the sun pass BOTH: the card the sun stored and the transform a lit card
+-- reads its own shadowing with must describe the same frame, or the
+-- mirror-flip half of the pair asks the map about texels the sun filed
+-- under the other cheek.
+local function viewFacing(p)
+  if FirstPerson.cardBlend() > 0.5 then
+    return FirstPerson.apparentFacing(p.facing, p.px + 8, p.py + 8)
+  end
+  return p.facing
+end
+
 -- FALLBACK ONLY (see castShadows below). Draw one entity's drop shadow as
 -- a decal: its current sprite frame as a single quad, flattened onto the
 -- ground along the sun line (Voxel3D.shadowMatrix). Runs inside
@@ -236,10 +253,22 @@ end
 -- Shared by the solid draw and the silhouette below, so the two can never
 -- drift apart -- a silhouette standing anywhere but exactly behind the
 -- figure would read as a second character.
+--
+-- IN FIRST PERSON the card stops leaning and starts TURNING: upright, yawed
+-- about its feet to face the eye (cylindrical billboarding). A south-facing
+-- card is invisible edge-on to an eye standing east of it, which no orbit
+-- camera could ever do and a first-person one does constantly. The blend
+-- carries one pose into the other -- the lean eases out as the yaw eases in
+-- -- and cardBlend is zero for every camera that is not the first-person
+-- rig, the battle's placed shot included, so nothing else moves.
 local function billboardMatrix(px, py, y, mirror)
   local Voxel = V.require("VoxelState")
-  local m = Mat4.mul(Mat4.translate(px + 8, y, py + 8),
-                     Mat4.rotateX(Voxel.angle - math.pi / 2))
+  local b = FirstPerson.cardBlend()
+  local m = Mat4.translate(px + 8, y, py + 8)
+  if b > 0 then
+    m = Mat4.mul(m, Mat4.rotateY(FirstPerson.cardYaw(px + 8, py + 8) * b))
+  end
+  m = Mat4.mul(m, Mat4.rotateX((Voxel.angle - math.pi / 2) * (1 - b)))
   if mirror then m = Mat4.mul(m, Mat4.scale(-1, 1, 1)) end
   return Mat4.mul(m, Mat4.translate(-8, 0, 0))
 end
@@ -258,10 +287,24 @@ end
 -- the Pokemon Center couch reads face-on at every tilt like the NPCs
 -- around him. No cell centring: unlike a character he is not standing on a
 -- cell, he is standing where he was drawn, which may straddle two.
+--
+-- First person turns him at the eye like the walkers (see billboardMatrix)
+-- -- about his own middle, because unlike a character card his local space
+-- starts at x = 0 rather than being anchored by a -8 shift, and a yaw about
+-- his edge would swing him off his seat. The width rode in on the record
+-- for exactly this (ChunkMesher.buildFigureMeshes).
 local function figureMatrix(f, offX, offZ)
   local Voxel = V.require("VoxelState")
-  return Mat4.mul(Mat4.translate(f.wx + (offX or 0), f.y, f.wz + (offZ or 0)),
-                  Mat4.rotateX(Voxel.angle - math.pi / 2))
+  local b = FirstPerson.cardBlend()
+  local wx, wz = f.wx + (offX or 0), f.wz + (offZ or 0)
+  local m = Mat4.translate(wx, f.y, wz)
+  if b > 0 and f.w and f.w > 0 then
+    local half = f.w / 2
+    m = Mat4.mul(m, Mat4.translate(half, 0, 0))
+    m = Mat4.mul(m, Mat4.rotateY(FirstPerson.cardYaw(wx + half, wz) * b))
+    m = Mat4.mul(m, Mat4.translate(-half, 0, 0))
+  end
+  return Mat4.mul(m, Mat4.rotateX((Voxel.angle - math.pi / 2) * (1 - b)))
 end
 
 -- What the sun sees: the same card UNLEANED and flattened, exactly as
@@ -333,7 +376,7 @@ VoxelScene.drawEntity = drawEntity
 -- mesh for it.
 local function drawGhost(p)
   local def = p.sprite.def
-  local frame, mirror = frameFor(def, p.facing, p.phase, p.flip)
+  local frame, mirror = frameFor(def, viewFacing(p), p.phase, p.flip)
   local mesh = SpriteBillboards.shadowQuad(def, frame)
   if not mesh then return end
   local tex = p.sprite:resolveImage()
@@ -462,7 +505,13 @@ local function posesOf(state, spriteColors)
         gh = groundAt(state.map, e.cellX, e.cellY),
         lift = e.py - vy, colors = colors,
       }
-      if e == state.player then me = posed[#posed] end
+      if e == state.player then
+        me = posed[#posed]
+        -- marked so the camera draw can leave the card out in first
+        -- person, where it would fill the lens from inside; the SUN pass
+        -- reads the same list and deliberately does not check the mark
+        me.isPlayer = true
+      end
     end
   end
   return posed, me
@@ -529,9 +578,18 @@ local function drawCast(state, posed, atlasFor)
   -- drawEntity resolves the lean-over-the-wall-in-front case, and a
   -- character genuinely behind a building is far deeper and loses the
   -- test, so buildings and trees really occlude.
+  --
+  -- In first person two of them change: the player's own card is left out
+  -- (the eye is standing in it), and every other card wears the frame its
+  -- pose SHOWS this eye (viewFacing) rather than the one it shows the
+  -- south. Both run through here, so the water's reflection copy -- drawn
+  -- by this same function -- agrees with the frame to the pixel.
+  local hideMe = FirstPerson.hidePlayer()
   for _, p in ipairs(posed) do
-    drawEntity(p.sprite, p.px, p.py, p.facing, p.phase, p.flip, p.gh,
-               p.colors, p.lift)
+    if not (p.isPlayer and hideMe) then
+      drawEntity(p.sprite, p.px, p.py, viewFacing(p), p.phase, p.flip, p.gh,
+                 p.colors, p.lift)
+    end
   end
   -- back on for everything textured from the atlas again -- figures, grass
   -- and flowers all sample it, where the mask's coordinates are honest
@@ -687,6 +745,10 @@ local function shadowSignature(terrain, nbMesh, posed, cx, cy, vw, vh)
   -- few times a minute rather than every frame.
   put(math.floor(ShadowMap.KX * 128))
   put(math.floor(ShadowMap.KZ * 128))
+  -- and the first-person head: the box is fitted around wherever it looks
+  -- and the sprite cards swap frames as it circles them, so a turn on the
+  -- spot re-fits and redraws exactly like a camera move ("" outside 1ST)
+  put(FirstPerson.signature())
   put(tostring(terrain))
   for i = 1, #nbMesh do put(tostring(nbMesh[i])) end
   for _, p in ipairs(posed) do
@@ -759,7 +821,12 @@ local function castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh,
   end
   for _, p in ipairs(posed) do
     local def = p.sprite.def
-    local frame, mirror = frameFor(def, p.facing, p.phase, p.flip)
+    -- viewFacing, exactly as the camera draw picks it (see viewFacing for
+    -- why the two passes must agree): in first person the sun's card
+    -- swaps frame as the eye circles, which costs a redraw the signature
+    -- already charges for (FirstPerson.signature) and keeps a card from
+    -- fringing against a mirror-flipped record of itself
+    local frame, mirror = frameFor(def, viewFacing(p), p.phase, p.flip)
     local mesh = SpriteBillboards.shadowQuad(def, frame)
     if mesh then
       ShadowMap.draw(mesh, p.sprite:resolveImage(),
@@ -815,7 +882,23 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   end
 
   local posed, me = posesOf(state, spriteColors)
-  castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh, atlasFor,
+
+  -- The first-person rig, built (or blended) for this frame and handed to
+  -- Voxel3D BEFORE either pass runs: the sun's box is fitted around this
+  -- camera, and every card matrix asks it which way to turn. With the
+  -- blend fully out the call clears the placed camera and the orbit is
+  -- exactly what it always was. The scene centre it returns walks from
+  -- the orbit's view centre into the head, so the curve's focus and the
+  -- depth reference follow the camera actually in charge.
+  local fpRig, fpCx, fpCy = FirstPerson.frame(me, cx, cy, vw, vh)
+  if fpRig then cx, cy = fpCx, fpCy end
+
+  -- The sun's box, pushed along the first-person look so it covers the
+  -- ground THIS camera sees (a no-op at blend zero): the orbit's fit
+  -- reaches far north and barely south, which is right for every rung
+  -- but a head free to face south.
+  local shCx, shCy = FirstPerson.shadowCenter(cx, cy, vh)
+  castShadows(state, terrain, nbMesh, posed, shCx, shCy, vw, vh, atlasFor,
               water, nbWater)
 
   if not Voxel3D.beginScene(w, h, cx, cy, vw, vh, skyFor(state.map)) then
@@ -838,7 +921,7 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   if not Voxel3D.shadowsActive() then
     Voxel3D.beginShadows()
     for _, p in ipairs(posed) do
-      drawShadow(p.sprite, p.px, p.py, p.facing, p.phase, p.flip, p.gh,
+      drawShadow(p.sprite, p.px, p.py, viewFacing(p), p.phase, p.flip, p.gh,
                  p.lift)
     end
     Voxel3D.endShadows()
@@ -884,7 +967,11 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   -- wrote it, so the silhouette would paint over the player at all times.
   -- Every character then draws on top as usual, which leaves the silhouette
   -- showing in exactly one situation: where the world hides them.
-  if me then
+  --
+  -- Not in first person: the card it silhouettes is the one the camera is
+  -- standing inside, and "the world is in front of the player" is every
+  -- wall the player faces.
+  if me and not FirstPerson.hidePlayer() then
     Voxel3D.beginGhost()
     drawGhost(me)
     Voxel3D.endGhost()

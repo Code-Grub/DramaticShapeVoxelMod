@@ -42,7 +42,8 @@ local Voxel = {}
 -- billboard lean the blend eases away) reads that 75 while the first-person
 -- rig owns the actual camera.
 Voxel.ANGLES_DEG = { 0, 35, 15, 35, 50, 75, 75 }
-Voxel.ANGLE_LABELS = { "OFF", "FULL", "15", "35", "50", "75", "1ST" }
+Voxel.ANGLE_LABELS = { "OFF", "FULL", "15", "35", "50", "75",
+                       "1ST (EXPERIMENTAL)" }
 Voxel.MAX_LEVEL = #Voxel.ANGLES_DEG - 1
 
 -- the rung FULL sits on, so nothing has to hunt for it by label
