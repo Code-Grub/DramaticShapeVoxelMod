@@ -6,7 +6,8 @@ mirrored. GEN 3 and GEN 5 use animated back atlases here. `BACK ART SET`
 choices GEN 1, GEN 2 and GEN 4 instead read single-frame PNGs from their
 sibling `../back-static` generation folders, with no atlas processing.
 Missing selected art retains the ROM back sprite in its original UI layer.
-This selector only affects ANIMATED mode.
+These atlas folders are read only in ANIMATED mode; STATIC uses the selected
+generation under `../back-static` instead.
 
 `BACK PLACEMENT` offers AUTO, WORLD, and OG UI. AUTO keeps a valid Gen 5 atlas
 in the world and leaves a missing atlas's ROM fallback on OG UI. Forcing OG UI

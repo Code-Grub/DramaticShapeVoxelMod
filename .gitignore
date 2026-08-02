@@ -6,13 +6,8 @@ __pycache__/
 # agent worktrees and local scratch
 .claude/
 
-# Bring-your-own battle art. Keep the contracts/READMEs tracked, but never
-# commit locally supplied Pokemon artwork.
-assets/battle/front-static/*
-!assets/battle/front-static/README.md
-assets/battle/back-static/*
-!assets/battle/back-static/README.md
-assets/battle/front-animated/*
-!assets/battle/front-animated/README.md
-assets/battle/back-animated/*
-!assets/battle/back-animated/README.md
+# Bring-your-own battle art. Preserve the documented example directory tree,
+# but never commit locally supplied artwork, atlases, drafts, or sidecars.
+assets/battle/**
+!assets/battle/**/
+!assets/battle/**/README.md
