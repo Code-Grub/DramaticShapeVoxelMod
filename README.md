@@ -90,6 +90,11 @@ animated Emerald `Spr b 3e` backs and the static `Spr b 3r` backs for the
 first 151 species. The generated atlases and ordinary PNGs remain local,
 ignored artwork; only their shared atlas metadata is committed.
 
+Run `python tools/import_crystal_back_sprites.py --root .` to import the first
+151 static Crystal backs. In ANIMATED mode, `BACK ART SET: GEN 1` and `GEN 2`
+still select the static Yellow SGB and Crystal folders respectively; only GEN
+3 and GEN 5 invoke an animated back-atlas decoder.
+
 `BACK PLACEMENT: AUTO` keeps STATIC-mode player backs in the world, including
 ROM fallbacks. Under ANIMATED, supplied Gen 1–4 PNGs and Gen 5 atlases stay in
 the world while a missing selection leaves the ROM backsprite on its OG UI
