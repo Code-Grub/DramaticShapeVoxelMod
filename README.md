@@ -32,11 +32,26 @@ clear ground — shot over the shoulder, the player's mon low and left and
 the enemy high and right, with a slow parallax drift behind them and a
 depth-of-field pass that keeps both of them sharp.
 
-Purely presentational. Nothing here reaches collision, movement, triggers
-or scripts — it changes what the world *looks* like and nothing about what
-it *is*. The battle arena is where the **camera** goes, not where anybody
-goes: no cell, facing, flag or warp is written, so the player is standing
-exactly where the fight found them when it ends.
+And the whole thing from inside. The ladder's top rung, **1ST**, dives the
+camera into the player's own head: free look on the mouse (captured while
+the rung is on — left click is A, right click is B), the right stick, or a
+touch dragged across open screen; free movement that goes where you look,
+at any angle, sliding along walls — the left stick's raw deflection, the
+touch d-pad's true vector, or WASD as forward/backpedal/strafe. NPCs turn
+to face the eye wearing the frame their pose shows *this* viewer — walk
+behind someone and you see their back — and the sky, the shadows and the
+water reflections all carry over, because the head rides the same placed
+camera the battle shot proved out.
+
+Presentational, with one deliberate exception. Every rung but 1ST changes
+what the world *looks* like and nothing about what it *is*; the battle
+arena is where the **camera** goes, not where anybody goes. 1ST replaces
+the grid walk with a free one while it is selected — but even there the
+game is untouched: the walk asks the engine's own collision the same
+questions a grid step asks, keeps the player's cell synced, and runs the
+engine's own landing pipeline per cell crossed, so warps, encounters,
+ledges, gates and scripts all fire exactly as themselves. Step off the
+rung and the grid walk is back.
 
 ## Controls
 

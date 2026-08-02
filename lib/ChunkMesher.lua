@@ -853,14 +853,24 @@ end
 -- character card (VoxelScene). A figure baked into the terrain mesh could
 -- not lean, and a shared mesh could not carry per-figure placement.
 --
--- A list, not a mesh: `{ mesh, wx, wz, y }` per figure. Maps have one or
--- none, so the loop that draws them is shorter than the terrain's.
+-- A list, not a mesh: `{ mesh, wx, wz, y, w }` per figure. Maps have one
+-- or none, so the loop that draws them is shorter than the terrain's.
+-- `w` is the card's own width in its local space (its quads start at
+-- x = 0), measured here because the first-person pass yaws a card about
+-- its middle -- a card yawed about its left edge swings off its seat.
 local function buildFigureMeshes(map)
   local out = {}
   for _, f in ipairs(Structures.forMap(map).figures or {}) do
     local mesh = quadsMesh(f.quads)
     if mesh then
-      out[#out + 1] = { mesh = mesh, wx = f.wx, wz = f.wz, y = f.y }
+      local w = 0
+      for _, q in ipairs(f.quads) do
+        for c = 1, 4 do
+          local x = q[c] and q[c][1]
+          if x and x > w then w = x end
+        end
+      end
+      out[#out + 1] = { mesh = mesh, wx = f.wx, wz = f.wz, y = f.y, w = w }
     end
   end
   return out
@@ -1132,8 +1142,8 @@ function ChunkMesher.flowers(map)
   return c and c.flowers or nil
 end
 
--- Authored figures as `{ mesh, wx, wz, y }` records -- each placed by its
--- own leaning matrix at draw time, so they cannot share one mesh.
+-- Authored figures as `{ mesh, wx, wz, y, w }` records -- each placed by
+-- its own leaning matrix at draw time, so they cannot share one mesh.
 function ChunkMesher.figures(map)
   local c = cache[map.id]
   local list = c and c.figures

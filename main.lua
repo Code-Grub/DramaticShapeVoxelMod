@@ -23,9 +23,16 @@
 -- the engine's TILT mode -- is engine plumbing driven by the records
 -- below.  This file declares; lib/ draws.
 --
--- Nothing here reaches collision, movement, triggers or scripts.  Voxel
--- mode is purely presentational: it changes what the world LOOKS like and
--- nothing about what it IS.
+-- Voxel mode is presentational: it changes what the world LOOKS like and
+-- nothing about what it IS.  ONE rung is the deliberate exception. 1ST --
+-- the first-person camera -- replaces the grid WALK with a free,
+-- camera-relative one while it is selected (lib/FreeMove.lua), because a
+-- head you can steer with a mouse demands feet that go where it looks.
+-- Even there the game is untouched: the walk asks the engine's own
+-- collision the same questions a grid step asks, keeps the player's
+-- logical cell synced, and fires the engine's own landing pipeline per
+-- cell crossed -- warps, encounters, ledges, gates and scripts all run
+-- exactly as themselves. Step off the rung and the grid walk is back.
 
 local mod = ...
 
@@ -83,6 +90,8 @@ local DayNight = V.require("DayNight")
 local DayTint = V.require("DayTint")
 local Water = V.require("Water")
 local AntiAlias = V.require("AntiAlias")
+local FirstPerson = V.require("FirstPerson")
+local FreeMove = V.require("FreeMove")
 
 -- Forward declaration: the voxel pipeline's update hook (registered below)
 -- calls this, and it is defined further down with the settings it drives.
@@ -162,6 +171,11 @@ mod.content.render_pipelines:register("voxel", {
     -- would fight anyone who changed one deliberately.
     applyFull(level)
     Voxel.update(dt, level)
+    -- the first-person head, on the same tick: its blend in and out of the
+    -- orbit, the mouse capture lifecycle, and the frame's stick-rate look.
+    -- Unconditional like Voxel.update, because the blend has to keep easing
+    -- OUT after the rung is left
+    FirstPerson.update(dt)
     -- the day/night clock, on the same always-running tick: Pipelines.update
     -- runs whatever the level, so time passes with the mode off, through
     -- battles and menus, and a CYCLE evening falls mid-fight exactly as it
@@ -789,6 +803,32 @@ end
 -- so this file keeps naming every engine seam the mod touches.
 OverworldBattle.install()
 
+-- ------- the first-person rung's inputs and its walk
+--
+-- 1ST needs two things no other rung does, and each is a named seam:
+--
+-- FirstPerson.install claims the LOOK inputs the engine ignores: the right
+-- stick's axes (Game:gamepadaxis passes them to Input, which returns early
+-- on anything but the left pair), relative mouse motion (love.mousemoved --
+-- there is no Game handler to wrap; the engine's own callback only feeds
+-- the mouse-as-touch debug path, which stays untouched), the mouse buttons
+-- while the cursor is captured (A and B -- there is no cursor to click UI
+-- with), and any touch that lands off the overlay's controls (a drag on
+-- open screen is the look; the d-pad and buttons still go to
+-- TouchControls, whose own d-pad finger is also read back analog as the
+-- move vector). Every wrap forwards whatever it does not claim, and claims
+-- only while 1ST is actually driving.
+--
+-- FreeMove.install wraps OverworldState:handleInput -- the one choke point
+-- where the grid walk reads the pad, and the same seam the engine's own
+-- Cycling Road pull lives behind. While 1ST drives, the walk is continuous
+-- and camera-relative; the player's logical cell stays synced and every
+-- per-cell consequence still runs through the engine's own machinery
+-- (onStepComplete, checkEdgeExit, checkLedgeHop, checkBoulderPush). The
+-- file argues the whole arrangement.
+FirstPerson.install()
+FreeMove.install()
+
 -- The overworld's own pushBattle is the choke point for a wild encounter or
 -- a trainer, and it is wrapped. A battle that arrives some other way -- a
 -- link battle, a script pushing a BattleState directly -- reaches this
@@ -890,7 +930,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.4.1"
+mod.exports.version = "1.5.0"
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout
 mod.exports.lib = V

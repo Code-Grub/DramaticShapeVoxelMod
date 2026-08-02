@@ -49,12 +49,14 @@ T.eq(defs._owners and defs._owners.voxel, "DRAMATIC_SHAPE",
 
 -- ------- the ladders the engine drives
 
-T.eq(#defs.voxel.levels, 6, "voxel exposes a six-rung ladder")
+T.eq(#defs.voxel.levels, 7, "voxel exposes a seven-rung ladder")
 T.eq(defs.voxel.levels[1], "OFF", "rung 0 is OFF")
 T.eq(defs.voxel.levels[2], "FULL",
   "FULL is the first rung after OFF -- the order those two get used in")
-T.eq(defs.voxel.levels[6], "75", "the top rung is the 75-degree camera")
-T.eq(Pipelines.maxLevel("voxel"), 5, "the engine reads the ladder height")
+T.eq(defs.voxel.levels[6], "75", "rung 5 is the 75-degree camera")
+T.eq(defs.voxel.levels[7], "1ST (EXPERIMENTAL)",
+  "the top rung is the first-person camera, labelled as the experiment it is")
+T.eq(Pipelines.maxLevel("voxel"), 6, "the engine reads the ladder height")
 T.eq(Pipelines.levelLabel("voxel", 3), "35", "the engine reads the rung labels")
 
 -- ------- gating: inert until switched on, and inert without a GPU
@@ -1079,12 +1081,12 @@ local Curve = run.loader.exports.DRAMATIC_SHAPE.lib.require("WorldCurve")
 -- with nothing on screen saying a keypress had done it.
 Pipelines.setLevel("voxel", 0)
 local walk = {}
-for _ = 1, 6 do
+for _ = 1, 7 do
   Game.keypressed(keyGame, "3")
   walk[#walk + 1] = Pipelines.levelLabel("voxel")
 end
-T.eq(table.concat(walk, ","), "15,35,50,75,OFF,15",
-  "3 walks OFF -> 15 -> 35 -> 50 -> 75 and wraps, never touching FULL")
+T.eq(table.concat(walk, ","), "15,35,50,75,1ST (EXPERIMENTAL),OFF,15",
+  "3 walks OFF -> 15 -> 35 -> 50 -> 75 -> 1ST and wraps, never touching FULL")
 
 -- FULL is 35 degrees, so a press from it goes ON to 50 rather than back to
 -- the rung that shows the same camera -- the key never appears to do nothing.
@@ -1143,8 +1145,8 @@ T.eq(GBCFX.level, 0, "and on the live renderer")
 -- TILT with or without us. Park the ladder on its top rung and turn both
 -- back on, so the single press under test is the one that wraps to OFF --
 -- where nothing else is going to clear them.
--- 5 is the "75" rung, the last one the key walks before it wraps to OFF
-Pipelines.setLevel("voxel", 5)
+-- 6 is the "1ST" rung, the last one the key walks before it wraps to OFF
+Pipelines.setLevel("voxel", 6)
 Tilt.setLevel(3)
 GBCFX.setLevel(4)
 keyGame.save.options.tilt = 3
@@ -1800,9 +1802,21 @@ T.check(plain:find("waveNormal(vec2 q, float tilt)", 1, true) ~= nil
         and plain:find("waveNormal(col,", 1, true) ~= nil,
   "still one answer per column, so the surface stays pixel-quantised in "
   .. "space while the value it reflects with is continuous")
-T.check(plain:find("relief(vBent, view, hit, col, face, axis)", 1, true) ~= nil,
+T.check(plain:find("relief(sheet, view, hit, col, face, axis)", 1, true) ~= nil,
   "and the visible column is found by walking the view ray through the "
   .. "slab, which is what makes a tall bar hide the short ones behind it")
+-- ...over the FLAT sheet, which is the one thing that walk is built on: an
+-- even slab over a level plane. The world curve drops each bar straight down
+-- by its own column's drop, so undoing that drop hands relief() the field it
+-- was written for. Walked in the world as DRAWN instead, the slab is a bowl:
+-- the backward step up the ray climbs the bowl's near side as fast as it
+-- climbs out of the water, the walk starts inside the sheet, and it returns a
+-- column a pixel or three off -- differently per fragment, which is a
+-- hard-edged patch of noise in the middle of a pond.
+T.check(plain:find("vec3 sheet = vec3(vBent.x, vBent.y + bendDrop(vBent.xz), vBent.z)",
+                   1, true) ~= nil,
+  "and it walks the sheet the mesh was AUTHORED as, the bend taken back off, "
+  .. "because a slab walk over a bowl starts inside the water")
 -- the march's reach grows as one over the ray's descent, so a grazing camera
 -- asks for hundreds of world pixels of it from a fixed number of samples --
 -- which stepped over whole crests and smeared the surface into streaks
@@ -1830,7 +1844,7 @@ T.check(plain:find("waveUV(tc, col)", 1, true) ~= nil,
   "and the column is what is handed to it")
 
 -- the wireframe is ruled on the COLUMNS, not on the flat sheet they stand on
-T.check(gridded:find("columnSeam(hit, vBent, axis)", 1, true) ~= nil,
+T.check(gridded:find("columnSeam(hit, sheet, axis)", 1, true) ~= nil,
   "with V-GRID on, the seams outline the column the ray landed on -- every "
   .. "voxel of water its own block -- rather than ruling a grid across the "
   .. "flat quad underneath and ignoring the bars entirely")
@@ -1839,6 +1853,25 @@ T.check(gridded:find("vec3 w = fwidth(base);", 1, true) ~= nil,
   .. "between neighbouring fragments and its own derivative is a step")
 T.check(plain:find("march(surf, r)", 1, true) ~= nil,
   "the reflection marches from that column, not from the raw fragment")
+-- The two halves of the world curve, and they pull opposite ways. WHAT the
+-- lake reflects is worked out FLAT -- the same rule the rest of the mode
+-- keeps, that the world tips away and the things standing on it do not lean
+-- with it. Reflect off the bowl the bend has made instead and the far half
+-- of a pond is a mirror tilted twenty degrees, throwing the ray past the
+-- vertical, where the sky ramp's own measure (a screen row, through the
+-- frame's matrix) swings from one end of the ramp to the other across a
+-- single column and stamps hard-edged patches of the wrong sky into the
+-- water.  But WHERE it lands has to be found in the world as DRAWN, because
+-- that is what the depth buffer holds -- so the ray stays straight in the
+-- flat world and every sample of it is bent on the way to the screen, by the
+-- vertex stage's own displacement.
+T.check(plain:find("p.y -= bendDrop(p.xz);", 1, true) ~= nil,
+  "and every marched sample is bent into the world as DRAWN before it is "
+  .. "projected, because that is the world the depth buffer holds")
+T.check(plain:find("vec3 r = reflect(view, n);", 1, true) ~= nil
+        and plain:find("reflect(view, vec3(0.0, 1.0, 0.0))", 1, true) ~= nil,
+  "while the reflection itself is taken about the FLAT normal, so a curved "
+  .. "world does not tip the lake the way it does not lean the buildings")
 T.check(plain:find("mod(col.x + col.y, 2.0)", 1, true) ~= nil,
   "and the dither's checkerboard is cut from the columns too, so a camera "
   .. "pan slides the world through nothing")
@@ -1884,6 +1917,21 @@ T.check(plain:find("sc / love_ScreenSize.xy", 1, true) ~= nil,
   .. "size -- `screen` counts canvas UNITS, and on a highdpi phone the two "
   .. "differ by the density, which clamped the lookup and cut the water "
   .. "into blocks")
+-- ...and it tests against a buffer that now holds the water surface too,
+-- because VoxelScene lays the meshes down flat before the reflective pass
+-- runs over them. Nothing else can make one lake hide another: the pass
+-- writes no depth (the buffer is detached so it can be READ), so before this
+-- the sheets were simply painted in mesh order. Flat water never showed it --
+-- one plane, and a farther sheet always lands farther down the screen -- but
+-- the world curve drops the far side of the map into the near field of view,
+-- and a sea a hundred and fifty tiles away came out rasterised on top of the
+-- pond at the player's feet, tall grass and all.
+T.check(plain:find("vec4 selfC = vp * vec4(vBent, 1.0)", 1, true) ~= nil
+        and plain:find("Texel(depthTex, uv).r + 2e-4", 1, true) ~= nil,
+  "testing a HIGHP recomputed depth (gl_FragCoord.z is mediump on mobile "
+  .. "GLES -- fp16 loses a self-comparison outright) with slack covering "
+  .. "the buffer's screen-linear interpolation drift across big quads")
+T.check(VoxelScene.drawWater ~= nil, "and the flat draw that puts it there")
 
 -- ------- the lift itself
 --
@@ -3290,7 +3338,10 @@ Commands.start_battle(ctx, "trainer", "RIVAL1", 1)
 T.check(viaOverworld ~= nil and pushed == nil,
   "a scripted trainer goes through pushBattle: the flash, the wipe and the "
   .. "theme, like any fight walked into")
-T.eq(viaOverworld.kind, "trainer", "with the battle it was asked to start")
+-- guarded index: when the seam above regresses, this must FAIL like any
+-- assertion rather than crash the suite half-run
+T.eq(viaOverworld and viaOverworld.kind, "trainer",
+  "with the battle it was asked to start")
 ctx.overworld = nil
 Commands.start_battle(ctx, "wild", "PIDGEY", 5)
 T.check(pushed ~= nil,
@@ -3414,6 +3465,182 @@ T.check(held > 0 and held < 2 * math.pi, "with the phase advanced by the travel"
 for _ = 1, 20 do VoxelScene.glintStep(g, 112, 100) end
 T.eq(g.amp, 0, "standing still fades it back out within a beat")
 T.eq(g.phase, held, "and the phase does not move while the camera does not")
+end
+
+-- ------- the first-person rung
+--
+-- 1ST rides the same placed-camera seam the battle proved out, so most of
+-- what it adds is arithmetic this suite can hold still: the rig built from
+-- a pose, the compass the grid game still thinks in, the camera-relative
+-- walk vector, and the frame an NPC shows an eye that can stand anywhere.
+
+do
+local FirstPerson =
+  run.loader.exports.DRAMATIC_SHAPE.lib.require("FirstPerson")
+local VoxelState = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelState")
+local FreeMove = run.loader.exports.DRAMATIC_SHAPE.lib.require("FreeMove")
+local Voxel3D = run.loader.exports.DRAMATIC_SHAPE.lib.require("Voxel3D")
+
+T.eq(VoxelState.FP_LEVEL, 6, "1ST is the seventh rung")
+T.check(VoxelState.isFirstPerson(6), "and isFirstPerson answers for it")
+T.check(not VoxelState.isFirstPerson(5), "but not for the 75 orbit")
+T.eq(VoxelState.ANGLE_LABELS[VoxelState.FP_LEVEL + 1], "1ST (EXPERIMENTAL)",
+  "the rung wears the experimental label")
+T.eq(VoxelState.ANGLES_DEG[VoxelState.FP_LEVEL + 1], 75,
+  "and hands the blend the 75-degree orbit as its far end")
+
+-- ------- the compass and the walk vector
+--
+-- Yaw 0 faces south (+Z), the way a resting sprite faces; the compass is
+-- the dominant axis and the walk rotates camera space into world space.
+FirstPerson.yaw, FirstPerson.pitch = 0, 0
+T.eq(FirstPerson.compassFacing(), "down", "yaw 0 looks south")
+FirstPerson.yaw = math.pi / 2
+T.eq(FirstPerson.compassFacing(), "right", "a quarter turn looks east")
+FirstPerson.yaw = math.pi
+T.eq(FirstPerson.compassFacing(), "up", "a half turn looks north")
+FirstPerson.yaw = -math.pi / 2
+T.eq(FirstPerson.compassFacing(), "left", "and three quarters looks west")
+
+local function near(a, b) return math.abs(a - b) < 1e-9 end
+
+FirstPerson.yaw = 0
+local wx, wz = FirstPerson.moveWorld(0, 1)
+T.check(near(wx, 0) and near(wz, 1), "facing south, forward walks south")
+wx, wz = FirstPerson.moveWorld(1, 0)
+T.check(near(wx, -1) and near(wz, 0),
+  "facing south, the right hand points west")
+FirstPerson.yaw = math.pi
+wx, wz = FirstPerson.moveWorld(0, 1)
+T.check(near(wx, 0) and near(wz, -1), "facing north, forward walks north")
+wx, wz = FirstPerson.moveWorld(1, 0)
+T.check(near(wx, 1) and near(wz, 0),
+  "facing north, the right hand points east")
+
+-- the look clamps: pitch stops at the limits, yaw wraps
+FirstPerson.pitch = 0
+FirstPerson.lookBy(0, 100)
+T.eq(FirstPerson.pitch, FirstPerson.PITCH_DOWN, "pitch clamps looking down")
+FirstPerson.lookBy(0, -100)
+T.eq(FirstPerson.pitch, FirstPerson.PITCH_UP, "and looking up")
+FirstPerson.yaw = 0
+FirstPerson.lookBy(2 * math.pi, 0)
+T.check(math.abs(FirstPerson.yaw) < 1e-9, "a full turn of yaw wraps to zero")
+
+-- ------- the rig
+--
+-- frame() is pure arithmetic over the pose and the orbit, so the suite can
+-- stand the blend anywhere and read the record it hands Voxel3D.
+FirstPerson.yaw, FirstPerson.pitch = 0, 0
+FirstPerson.blend = 1
+local me = { px = 100, py = 200, gh = 0, lift = 0 }
+local rig, sx, sy = FirstPerson.frame(me, 500, 600, 320, 288)
+T.check(rig ~= nil, "with the blend in, frame() builds a rig")
+T.eq(Voxel3D.camera, rig, "and hands it to Voxel3D")
+T.check(near(rig.eye[1], 108) and near(rig.eye[3], 208),
+  "the eye stands on the player's centre")
+T.eq(rig.eye[2], FirstPerson.EYE_HEIGHT, "at head height")
+T.check(near(rig.fov, FirstPerson.FOV), "wearing the first-person lens")
+T.check(near(sx, 108) and near(sy, 208),
+  "and the scene centre stands with it")
+T.check(rig.curve == 0,
+  "the world curve is declined outright -- a zero, not a nil the setting "
+  .. "could override")
+T.check(rig.focus[3] > rig.eye[3],
+  "yaw 0 focuses south of the eye")
+
+-- surf bob and ledge lift carry the eye with them
+local bobbed = FirstPerson.frame({ px = 100, py = 200, gh = 4, lift = 6 },
+                                 500, 600, 320, 288)
+T.eq(bobbed.eye[2], 10 + FirstPerson.EYE_HEIGHT,
+  "ground height and lift both raise the eye")
+
+-- mid-blend, the rig is a lerp of the orbit and the head: its eye sits
+-- between the two ends, and the curve is only half declined
+VoxelState.angle = math.rad(75)
+FirstPerson.blend = 0.5
+local mid = FirstPerson.frame(me, 500, 600, 320, 288)
+T.check(mid.eye[2] > FirstPerson.EYE_HEIGHT,
+  "half way out, the eye is higher than the head")
+T.check(mid.eye[2] < 288 * VoxelState.FOCAL,
+  "and lower than the orbit")
+
+-- ------- the cards ask the rig, and only the rig
+FirstPerson.blend = 1
+FirstPerson.frame(me, 500, 600, 320, 288)
+T.check(FirstPerson.cardBlend() == 1, "the free-roam rig turns the cards")
+T.check(FirstPerson.hidePlayer(), "and hides the player's own card")
+
+-- an NPC south of the eye: the card yaws to face north, back at the eye
+local yaw = FirstPerson.cardYaw(108, 300)
+T.check(near(math.sin(yaw), 0) and near(math.cos(yaw), -1),
+  "a card south of the eye turns its face north")
+
+-- the frame an entity SHOWS this eye: stand north of someone facing away
+-- and you see their back; face to face you see their front; flanks show
+-- profiles, named by which flank is toward you
+T.eq(FirstPerson.apparentFacing("down", 108, 300), "up",
+  "an NPC facing south, seen from the north, shows their back")
+T.eq(FirstPerson.apparentFacing("up", 108, 300), "down",
+  "an NPC facing north, seen from the north, shows their face")
+T.eq(FirstPerson.apparentFacing("right", 108, 300), "left",
+  "an NPC facing east, seen from the north, shows their left flank")
+T.eq(FirstPerson.apparentFacing("left", 108, 300), "right",
+  "an NPC facing west, seen from the north, shows their right flank")
+
+-- another camera on the same seam -- the battle's placed shot -- and the
+-- cards stand down: blend still 1, but it is not our rig drawing
+local battleCam = { eye = { 0, 40, 120 }, focus = { 0, 8, 0 },
+                    fov = math.rad(30) }
+Voxel3D.camera = battleCam
+T.eq(FirstPerson.cardBlend(), 0,
+  "a battle camera on the seam turns no cards")
+T.check(not FirstPerson.hidePlayer(),
+  "and hides nobody")
+
+-- blend fully out: frame() clears only a camera that is still ours
+FirstPerson.blend = 0
+T.eq(FirstPerson.frame(me, 500, 600, 320, 288), nil,
+  "with the blend out, frame() answers nil and the orbit rules")
+T.eq(Voxel3D.camera, battleCam,
+  "without touching a camera some other pass placed")
+Voxel3D.camera = nil
+
+-- ------- the free walk's per-cell verdict
+--
+-- The same questions Collision asks a grid step, asked per cell the body
+-- overlaps -- through a map stub shaped like the engine's own.
+local blocked = FreeMove._blockedCell
+local stubMap = {
+  def = { tileset = "OVERWORLD" },
+  inBounds = function(self, x, y)
+    return x >= 0 and y >= 0 and x < 10 and y < 10
+  end,
+  isWalkableCell = function(self, x, y) return x ~= 3 end,
+  isWaterCell = function(self, x, y) return x == 3 and y == 3 end,
+  cellTile = function() return 0 end,
+}
+local p = { cellX = 5, cellY = 5, surfing = false }
+local state = { map = stubMap, entities = {} }
+
+T.eq(blocked(state, p, 5, 5), nil, "the body's own cell never refuses it")
+T.eq(blocked(state, p, 6, 5), nil, "an open neighbour admits it")
+T.eq(blocked(state, p, 3, 5), "tile", "an unwalkable cell refuses it")
+T.eq(blocked(state, p, -1, 5), "bounds", "off the map is the edge's answer")
+T.eq(blocked(state, p, 3, 3), "tile", "water refuses a walker")
+p.surfing = true
+T.eq(blocked(state, p, 3, 3), nil, "and admits a surfer")
+p.surfing = false
+
+state.entities = { { cellX = 6, cellY = 5 } }
+T.eq(blocked(state, p, 6, 5), "entity", "an occupied cell refuses the body")
+state.entities = { { cellX = 7, cellY = 5, targetX = 6, targetY = 5 } }
+T.eq(blocked(state, p, 6, 5), "entity",
+  "and so does one an NPC is mid-step into")
+
+-- the ladder's own state, put back the way the suite found it
+FirstPerson.blend = 0
+VoxelState.reset()
 end
 
 Pipelines.reset()

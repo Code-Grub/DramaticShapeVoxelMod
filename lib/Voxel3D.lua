@@ -421,7 +421,8 @@ end
 -- ---------------------------------------------------------------- camera --
 
 -- An explicit camera, replacing the orbit below for as long as it is set:
--- { eye = {x,y,z}, focus = {x,y,z}, fov = radians, curve = k or nil }.
+-- { eye = {x,y,z}, focus = {x,y,z}, fov = radians, curve = k or nil,
+--   up = {x,y,z} or nil }.
 --
 -- The orbit is the free-roam camera and it is described entirely by ONE
 -- number, the pitch, because that is all a camera following the player over
@@ -496,9 +497,12 @@ function Voxel3D.viewProjection(cx, cy, vw, vh)
     -- the same clip-space Y flip the orbit needs, for the same reason: we
     -- bypass LOVE's transform_projection and canvas coordinates run Y down
     proj = Mat4.mul(Mat4.scale(1, -1, 1), proj)
-    -- world up, so the horizon stays level -- a placed camera that rolled
-    -- with its own pitch would tip the whole arena
-    return Mat4.mul(proj, Mat4.lookAt(eye, focus, { 0, 1, 0 }))
+    -- world up by default, so the horizon stays level -- a placed camera
+    -- that rolled with its own pitch would tip the whole arena. A caller
+    -- may hand its own up: the first-person BLEND does, because its far
+    -- end is the orbit, whose up leans with the pitch -- world up at the
+    -- orbit's steep end degenerates against a straight-down view.
+    return Mat4.mul(proj, Mat4.lookAt(eye, focus, cam.up or { 0, 1, 0 }))
   end
 
   local a = Voxel.angle
