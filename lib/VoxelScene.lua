@@ -21,7 +21,10 @@ local TileShape = V.require("TileShape")
 local TerrainAtlas = V.require("TerrainAtlas")
 local Voxel = V.require("VoxelState")
 local Sky = V.require("Sky")
+local Water = V.require("Water")
+local VoxelGrid = V.require("VoxelGrid")
 local DayNight = V.require("DayNight")
+local FirstPerson = V.require("FirstPerson")
 local PaletteFX = require("src.render.PaletteFX")
 local Map = require("src.world.Map")
 
@@ -212,6 +215,22 @@ local function frameFor(def, facing, phase, flip)
   return frame, mirror
 end
 
+-- The facing a pose SHOWS this camera. The flat frames are "how this pose
+-- looks from the south", which is where the orbit always stands; a
+-- first-person eye stands anywhere, so deep enough into the blend the
+-- facing is remapped to how the pose looks from THERE -- walk behind an
+-- NPC and their card wears the back sprite. Used by the camera draw and
+-- the sun pass BOTH: the card the sun stored and the transform a lit card
+-- reads its own shadowing with must describe the same frame, or the
+-- mirror-flip half of the pair asks the map about texels the sun filed
+-- under the other cheek.
+local function viewFacing(p)
+  if FirstPerson.cardBlend() > 0.5 then
+    return FirstPerson.apparentFacing(p.facing, p.px + 8, p.py + 8)
+  end
+  return p.facing
+end
+
 -- FALLBACK ONLY (see castShadows below). Draw one entity's drop shadow as
 -- a decal: its current sprite frame as a single quad, flattened onto the
 -- ground along the sun line (Voxel3D.shadowMatrix). Runs inside
@@ -234,10 +253,22 @@ end
 -- Shared by the solid draw and the silhouette below, so the two can never
 -- drift apart -- a silhouette standing anywhere but exactly behind the
 -- figure would read as a second character.
+--
+-- IN FIRST PERSON the card stops leaning and starts TURNING: upright, yawed
+-- about its feet to face the eye (cylindrical billboarding). A south-facing
+-- card is invisible edge-on to an eye standing east of it, which no orbit
+-- camera could ever do and a first-person one does constantly. The blend
+-- carries one pose into the other -- the lean eases out as the yaw eases in
+-- -- and cardBlend is zero for every camera that is not the first-person
+-- rig, the battle's placed shot included, so nothing else moves.
 local function billboardMatrix(px, py, y, mirror)
   local Voxel = V.require("VoxelState")
-  local m = Mat4.mul(Mat4.translate(px + 8, y, py + 8),
-                     Mat4.rotateX(Voxel.angle - math.pi / 2))
+  local b = FirstPerson.cardBlend()
+  local m = Mat4.translate(px + 8, y, py + 8)
+  if b > 0 then
+    m = Mat4.mul(m, Mat4.rotateY(FirstPerson.cardYaw(px + 8, py + 8) * b))
+  end
+  m = Mat4.mul(m, Mat4.rotateX((Voxel.angle - math.pi / 2) * (1 - b)))
   if mirror then m = Mat4.mul(m, Mat4.scale(-1, 1, 1)) end
   return Mat4.mul(m, Mat4.translate(-8, 0, 0))
 end
@@ -256,10 +287,24 @@ end
 -- the Pokemon Center couch reads face-on at every tilt like the NPCs
 -- around him. No cell centring: unlike a character he is not standing on a
 -- cell, he is standing where he was drawn, which may straddle two.
+--
+-- First person turns him at the eye like the walkers (see billboardMatrix)
+-- -- about his own middle, because unlike a character card his local space
+-- starts at x = 0 rather than being anchored by a -8 shift, and a yaw about
+-- his edge would swing him off his seat. The width rode in on the record
+-- for exactly this (ChunkMesher.buildFigureMeshes).
 local function figureMatrix(f, offX, offZ)
   local Voxel = V.require("VoxelState")
-  return Mat4.mul(Mat4.translate(f.wx + (offX or 0), f.y, f.wz + (offZ or 0)),
-                  Mat4.rotateX(Voxel.angle - math.pi / 2))
+  local b = FirstPerson.cardBlend()
+  local wx, wz = f.wx + (offX or 0), f.wz + (offZ or 0)
+  local m = Mat4.translate(wx, f.y, wz)
+  if b > 0 and f.w and f.w > 0 then
+    local half = f.w / 2
+    m = Mat4.mul(m, Mat4.translate(half, 0, 0))
+    m = Mat4.mul(m, Mat4.rotateY(FirstPerson.cardYaw(wx + half, wz) * b))
+    m = Mat4.mul(m, Mat4.translate(-half, 0, 0))
+  end
+  return Mat4.mul(m, Mat4.rotateX((Voxel.angle - math.pi / 2) * (1 - b)))
 end
 
 -- What the sun sees: the same card UNLEANED and flattened, exactly as
@@ -331,7 +376,7 @@ VoxelScene.drawEntity = drawEntity
 -- mesh for it.
 local function drawGhost(p)
   local def = p.sprite.def
-  local frame, mirror = frameFor(def, p.facing, p.phase, p.flip)
+  local frame, mirror = frameFor(def, viewFacing(p), p.phase, p.flip)
   local mesh = SpriteBillboards.shadowQuad(def, frame)
   if not mesh then return end
   local tex = p.sprite:resolveImage()
@@ -404,17 +449,25 @@ function VoxelScene.prefetch(state)
   -- crossing demotes the map just left, and it must not vanish from
   -- behind the player while its body variant builds; its ring is
   -- already masked out under this map's body, so the stand-in is safe.
-  local terrain = ChunkMesher.request(state.map, false, masks, true)
+  -- The water surface rides along with whichever variant answers: it was
+  -- cut out of that build's own geometry (ChunkMesher.pair), so the two
+  -- always come from the same slot and a lake is never drawn twice or left
+  -- as a hole.
+  ChunkMesher.request(state.map, false, masks, true)
+  local terrain, water = ChunkMesher.pair(state.map, false)
   if not terrain then
-    terrain = ChunkMesher.peek(state.map, true)
+    terrain, water = ChunkMesher.pair(state.map, true)
   end
-  local nbMesh = {}
+  local nbMesh, nbWater = {}, {}
   for i, nb in ipairs(state.neighbors or {}) do
-    nbMesh[i] = ChunkMesher.request(nb.map, true)
-                or ChunkMesher.peek(nb.map, false)
+    ChunkMesher.request(nb.map, true)
+    nbMesh[i], nbWater[i] = ChunkMesher.pair(nb.map, true)
+    if not nbMesh[i] then
+      nbMesh[i], nbWater[i] = ChunkMesher.pair(nb.map, false)
+    end
   end
   Voxel.ready = terrain ~= nil
-  return terrain, nbMesh
+  return terrain, nbMesh, water, nbWater
 end
 
 -- Capture every entity's pose for this frame. pose() advances the hop /
@@ -452,7 +505,13 @@ local function posesOf(state, spriteColors)
         gh = groundAt(state.map, e.cellX, e.cellY),
         lift = e.py - vy, colors = colors,
       }
-      if e == state.player then me = posed[#posed] end
+      if e == state.player then
+        me = posed[#posed]
+        -- marked so the camera draw can leave the card out in first
+        -- person, where it would fill the lens from inside; the SUN pass
+        -- reads the same list and deliberately does not check the mark
+        me.isPlayer = true
+      end
     end
   end
   return posed, me
@@ -490,6 +549,175 @@ end
 
 local glint = {}
 
+-- ------- the cast
+--
+-- Everybody standing on the map: the walkers, and the authored FIGURES the
+-- tileset draws into its own furniture (they ARE characters as far as the
+-- artwork is concerned, just ones drawn by the tileset instead of by a
+-- sprite sheet, so they get the same lean and the same camera-ward pull).
+--
+-- One function because it is drawn TWICE and the two must be identical: once
+-- into the frame, and once into the water's reflection copy (see drawWater --
+-- Gen 1 draws people over the world, and water is world, so the cast cannot
+-- be composited before the water it has to appear in).
+--
+-- Characters carry no wireframe out here, whatever the V-GRID row says. The
+-- seams are what makes the WORLD read as built out of voxels, and the people
+-- walking around in it are the one thing that should read as drawn instead --
+-- a grid over a 16x16 sprite lands a line every couple of display pixels and
+-- turns a face into a mesh. (The battle pass makes the opposite call for its
+-- own combatants, deliberately -- see BattleBillboard.)
+--
+-- Sprite sheets until the figure pass: their texture coordinates mean
+-- nothing to the tileset-shaped glass mask, so the glass is off or the
+-- panes' atlas positions stripe the cast with lamplight at night.
+local function drawCast(state, posed, atlasFor)
+  Voxel3D.glass(false)
+  Voxel3D.seams(false)
+  -- Characters, normally depth-tested: the camera-ward pull inside
+  -- drawEntity resolves the lean-over-the-wall-in-front case, and a
+  -- character genuinely behind a building is far deeper and loses the
+  -- test, so buildings and trees really occlude.
+  --
+  -- In first person two of them change: the player's own card is left out
+  -- (the eye is standing in it), and every other card wears the frame its
+  -- pose SHOWS this eye (viewFacing) rather than the one it shows the
+  -- south. Both run through here, so the water's reflection copy -- drawn
+  -- by this same function -- agrees with the frame to the pixel.
+  local hideMe = FirstPerson.hidePlayer()
+  for _, p in ipairs(posed) do
+    if not (p.isPlayer and hideMe) then
+      drawEntity(p.sprite, p.px, p.py, viewFacing(p), p.phase, p.flip, p.gh,
+                 p.colors, p.lift)
+    end
+  end
+  -- back on for everything textured from the atlas again -- figures, grass
+  -- and flowers all sample it, where the mask's coordinates are honest
+  Voxel3D.glass(true)
+  -- Figures after the walkers, so a player standing in front of the couch
+  -- wins the overlap -- the order the flat game draws them in.
+  local figPull = billboardPull()
+  eachFigure(state.map, 0, 0, function(mesh, model, caster)
+    Voxel3D.draw(mesh, atlasFor(state.map), model, figPull,
+                 ShadowMap.snug(caster))
+  end)
+  for _, nb in ipairs(state.neighbors or {}) do
+    eachFigure(nb.map, nb.ox, nb.oy, function(mesh, model, caster)
+      Voxel3D.draw(mesh, atlasFor(nb.map), model, figPull,
+                   ShadowMap.snug(caster))
+    end)
+  end
+  -- and the seams are back on for the terrain art that follows: grass and
+  -- flowers are the world's own drawing, not people
+  Voxel3D.seams(true)
+end
+
+-- ------- the water pass
+--
+-- Between the terrain and everything that stands on it, because water is a
+-- MIRROR and a mirror can only reflect what is already down: the ground, the
+-- shoreline, the trees and buildings behind it, and the sky the frame opened
+-- with.
+--
+-- THE CAST IS THE AWKWARD ONE, and it is settled by drawing it twice. Gen 1
+-- draws people over the world and water is world, so a surfing player has to
+-- composite OVER the water they are sitting on -- which puts them after it,
+-- and a reflection can only hold what came before it. So `cast` is painted
+-- into the reflection copy alone (Voxel3D.beginWater), where it is in the
+-- picture the water reflects and not yet in the picture the water is drawn
+-- into. Both draws go through drawCast, so they cannot come out different.
+--
+-- The ray march finds them the honest way round: a sprite is not in the
+-- DEPTH buffer at that point, so a ray aimed at one passes through to the
+-- terrain standing behind it and reads the copy there -- where the sprite is
+-- already painted. The reflection lands a hair off the sprite's own depth
+-- and exactly on its colour, which at a lake's worth of ripple is the same
+-- picture.
+--
+-- `draws` is a list of { mesh, texture, model }. Nothing is a special case:
+-- with the row OFF, no depth texture to read, or a shader that would not
+-- build, the same meshes go through the ordinary scene shader and come out
+-- as the flat animated water this mode always drew.
+-- The overworld's alone: the staged battle draws its water plain, always --
+-- its placed camera reads this pass wrong, and a stage set wants painted
+-- water anyway (see BattleScene, where the choice is argued).
+-- ------- and why the flat draw happens FIRST while the world is curved
+--
+-- The reflective pass writes no depth -- it cannot, the depth canvas is
+-- detached for the length of it so the shader can READ it -- and it does its
+-- own depth test against that texture instead. That test asks whether
+-- something opaque is in front, and it answers correctly for every case but
+-- one: WATER IN FRONT OF WATER. Nothing puts water in the depth buffer, so
+-- no lake can hide another, and the pass simply paints them in mesh order.
+--
+-- On a flat world that never matters: every surface lies in the one plane
+-- at its own recessed height, and a farther sheet always lands farther down
+-- the screen. THE WORLD CURVE ENDS THAT. The bend drops the world by the
+-- square of its distance, so the far side of the map swings down and back
+-- up into the near field of view -- and a sheet of sea a hundred and fifty
+-- tiles away, drawn later in the same mesh, paints straight over the pond
+-- at the player's feet. Not a reflection of the far shore: the far shore
+-- itself, rasterised on top of the water in front of you.
+--
+-- So WHILE THE CURVE IS ON, the meshes go down flat first, through the
+-- ordinary scene shader with depth writes on, and the reflective pass draws
+-- over the top of what survived: the depth buffer now holds the water
+-- surface, so the pass's own test throws the far sheet away, and the
+-- reflection COPY holds it too, so a ray grazing another part of the lake
+-- reads water rather than the void behind it.
+--
+-- With the curve OFF the prepass is not just unnecessary, it is a LIABILITY,
+-- and it stays off -- the reflective pass tests only against terrain, as it
+-- always did. Painting the surface into the depth texture turns the pass's
+-- test into a comparison of the surface against ITSELF, which asks the two
+-- rasterisations to agree to within interpolation error -- and on mobile
+-- GPUs they don't reliably (that fight is what put the Android port back on
+-- flat water). Confined to the curve there is no regression to reach: the
+-- flat world never had the far-shore bug in the first place.
+function VoxelScene.drawWater(draws, cast)
+  -- prepass only under the bend; see the header
+  local curved = (Voxel3D.curveK or 0) > 0
+  if curved then
+    for _, d in ipairs(draws) do
+      Voxel3D.draw(d[1], d[2], d[3])
+    end
+  end
+  local plain = not curved
+  if Water.enabled() and Voxel3D.depthReadable() then
+    local mirror, depth = Voxel3D.beginWater(cast)
+    local w, h = Voxel3D.size()
+    local ok = mirror and depth and Water.begin({
+      reflect = mirror, depth = depth,
+      vp = Voxel3D.vp, eye = Voxel3D.eye, curve = { Voxel3D.curveX or 0,
+                                                    Voxel3D.curveZ or 0,
+                                                    Voxel3D.curveK or 0 },
+      screen = { w, h }, cell = Voxel3D.cell, fov = Voxel3D.fovY,
+      skyEdge = Voxel3D.skyEdge, grid = VoxelGrid.enabled(),
+      lookFlat = Voxel3D.lookFlat, descent = Voxel3D.descent,
+    })
+    if ok then
+      for _, d in ipairs(draws) do
+        Water.draw(d[1], d[2], d[3])
+      end
+      Water.finish()
+      plain = false
+    end
+    -- Unconditionally, and OUTSIDE the success branch: beginWater unbinds
+    -- the shader and the depth mode BEFORE it can discover it cannot go on,
+    -- so a frame that bails halfway through has to be put back together
+    -- exactly like one that succeeded -- otherwise every pass after it runs
+    -- with no shader and no depth test.
+    Voxel3D.endWater()
+  end
+  -- the fallback flat draw -- unless the curve's prepass already put the
+  -- same meshes down, in which case a bailed frame is already whole
+  if plain then
+    for _, d in ipairs(draws) do
+      Voxel3D.draw(d[1], d[2], d[3])
+    end
+  end
+end
+
 -- A stamp of everything the sun pass depends on. Nothing in it moving
 -- means the shadow map it produced last frame is still exactly right, and
 -- redrawing the whole world from the sun would buy nothing -- which is
@@ -517,6 +745,10 @@ local function shadowSignature(terrain, nbMesh, posed, cx, cy, vw, vh)
   -- few times a minute rather than every frame.
   put(math.floor(ShadowMap.KX * 128))
   put(math.floor(ShadowMap.KZ * 128))
+  -- and the first-person head: the box is fitted around wherever it looks
+  -- and the sprite cards swap frames as it circles them, so a turn on the
+  -- spot re-fits and redraws exactly like a camera move ("" outside 1ST)
+  put(FirstPerson.signature())
   put(tostring(terrain))
   for i = 1, #nbMesh do put(tostring(nbMesh[i])) end
   for _, p in ipairs(posed) do
@@ -540,7 +772,7 @@ end
 -- left out on purpose: thousands of tufts would cast a speckle no bigger
 -- than the pixels it lands on, at the cost of the mesh being drawn twice.
 local function castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh,
-                           atlasFor)
+                           atlasFor, water, nbWater)
   if not ShadowMap.available() then return end
   local sig = shadowSignature(terrain, nbMesh, posed, cx, cy, vw, vh)
   if not ShadowMap.stale(sig) then return end
@@ -549,6 +781,15 @@ local function castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh,
   ShadowMap.draw(terrain, atlasFor(state.map), nil)
   for i, nb in ipairs(state.neighbors or {}) do
     ShadowMap.draw(nbMesh[i], atlasFor(nb.map),
+                   Mat4.translate(nb.ox, 0, nb.oy))
+  end
+  -- The water surface, which the terrain mesh no longer carries (it is its
+  -- own reflective pass now -- see Water). The sun still has to see it, or
+  -- the map the light records has a hole at every lake and the frustum's
+  -- far plane answers for the surface a shoreline tree's shadow falls on.
+  ShadowMap.draw(water, atlasFor(state.map), nil)
+  for i, nb in ipairs(state.neighbors or {}) do
+    ShadowMap.draw(nbWater and nbWater[i], atlasFor(nb.map),
                    Mat4.translate(nb.ox, 0, nb.oy))
   end
   -- flower billboards live outside the terrain mesh (they draw after the
@@ -563,6 +804,11 @@ local function castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh,
     ShadowMap.draw(ChunkMesher.flowers(nb.map), atlasFor(nb.map),
                    ShadowMap.snug(Mat4.translate(nb.ox, 0, nb.oy)))
   end
+  -- From here down it is the CAST, marked as such in the map (see
+  -- ShadowMap.sprites) so water can decline them: everything the world casts
+  -- still shades a lake, a silhouette of somebody standing beside it does
+  -- not. Ground, roofs and the characters themselves take them as before.
+  ShadowMap.sprites(true)
   -- authored figures cast too, for the same reason the flowers do: a
   -- handful of cards per map, and a person with no shadow reads as pasted on
   eachFigure(state.map, 0, 0, function(mesh, _, caster)
@@ -575,7 +821,12 @@ local function castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh,
   end
   for _, p in ipairs(posed) do
     local def = p.sprite.def
-    local frame, mirror = frameFor(def, p.facing, p.phase, p.flip)
+    -- viewFacing, exactly as the camera draw picks it (see viewFacing for
+    -- why the two passes must agree): in first person the sun's card
+    -- swaps frame as the eye circles, which costs a redraw the signature
+    -- already charges for (FirstPerson.signature) and keeps a card from
+    -- fringing against a mirror-flipped record of itself
+    local frame, mirror = frameFor(def, viewFacing(p), p.phase, p.flip)
     local mesh = SpriteBillboards.shadowQuad(def, frame)
     if mesh then
       ShadowMap.draw(mesh, p.sprite:resolveImage(),
@@ -584,6 +835,7 @@ local function castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh,
                                             mirror)))
     end
   end
+  ShadowMap.sprites(false)
 
   ShadowMap.finish(sig)
 end
@@ -593,7 +845,7 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   -- return nil: the engine keeps the 2D path for the frame and
   -- Voxel.ready holds the camera tween at flat, so the switch waits
   -- invisibly instead of freezing or tilting an empty stage.
-  local terrain, nbMesh = VoxelScene.prefetch(state)
+  local terrain, nbMesh, water, nbWater = VoxelScene.prefetch(state)
   if not terrain then return nil end
 
   local cam = state.camera
@@ -630,7 +882,24 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   end
 
   local posed, me = posesOf(state, spriteColors)
-  castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh, atlasFor)
+
+  -- The first-person rig, built (or blended) for this frame and handed to
+  -- Voxel3D BEFORE either pass runs: the sun's box is fitted around this
+  -- camera, and every card matrix asks it which way to turn. With the
+  -- blend fully out the call clears the placed camera and the orbit is
+  -- exactly what it always was. The scene centre it returns walks from
+  -- the orbit's view centre into the head, so the curve's focus and the
+  -- depth reference follow the camera actually in charge.
+  local fpRig, fpCx, fpCy = FirstPerson.frame(me, cx, cy, vw, vh)
+  if fpRig then cx, cy = fpCx, fpCy end
+
+  -- The sun's box, pushed along the first-person look so it covers the
+  -- ground THIS camera sees (a no-op at blend zero): the orbit's fit
+  -- reaches far north and barely south, which is right for every rung
+  -- but a head free to face south.
+  local shCx, shCy = FirstPerson.shadowCenter(cx, cy, vh)
+  castShadows(state, terrain, nbMesh, posed, shCx, shCy, vw, vh, atlasFor,
+              water, nbWater)
 
   if not Voxel3D.beginScene(w, h, cx, cy, vw, vh, skyFor(state.map)) then
     return nil
@@ -652,11 +921,39 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   if not Voxel3D.shadowsActive() then
     Voxel3D.beginShadows()
     for _, p in ipairs(posed) do
-      drawShadow(p.sprite, p.px, p.py, p.facing, p.phase, p.flip, p.gh,
+      drawShadow(p.sprite, p.px, p.py, viewFacing(p), p.phase, p.flip, p.gh,
                  p.lift)
     end
     Voxel3D.endShadows()
   end
+
+  -- and the water over the top of it, reflecting everything just drawn plus
+  -- the sky the frame opened with (see drawWater).
+  --
+  -- After the fallback decals deliberately: those are the stand-in drop
+  -- shadows for a frame with no shadow map, they write no depth, and a
+  -- lake would otherwise wear one as a black smear. Water covers them,
+  -- which is the same answer the shadow map's own pass gives (see
+  -- ShadowMap.sprites) -- people do not shadow water either way.
+  local waterDraws = {}
+  if water then
+    waterDraws[#waterDraws + 1] = { water, atlasFor(state.map), nil }
+  end
+  for i, nb in ipairs(state.neighbors or {}) do
+    if nbWater and nbWater[i] then
+      waterDraws[#waterDraws + 1] = { nbWater[i], atlasFor(nb.map),
+                                      Mat4.translate(nb.ox, 0, nb.oy) }
+    end
+  end
+  -- the cast goes into the reflection copy only -- see drawWater for why it
+  -- cannot be composited yet and why it is drawn through the same function
+  -- the real pass below uses
+  if #waterDraws > 0 then
+    VoxelScene.drawWater(waterDraws, function()
+      drawCast(state, posed, atlasFor)
+    end)
+  end
+
 
   -- Sprite sheets from here to the figure pass: their texture coordinates
   -- mean nothing to the tileset-shaped glass mask, so the glass is off or
@@ -670,7 +967,11 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   -- wrote it, so the silhouette would paint over the player at all times.
   -- Every character then draws on top as usual, which leaves the silhouette
   -- showing in exactly one situation: where the world hides them.
-  if me then
+  --
+  -- Not in first person: the card it silhouettes is the one the camera is
+  -- standing inside, and "the world is in front of the player" is every
+  -- wall the player faces.
+  if me and not FirstPerson.hidePlayer() then
     Voxel3D.beginGhost()
     drawGhost(me)
     Voxel3D.endGhost()
@@ -689,33 +990,7 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   -- drawEntity resolves the lean-over-the-wall-in-front case, and a
   -- character genuinely behind a building is far deeper and loses the
   -- test, so buildings and trees really occlude.
-  Voxel3D.seams(false)
-  for _, p in ipairs(posed) do
-    drawEntity(p.sprite, p.px, p.py, p.facing, p.phase, p.flip, p.gh,
-               p.colors, p.lift)
-  end
-  -- back on for everything textured from the atlas again -- figures, grass
-  -- and flowers all sample it, where the mask's coordinates are honest
-  Voxel3D.glass(true)
-  -- Authored figures, alongside the characters and with the same lean and
-  -- the same camera-ward pull -- they ARE characters as far as the artwork
-  -- is concerned, just ones the tileset draws instead of a sprite sheet.
-  -- Drawn after the walkers so a player standing in front of the couch
-  -- wins the overlap, which is the order the flat game draws them in.
-  local figPull = billboardPull()
-  eachFigure(state.map, 0, 0, function(mesh, model, caster)
-    Voxel3D.draw(mesh, atlasFor(state.map), model, figPull,
-                 ShadowMap.snug(caster))
-  end)
-  for _, nb in ipairs(state.neighbors or {}) do
-    eachFigure(nb.map, nb.ox, nb.oy, function(mesh, model, caster)
-      Voxel3D.draw(mesh, atlasFor(nb.map), model, figPull,
-                   ShadowMap.snug(caster))
-    end)
-  end
-  -- and the seams are back on for the terrain art that follows: grass and
-  -- flowers are the world's own drawing, not people
-  Voxel3D.seams(true)
+  drawCast(state, posed, atlasFor)
   -- tall grass last, pulled camera-ward exactly as far as the characters
   -- were (same per-vertex shader bias, so grass never drifts either):
   -- relative depth between a walker and the tuft row south of their feet

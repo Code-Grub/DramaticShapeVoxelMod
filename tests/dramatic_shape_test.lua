@@ -49,12 +49,14 @@ T.eq(defs._owners and defs._owners.voxel, "DRAMATIC_SHAPE",
 
 -- ------- the ladders the engine drives
 
-T.eq(#defs.voxel.levels, 6, "voxel exposes a six-rung ladder")
+T.eq(#defs.voxel.levels, 7, "voxel exposes a seven-rung ladder")
 T.eq(defs.voxel.levels[1], "OFF", "rung 0 is OFF")
 T.eq(defs.voxel.levels[2], "FULL",
   "FULL is the first rung after OFF -- the order those two get used in")
-T.eq(defs.voxel.levels[6], "75", "the top rung is the 75-degree camera")
-T.eq(Pipelines.maxLevel("voxel"), 5, "the engine reads the ladder height")
+T.eq(defs.voxel.levels[6], "75", "rung 5 is the 75-degree camera")
+T.eq(defs.voxel.levels[7], "1ST (EXPERIMENTAL)",
+  "the top rung is the first-person camera, labelled as the experiment it is")
+T.eq(Pipelines.maxLevel("voxel"), 6, "the engine reads the ladder height")
 T.eq(Pipelines.levelLabel("voxel", 3), "35", "the engine reads the rung labels")
 
 -- ------- gating: inert until switched on, and inert without a GPU
@@ -145,6 +147,9 @@ T.check(not fullIds["DRAMATIC_SHAPE:daytime"], "and DAYTIME")
 -- back sprite (or no staged fights at all) can still say so from inside FULL
 T.check(fullIds["DRAMATIC_SHAPE:battles"], "3D-BTL is still on the menu under FULL")
 T.check(fullIds["DRAMATIC_SHAPE:battleBack"], "and BACK SPRITES with it")
+-- and AA, for the opposite reason: it is not a knob on the look at all, it is
+-- what the look COSTS, and only the player knows what their machine can carry
+T.check(fullIds["DRAMATIC_SHAPE:aa"], "and AA, which FULL neither sets nor owns")
 
 -- DAYTIME is not only hidden under FULL, it is HELD at SYNC: the row cannot
 -- be reached while FULL owns it, so a value changed underneath (the mod
@@ -298,7 +303,7 @@ local order = {}
 for i, row in ipairs(grouped) do order[row.id] = i end
 T.check(order["pipeline:tiltshift"] < order["DRAMATIC_SHAPE:grid"],
   "the mode's settings follow its pipeline rows")
-T.eq(order["DRAMATIC_SHAPE:battles"] - order["pipeline:tiltshift"], 3,
+T.eq(order["DRAMATIC_SHAPE:battles"] - order["pipeline:tiltshift"], 4,
   "and sit in one unbroken block, not scattered to the end of the list")
 T.check(order["void_fill"] > order["DRAMATIC_SHAPE:battles"],
   "with the engine's own later rows still after them")
@@ -379,9 +384,17 @@ end
 Pipelines.setLevel("voxel", 2)
 local hookedRows = Runtime.call("ui.options.rows", function(_, r) return r end,
                                { data = Data }, { { id = "text_speed" } })
-T.eq(#hookedRows, 6, "the options hook added a row per setting")
-local grid, curve, battles = hookedRows[2], hookedRows[3], hookedRows[4]
-local backRow, daytime = hookedRows[5], hookedRows[6]
+T.eq(#hookedRows, 8, "the options hook added a row per setting")
+local grid, curve, water = hookedRows[2], hookedRows[3], hookedRows[4]
+local battles, backRow, daytime = hookedRows[5], hookedRows[6], hookedRows[7]
+-- the AA row is hookedRows[8]; it is read in its own block below, because
+-- this chunk is one main function and has 200 local slots to spend
+T.eq(water.label, "WATER", "the water row carries its label")
+T.eq(water.value(), "FULL",
+  "and defaults to FULL -- reflections are the point of having the row")
+water.step({ save = { options = {} }, mods = { modOptions = {} } }, 1)
+T.eq(water.value(), "SKY",
+  "stepping down drops the screen-space march and keeps the sky, sun and moon")
 T.eq(daytime.label, "DAYTIME", "the day/night row carries its label")
 T.eq(daytime.value(), "SYNC",
   "and defaults to SYNC -- no value set follows the clock on the wall")
@@ -452,6 +465,57 @@ curve.step(settingGame, 1)
 curve.step(settingGame, 1)
 curve.step(settingGame, 1)
 T.eq(curve.value(), "OFF", "the curve is left off for the rows below")
+
+-- ------- AA renders the pass larger and folds it back down
+--
+-- The ladder is SAMPLES per display pixel, so the canvas scale each rung asks
+-- for is its square root -- and the scale in force has to be readable after
+-- the fact, because two things are quoted in DISPLAY pixels and have to be
+-- multiplied up into the canvas the pass actually opened: the wireframe's
+-- line width and the FX overlay's sprite scale.
+do
+local AntiAlias = run.loader.exports.DRAMATIC_SHAPE.lib.require("AntiAlias")
+local VoxelGrid = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelGrid")
+local aaGame = { save = { options = {} }, mods = { modOptions = {} } }
+local aa = hookedRows[8]
+T.eq(aa.label, "AA", "the anti-aliasing row carries its label")
+T.eq(aa.value(), "OFF",
+  "and starts off -- supersampling is a cost knob, and a mod must not spend "
+  .. "four times the fill rate of the machine it lands on unasked")
+
+T.eq(AntiAlias.samples(), 0, "AA is off by default")
+local w, h = AntiAlias.expand(320, 200)
+T.eq(w, 320, "an OFF row renders at the window's own width")
+T.eq(h, 200, "and its height")
+T.eq(AntiAlias.factor(), 1, "with nothing to multiply display pixels by")
+T.eq(VoxelGrid.width(), VoxelGrid.WIDTH,
+  "so the wireframe is the one-display-pixel line it has always been")
+
+aa.step(aaGame, 1)
+T.eq(aa.value(), "2X", "stepping the row climbs to two samples a pixel")
+T.eq(aaGame.save.options.modOptions.DRAMATIC_SHAPE.aa, 2,
+  "the sample count persists beside the other settings, not over them")
+w, h = AntiAlias.expand(320, 200)
+T.eq(w, 453, "two samples a pixel is a canvas root-two wider")
+T.eq(h, 283, "and root-two taller")
+T.check(math.abs(AntiAlias.factor() - 453 / 320) < 1e-9,
+  "and the factor is what it MEASURED, not what the row asked for")
+
+aa.step(aaGame, 1)
+T.eq(aa.value(), "4X", "and again to four")
+w, h = AntiAlias.expand(320, 200)
+T.eq(w, 640, "four samples a pixel is a canvas exactly twice the size")
+T.eq(h, 400, "in each direction, which is the 2x2 box the fold reads")
+T.eq(AntiAlias.factor(), 2, "with everything in display pixels doubled")
+T.eq(VoxelGrid.width(), VoxelGrid.WIDTH * 2,
+  "the wireframe among them -- a seam left at 1.0 would fold down to half a "
+  .. "line, so the smoothing row would appear to fade the grid row out")
+
+aa.step(aaGame, 1)
+T.eq(aa.value(), "OFF", "and the ladder wraps back to off")
+AntiAlias.expand(320, 200)
+T.eq(AntiAlias.factor(), 1, "leaving nothing behind for the next pass")
+end
 
 -- ------- the animated terrain atlas survives an engine without its seams
 --
@@ -1017,12 +1081,12 @@ local Curve = run.loader.exports.DRAMATIC_SHAPE.lib.require("WorldCurve")
 -- with nothing on screen saying a keypress had done it.
 Pipelines.setLevel("voxel", 0)
 local walk = {}
-for _ = 1, 6 do
+for _ = 1, 7 do
   Game.keypressed(keyGame, "3")
   walk[#walk + 1] = Pipelines.levelLabel("voxel")
 end
-T.eq(table.concat(walk, ","), "15,35,50,75,OFF,15",
-  "3 walks OFF -> 15 -> 35 -> 50 -> 75 and wraps, never touching FULL")
+T.eq(table.concat(walk, ","), "15,35,50,75,1ST (EXPERIMENTAL),OFF,15",
+  "3 walks OFF -> 15 -> 35 -> 50 -> 75 -> 1ST and wraps, never touching FULL")
 
 -- FULL is 35 degrees, so a press from it goes ON to 50 rather than back to
 -- the rung that shows the same camera -- the key never appears to do nothing.
@@ -1081,8 +1145,8 @@ T.eq(GBCFX.level, 0, "and on the live renderer")
 -- TILT with or without us. Park the ladder on its top rung and turn both
 -- back on, so the single press under test is the one that wraps to OFF --
 -- where nothing else is going to clear them.
--- 5 is the "75" rung, the last one the key walks before it wraps to OFF
-Pipelines.setLevel("voxel", 5)
+-- 6 is the "1ST" rung, the last one the key walks before it wraps to OFF
+Pipelines.setLevel("voxel", 6)
 Tilt.setLevel(3)
 GBCFX.setLevel(4)
 keyGame.save.options.tilt = 3
@@ -1480,6 +1544,486 @@ T.eq(Sky.paint(320, 288, { 0, 0, 1, 1 }, 40, 7), false,
   "a descriptor with no bands on it is the old flat sky, untouched")
 T.eq(Sky.paint(320, 0, skyGrad, 40, 7), false,
   "and a frame with no height paints nothing at all")
+end
+
+-- ------- reflections on water
+--
+-- Water is the one surface in this mode that cannot be drawn with the rest
+-- of the world: it is a mirror, and a mirror needs what it reflects to
+-- already be down. So it is lifted out of the terrain mesh at BUILD time and
+-- drawn as its own pass. That lift is the load-bearing part -- get it wrong
+-- and a lake is either a hole in the world or is drawn twice -- and it is
+-- pure geometry, so it is driven here against a hand-drawn map.
+do
+local Water = run.loader.exports.DRAMATIC_SHAPE.lib.require("Water")
+local Sky = run.loader.exports.DRAMATIC_SHAPE.lib.require("Sky")
+local ChunkMesher = run.loader.exports.DRAMATIC_SHAPE.lib.require("ChunkMesher")
+local Structures = run.loader.exports.DRAMATIC_SHAPE.lib.require("Structures")
+local Shapes = run.loader.exports.DRAMATIC_SHAPE.lib.require("TileShape")
+local TileShapeHeights = Shapes.heights()
+
+-- ------- the ladder
+--
+-- Three rungs, not a toggle: the sky half of this costs a handful of
+-- instructions and the screen-space half costs a ray march, so a machine
+-- that wants the sunset on the lake but not the march has somewhere to sit.
+T.eq(Water.setting.values[1], "full",
+  "FULL is the default -- reflections are the point of having the row")
+Water.setting:sync("full")            -- the row test above stepped it
+T.eq(Water.level(), 2, "and it reads back as the full pass")
+T.eq(Water.enabled(), true, "which is on")
+Water.setting:sync("sky")
+T.eq(Water.level(), 1, "SKY keeps the pass but drops the screen-space march")
+T.eq(Water.enabled(), true, "and is still a reflection")
+Water.setting:sync("off")
+T.eq(Water.level(), 0, "OFF is no pass at all")
+T.eq(Water.enabled(), false,
+  "which is what puts the water back in the ordinary scene shader")
+Water.setting:sync("full")
+
+-- ------- the waves are geometry, not shading -- and they step at 15fps
+--
+-- The surface is a heightfield of one-world-pixel columns, each standing a
+-- WHOLE number of pixels tall -- a voxel like every other voxel in this
+-- mode -- and it advances in STEPS rather than sliding: 15 a second, the
+-- cadence hand-drawn pixel art is animated at. A surface built out of whole
+-- pixels that crawls smoothly between them gives away that the quantisation
+-- is only skin deep.
+do
+local TerrainAtlas = run.loader.exports.DRAMATIC_SHAPE.lib.require("TerrainAtlas")
+local realClock = TerrainAtlas._animFrame
+local frame = 0
+TerrainAtlas._animFrame = function() return frame end
+local function at(f)
+  frame = f
+  return Water._waveTime()
+end
+
+local period = 60 / Water.WAVE_FPS
+T.eq(period, 5, "12 steps a second is one every five engine frames")
+T.eq(math.floor(period), period,
+  "and the beat divides the engine's 60 exactly, so every step spans the "
+  .. "same whole number of frames")
+-- inside one step nothing moves; crossing one, it does
+T.eq(at(0), at(period - 1),
+  "every frame inside one wave step gets the same phase -- the surface "
+  .. "steps rather than crawling between its own pixels")
+T.neq(at(0), at(period), "and the step boundary is where it moves")
+
+local steps = {}
+for f = 0, 59 do steps[at(f)] = true end
+local n = 0
+for _ in pairs(steps) do n = n + 1 end
+T.eq(n, Water.WAVE_FPS, "which is WAVE_FPS distinct positions in a second")
+TerrainAtlas._animFrame = realClock
+
+-- and the step is worth taking: one world pixel of the dominant train per
+-- step, DERIVED from that train rather than tuned beside it, so a change of
+-- wavelength moves the speed with it. A step the surface cannot resolve is
+-- a smooth crawl wearing a quantised clock.
+local t = Water.WAVE_TRAINS[1]
+local freq = math.sqrt(t[1] * t[1] + t[2] * t[2])
+local travel = (Water.waveRate() / Water.WAVE_FPS) * math.abs(t[3]) / freq
+T.check(math.abs(travel - Water.WAVE_PIXELS_PER_STEP) < 1e-9,
+  "each step advances the dominant crest by exactly WAVE_PIXELS_PER_STEP "
+  .. "world pixels, so nothing ever lands half-way between two")
+
+-- the trains reach the shader as source, off the same table the rate above
+-- is derived from -- one list, so the two cannot drift
+local trains = Water._trainSource()
+T.eq(select(2, trains:gsub("h %+= sin", "")), #Water.WAVE_TRAINS,
+  "every train in the table is summed by the shader")
+T.check(trains:find(("%.4f"):format(t[1]), 1, true) ~= nil,
+  "at the frequency the table states")
+
+-- the variation that keeps three periodic trains from reading as wallpaper:
+-- the dominant train's amplitude breathes with the swell and its crests bow
+-- with the bend, both pasted from their own tables like the trains are
+T.check(trains:find(("%.4f"):format(Water.WAVE_SWELL[1]), 1, true) ~= nil
+        and trains:find(("%.4f"):format(Water.WAVE_BEND[1]), 1, true) ~= nil,
+  "the swell and the bend reach the shader off the tables that document "
+  .. "them, not off copies kept in step by hand")
+T.check(Water.WAVE_SWELL[4] > 0 and Water.WAVE_SWELL[4] < 1,
+  "the swell's deepest lull thins the dominant train without deleting or "
+  .. "inverting it -- a sea with sets in it, not a sea that turns off")
+for _, mod in ipairs({ Water.WAVE_SWELL, Water.WAVE_BEND }) do
+  local mf = math.sqrt(mod[1] * mod[1] + mod[2] * mod[2])
+  T.check(mf * 3.5 < freq,
+    "a modulator's wavelength sits several times the carrier's, far enough "
+    .. "apart that it reads as weather over the waves rather than as a "
+    .. "fourth wave -- which would be the soup the weights exist to avoid")
+end
+
+T.check(Water.WAVE_HEIGHT > -TileShapeHeights.water,
+  "the crests stand taller than the recess TileShape sinks water into -- "
+  .. "they are RELIEF inside the quad's own footprint, so a bar that reaches "
+  .. "above the bank is clipped at the water's edge rather than spilling")
+end
+
+-- ------- the moon on the water is the moon in the sky
+--
+-- The reflected disc is drawn by a shader and the painted one by rectangles,
+-- so nothing but shared DATA can keep them the same moon. The crater list is
+-- pasted into the shader source from Sky's own table, which is the seam that
+-- makes "they cannot drift" true rather than merely intended.
+local craters = Water._craterSource()
+local craterLines = select(2, craters:gsub("crater%(", ""))
+T.eq(craterLines, #Sky.MOON_CRATERS,
+  "the shader gets one crater per crater the painted moon has")
+for _, c in ipairs(Sky.MOON_CRATERS) do
+  T.check(craters:find(("%.4f"):format(c[1]), 1, true) ~= nil,
+    "and each one at the offset the painted moon puts it at")
+end
+T.check(craters:find(("%.4f"):format(Sky.CRATER_FRAC), 1, true) ~= nil,
+  "at the same fraction of the disc's radius")
+
+-- and the disc is the same SIZE, which is the other half of being the same
+-- moon: one function answers for the painted radius and for the angle the
+-- reflection subtends it at
+local px, cells = Sky.discRadius(288, 7, { moon = true })
+T.eq(cells, Sky.DISC_MIN,
+  "a small frame floors the disc at its minimum radius in cells")
+T.eq(px, Sky.DISC_MIN * 7, "reported in canvas pixels on that cell grid")
+T.eq(select(2, Sky.discRadius(288, 7, { glowAmt = 0.9 })), Sky.DISC_MIN + 1,
+  "and the low sun looms, exactly as the painted one does")
+T.eq(select(2, Sky.discRadius(288, 7, { glowAmt = 0.9, moon = true })),
+  Sky.DISC_MIN, "which is a SUNSET exaggeration -- the moon never looms")
+
+-- the same band ramp, too: one texture, so the sky on the lake cannot be a
+-- different palette from the sky over it
+local rampImg, rampCount = Sky.ramp()
+T.check(rampImg == nil or rampCount == #Sky.bands(),
+  "the reflection reads the sky off the very ramp the sky is painted from")
+
+-- ------- the horizon lean: the reflection has to have something IN it at
+-- every rung, not just the one whose horizon is in frame
+--
+-- The rungs are named for the camera's tilt off VERTICAL, so at 15 the eye
+-- meets the water nearly head-on and the mirror ray points 75 degrees UP --
+-- where the sky's bands are darkest, the sun and moon (squashed to about 6
+-- degrees) are nowhere near, and a screen-space ray leaves the frame in two
+-- steps. All three are correct and together they are an empty lake. The lean
+-- tips the reflection toward the way the camera looks by however far that
+-- camera is from having a horizon in frame.
+do
+local Voxel3D = run.loader.exports.DRAMATIC_SHAPE.lib.require("Voxel3D")
+local VoxelState = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelState")
+local wasAngle, wasCam = VoxelState.angle, Voxel3D.camera
+Voxel3D.camera = nil
+
+local lean = {}
+for _, deg in ipairs({ 15, 35, 50, 75 }) do
+  VoxelState.angle = math.rad(deg)
+  Voxel3D.viewProjection(256, 256, 320, 288)
+  lean[deg] = { Water.lean(Voxel3D.descent), Voxel3D.descent }
+  -- the orbit looks NORTH, so the flattened view direction is -Z and level
+  T.check(math.abs(Voxel3D.lookFlat[3] + 1) < 1e-6,
+    ("the %d rung looks north along the ground plane"):format(deg))
+  T.eq(Voxel3D.lookFlat[2], 0,
+    "flattened onto it, so the lean can never tip a reflection underground")
+end
+
+-- descent is the SINE of how far below horizontal the view runs, and the
+-- rungs are the camera's tilt off vertical -- so the two are complements
+for _, deg in ipairs({ 15, 35, 50, 75 }) do
+  T.check(math.abs(lean[deg][2] - math.cos(math.rad(deg))) < 1e-6,
+    ("the %d rung descends by cos(%d)"):format(deg, deg))
+end
+
+T.eq(lean[75][1], 0,
+  "at the rung whose horizon is in frame there is NO lean -- the one place "
+  .. "the join can be seen (the waterline, where the lake meets the painted "
+  .. "sky) is still the exact reflection it always was")
+T.check(lean[50][1] > 0, "and it comes in as the camera tips over")
+T.check(lean[35][1] >= lean[50][1] and lean[15][1] >= lean[35][1],
+  "growing with every rung further from the horizon")
+T.eq(lean[15][1], 1,
+  "and complete well before the steepest rung, so every rung under the top "
+  .. "one aims its reflection where the top one's already lands")
+
+-- a camera looking dead level has nothing to lean
+T.eq(Water.lean(0), 0, "a level camera leans not at all")
+T.eq(Water.lean(1), 1, "and one looking straight down leans all the way")
+T.eq(Water.lean(Water.LEAN_FROM), 0,
+  "the ramp starts exactly where the top rung sits, so that rung is the one "
+  .. "the lean never touches")
+T.check(math.abs(math.sin(Water.LEAN_ELEV) - Water.LEAN_FROM) < 1e-12,
+  "and the elevation it aims at IS that rung's own, stated as the same "
+  .. "number rather than beside it")
+
+VoxelState.angle, Voxel3D.camera = wasAngle, wasCam
+end
+
+-- ------- people do not shadow water
+--
+-- The sun pass is ONE map, so a surface cannot ask what threw a shadow
+-- unless the map says -- and it does, in the blue channel, which was zero
+-- anyway. Water is the only surface that asks: a character standing at a
+-- lake's edge laid a hard cut-out of its own sprite across a surface already
+-- showing the sky and the shoreline, which reads as a sticker rather than as
+-- a shadow. Everything the world casts still shades it.
+do
+local ShadowMap = run.loader.exports.DRAMATIC_SHAPE.lib.require("ShadowMap")
+T.check(type(ShadowMap.sprites) == "function",
+  "the sun pass can be told it is drawing the cast rather than the world")
+-- inert outside a pass, like every other toggle on it -- a caller that
+-- brackets a draw it never made must not send to a shader that is not bound
+T.check(pcall(ShadowMap.sprites, true) and pcall(ShadowMap.sprites, false),
+  "and saying so outside one is harmless")
+
+local shadowSrc = ShadowMap._source and ShadowMap._source() or nil
+if shadowSrc then
+  T.check(shadowSrc:find("fract(d), sprite", 1, true) ~= nil,
+    "the marker rides the channel the depth pack left free, so it costs "
+    .. "nothing: the map is still two channels of depth")
+end
+end
+
+-- ------- the compiled variants
+local plain = Water._source(false)
+local gridded = Water._source(true)
+T.check(plain:find("#define WAVE_STEPS " .. Water.WAVE_STEPS, 1, true) ~= nil,
+  "the relief march's step count is compiled in too")
+-- the whole surface is answered per COLUMN: the ray picks one, and the art,
+-- the shading, the reflection and the dither all read that one rather than
+-- the fragment's own place on the flat quad. A smoothly-shaded reflection
+-- over hard-edged 8-bit water is two pictures stacked.
+T.check(plain:find("floor(waveRaw(q) * waveHeight + 0.5)", 1, true) ~= nil,
+  "column heights are floored to WHOLE world pixels -- a fractional step is "
+  .. "a smooth wave with extra arithmetic, not a bar")
+-- and the normal is read off the SMOOTH field underneath, which is the
+-- difference between a moon on the water and confetti: integer heights give
+-- integer differences, so a normal built from them can only point in about
+-- five directions and a two-degree disc falls between them
+T.check(plain:find("float h = waveRaw(q);", 1, true) ~= nil,
+  "but the reflection's normal comes off the smooth surface the columns are "
+  .. "a quantisation of, so the ray sweeps instead of jumping")
+T.check(plain:find("waveNormal(vec2 q, float tilt)", 1, true) ~= nil
+        and plain:find("waveNormal(col,", 1, true) ~= nil,
+  "still one answer per column, so the surface stays pixel-quantised in "
+  .. "space while the value it reflects with is continuous")
+T.check(plain:find("relief(sheet, view, hit, col, face, axis)", 1, true) ~= nil,
+  "and the visible column is found by walking the view ray through the "
+  .. "slab, which is what makes a tall bar hide the short ones behind it")
+-- ...over the FLAT sheet, which is the one thing that walk is built on: an
+-- even slab over a level plane. The world curve drops each bar straight down
+-- by its own column's drop, so undoing that drop hands relief() the field it
+-- was written for. Walked in the world as DRAWN instead, the slab is a bowl:
+-- the backward step up the ray climbs the bowl's near side as fast as it
+-- climbs out of the water, the walk starts inside the sheet, and it returns a
+-- column a pixel or three off -- differently per fragment, which is a
+-- hard-edged patch of noise in the middle of a pond.
+T.check(plain:find("vec3 sheet = vec3(vBent.x, vBent.y + bendDrop(vBent.xz), vBent.z)",
+                   1, true) ~= nil,
+  "and it walks the sheet the mesh was AUTHORED as, the bend taken back off, "
+  .. "because a slab walk over a bowl starts inside the water")
+-- the march's reach grows as one over the ray's descent, so a grazing camera
+-- asks for hundreds of world pixels of it from a fixed number of samples --
+-- which stepped over whole crests and smeared the surface into streaks
+-- a sample is worth a SCREEN pixel of surface, so that is the stride: held
+-- at a world pixel up close (finer buys nothing and skipping costs the
+-- pepper) and opened out with distance (holding it there just runs the march
+-- out of samples part-way down the slab, which flattened the lowest rung's
+-- whole middle distance)
+T.check(plain:find("#define WAVE_STRIDE", 1, true) ~= nil
+        and plain:find("max(WAVE_STRIDE, dist * pxAngle / dy)", 1, true) ~= nil,
+  "the relief stride is a screen pixel's worth of surface, floored at a "
+  .. "world pixel")
+T.check(Water.WAVE_STRIDE <= 1,
+  "and that floor is at most ONE world pixel, because a column is one world "
+  .. "pixel wide -- a longer one steps over columns, and which ones it "
+  .. "misses changes fragment to fragment, which is the peppery noise")
+-- and the art is read off the COLUMN rather than by offsetting the
+-- fragment's own uv by however far the march happened to travel: one world
+-- pixel is one texel, so a column's texel follows from where it stands and
+-- two fragments landing on the same column cannot disagree about it
+T.check(plain:find("org + (mod(col, 8.0) + 0.5) * texel", 1, true) ~= nil,
+  "a column's art follows from its own world position, so it cannot swim "
+  .. "with the camera or speckle between neighbouring fragments")
+T.check(plain:find("waveUV(tc, col)", 1, true) ~= nil,
+  "and the column is what is handed to it")
+
+-- the wireframe is ruled on the COLUMNS, not on the flat sheet they stand on
+T.check(gridded:find("columnSeam(hit, sheet, axis)", 1, true) ~= nil,
+  "with V-GRID on, the seams outline the column the ray landed on -- every "
+  .. "voxel of water its own block -- rather than ruling a grid across the "
+  .. "flat quad underneath and ignoring the bars entirely")
+T.check(gridded:find("vec3 w = fwidth(base);", 1, true) ~= nil,
+  "measured off the smooth plane, because the hit jumps a whole column "
+  .. "between neighbouring fragments and its own derivative is a step")
+T.check(plain:find("march(surf, r)", 1, true) ~= nil,
+  "the reflection marches from that column, not from the raw fragment")
+-- The two halves of the world curve, and they pull opposite ways. WHAT the
+-- lake reflects is worked out FLAT -- the same rule the rest of the mode
+-- keeps, that the world tips away and the things standing on it do not lean
+-- with it. Reflect off the bowl the bend has made instead and the far half
+-- of a pond is a mirror tilted twenty degrees, throwing the ray past the
+-- vertical, where the sky ramp's own measure (a screen row, through the
+-- frame's matrix) swings from one end of the ramp to the other across a
+-- single column and stamps hard-edged patches of the wrong sky into the
+-- water.  But WHERE it lands has to be found in the world as DRAWN, because
+-- that is what the depth buffer holds -- so the ray stays straight in the
+-- flat world and every sample of it is bent on the way to the screen, by the
+-- vertex stage's own displacement.
+T.check(plain:find("p.y -= bendDrop(p.xz);", 1, true) ~= nil,
+  "and every marched sample is bent into the world as DRAWN before it is "
+  .. "projected, because that is the world the depth buffer holds")
+T.check(plain:find("vec3 r = reflect(view, n);", 1, true) ~= nil
+        and plain:find("reflect(view, vec3(0.0, 1.0, 0.0))", 1, true) ~= nil,
+  "while the reflection itself is taken about the FLAT normal, so a curved "
+  .. "world does not tip the lake the way it does not lean the buildings")
+T.check(plain:find("mod(col.x + col.y, 2.0)", 1, true) ~= nil,
+  "and the dither's checkerboard is cut from the columns too, so a camera "
+  .. "pan slides the world through nothing")
+T.check(plain:find("#define RAY_STEPS " .. Water.RAY_STEPS, 1, true) ~= nil,
+  "the march's step count is compiled in -- GLSL wants a constant bound")
+T.check(plain:find("VOXEL_GRID", 1, true) ~= nil,
+  "the wireframe is guarded in the source")
+T.check(plain:find("#define VOXEL_GRID", 1, true) == nil,
+  "and off in the plain variant")
+T.check(gridded:find("#define VOXEL_GRID", 1, true) ~= nil,
+  "so a frame with the seams on gets its own compilation, like the scene "
+  .. "shader -- a driver that refuses derivatives loses the seams and not "
+  .. "the water")
+T.check(plain:find("//@CRATERS", 1, true) == nil,
+  "and the crater placeholder is gone by the time a driver sees the source")
+
+-- ANDROID. GLSL ES defaults fragment floats to mediump and samplers to
+-- lowp, and this shader is the one place in the mod where both defaults
+-- are fatal: world coordinates run past fp16's fraction, the depth read
+-- rounds to steps the march falls straight through, and -- the sharp edge
+-- -- `vp` is declared by BOTH stages, whose defaults disagree, which GLSL
+-- ES answers by refusing to LINK the shader at all. Flat lakes, empty log.
+-- The sky's band ramp is this same lesson learned once already.
+T.check(plain:find("precision highp float;", 1, true) ~= nil,
+  "the pixel stage lifts GLSL ES's mediump default to highp, so the march "
+  .. "keeps its fraction and the dual-declared vp links at one precision")
+T.check(plain:find("GL_FRAGMENT_PRECISION_HIGH", 1, true) ~= nil,
+  "guarded, so the odd GPU without fragment highp still compiles and "
+  .. "falls back flat instead of failing loudly")
+T.check(plain:find("LOVE_HIGHP_OR_MEDIUMP vec3 vBent", 1, true) ~= nil,
+  "the world-position varying is qualified like the scene shader's vGrid "
+  .. "rather than left to the fragment default")
+T.check(plain:find("LOVE_HIGHP_OR_MEDIUMP Image depthTex", 1, true) ~= nil,
+  "and the depth sampler is lifted off lowp, which is eight bits of depth")
+T.check(plain:find(
+    "effect(mediump vec4 color, Image tex, mediump vec2 tc, mediump vec2 sc)",
+    1, true) ~= nil,
+  "effect()'s own floats stay pinned to LOVE's prototype precision -- the "
+  .. "Xclipse compiler reads a definition that drifted from the forward "
+  .. "declaration as an illegal overload and refuses the whole shader")
+T.check(plain:find("sc / love_ScreenSize.xy", 1, true) ~= nil,
+  "the depth test normalises the pixel coord by the canvas's own pixel "
+  .. "size -- `screen` counts canvas UNITS, and on a highdpi phone the two "
+  .. "differ by the density, which clamped the lookup and cut the water "
+  .. "into blocks")
+-- ...and it tests against a buffer that now holds the water surface too,
+-- because VoxelScene lays the meshes down flat before the reflective pass
+-- runs over them. Nothing else can make one lake hide another: the pass
+-- writes no depth (the buffer is detached so it can be READ), so before this
+-- the sheets were simply painted in mesh order. Flat water never showed it --
+-- one plane, and a farther sheet always lands farther down the screen -- but
+-- the world curve drops the far side of the map into the near field of view,
+-- and a sea a hundred and fifty tiles away came out rasterised on top of the
+-- pond at the player's feet, tall grass and all.
+T.check(plain:find("vec4 selfC = vp * vec4(vBent, 1.0)", 1, true) ~= nil
+        and plain:find("Texel(depthTex, uv).r + 2e-4", 1, true) ~= nil,
+  "testing a HIGHP recomputed depth (gl_FragCoord.z is mediump on mobile "
+  .. "GLES -- fp16 loses a self-comparison outright) with slack covering "
+  .. "the buffer's screen-linear interpolation drift across big quads")
+T.check(VoxelScene.drawWater ~= nil, "and the flat draw that puts it there")
+
+-- ------- the lift itself
+--
+-- A pond in a field: four water cells recessed below flat ground. The
+-- shipped maps are the real thing but a picture states the invariant
+-- exactly, and this one needs no atlas, no GPU and no fixture.
+local WATER_TILE, GRASS_TILE = 20, 3
+local pond = {
+  { GRASS_TILE, GRASS_TILE, GRASS_TILE, GRASS_TILE },
+  { GRASS_TILE, WATER_TILE, WATER_TILE, GRASS_TILE },
+  { GRASS_TILE, WATER_TILE, WATER_TILE, GRASS_TILE },
+  { GRASS_TILE, GRASS_TILE, GRASS_TILE, GRASS_TILE },
+}
+local pondMap = {
+  id = "DS_TEST_POND",
+  tileset = { id = "DS_TEST_SET", image = "gfx/tilesets/ds_test.png",
+              tilesPerRow = 16, imageWidth = 128, imageHeight = 48,
+              blocks = {}, grassTile = -1 },
+  def = { width = 1, height = 1, tileset = "DS_TEST_SET" },
+  walkable = { [GRASS_TILE] = true },
+  waterTiles = { [WATER_TILE] = true },
+  doorTiles = {},
+  tileAt = function(_, tx, ty)
+    return pond[(ty % 4) + 1][(tx % 4) + 1]
+  end,
+  cellTile = function(self, cx, cy) return self:tileAt(cx * 2, cy * 2 + 1) end,
+  isWaterCell = function(self, cx, cy)
+    return self:cellTile(cx, cy) == WATER_TILE
+  end,
+  isWalkableCell = function(self, cx, cy)
+    return self:cellTile(cx, cy) == GRASS_TILE
+  end,
+  inBounds = function(_, cx, cy)
+    return cx >= 0 and cy >= 0 and cx < 2 and cy < 2
+  end,
+}
+
+-- body-only, so the border ring is out of it and the count is the picture
+local _, _, whole = ChunkMesher.geometry(pondMap, true, nil)
+Structures.invalidate(pondMap.id)
+local landVerts, _, land, waterVerts, _, wet =
+  ChunkMesher.geometry(pondMap, true, nil, true)
+
+T.check(wet > 0, "the pond's surface comes out as water quads")
+T.eq(land + wet, whole,
+  "and the split is a MOVE, not a copy: every quad the one-sink build "
+  .. "emitted is in exactly one of the two")
+T.eq(#waterVerts, wet * 4, "the water sink holds whole quads")
+
+-- every water vertex sits on the recessed plane, which is what says the
+-- surface and only the surface was lifted -- the shoreline faces that drop
+-- from the ground down to it belong to the GROUND that exposes them, and
+-- must stay in the terrain mesh or a lake is ringed by a slit into the sky
+local heights = Shapes.heights()
+for _, v in ipairs(waterVerts) do
+  T.check(v[2] == heights.water,
+    "a water vertex stands on the water plane, not on a shoreline face")
+end
+local shore = 0
+for _, v in ipairs(landVerts) do
+  if v[2] < 0 then shore = shore + 1 end
+end
+T.check(shore > 0,
+  "and the shoreline bands below ground level stayed with the terrain")
+
+-- a map with no water at all splits into everything and nothing, rather
+-- than into an empty terrain mesh
+Structures.invalidate(pondMap.id)
+local dry = {}
+for y = 1, 4 do
+  dry[y] = {}
+  for x = 1, 4 do dry[y][x] = GRASS_TILE end
+end
+pond = dry
+local _, _, dryLand, _, _, dryWet = ChunkMesher.geometry(pondMap, true, nil,
+                                                         true)
+T.check(dryLand > 0, "a map with no water still meshes its ground")
+T.eq(dryWet, 0, "and hands back no water surface at all")
+
+-- ------- and the pairing
+--
+-- The terrain mesh and the water lifted out of it are ONE answer: they came
+-- from the same build, so a caller must never end up holding a full mesh
+-- beside a body build's water (the ring's ponds twice, the body's as holes).
+-- pair() is the only way to ask, which is what makes that unpairable.
+local mesh, wetMesh = ChunkMesher.pair({ id = "DS_NOT_A_MAP" }, false)
+T.eq(mesh, nil, "an unbuilt map pairs to nothing")
+T.eq(wetMesh, nil, "on both halves, so a caller cannot half-draw one")
+
+Structures.invalidate(pondMap.id)
+ChunkMesher.invalidate(pondMap.id)
+Shapes.invalidate()
 end
 
 Voxel.angle = 0
@@ -2094,7 +2638,35 @@ T.check(onAt["DRAMATIC_SHAPE:battleBack"], "switched back on, so is the row")
 T.eq(onAt["DRAMATIC_SHAPE:battleBack"] - onAt["DRAMATIC_SHAPE:battles"], 1,
   "directly under the row it belongs to")
 
+-- ------- and which pic is the pinned one is asked with the other side BLANKED
+--
+-- picImage asks this so BattlePics knows whether a pic's feet are on the text
+-- box -- where its bottom edge seals, and its belly stops being see-through --
+-- and it is asked DURING the billboard render, inside which sideTexture has
+-- switched the side it is not drawing off by setting the field to FALSE rather
+-- than to nil (see OFF).
+--
+-- So the read has to be by truthiness. A test against nil passes that `false`
+-- through to the index below it, the error comes back out of sideTexture into
+-- the pcall that calls it, textures() reports no card for the side -- and the
+-- foe is simply not on the field. Which is the whole bug: fixing the player's
+-- back pic took the enemy's billboard out.
+local mine, theirs = {}, {}
+local live = { player = { sprite = mine }, enemy = { sprite = theirs } }
+T.eq(Battles.pinnedPic(live, mine), true,
+  "the player's own mon is the pic on the box")
+T.eq(Battles.pinnedPic(live, theirs), false,
+  "and the foe is geometry out on the map, whatever the mode")
+T.eq(Battles.pinnedPic({ player = false, enemy = { sprite = theirs } }, theirs),
+  false, "asking about the foe while the player is blanked answers, not throws")
+T.eq(Battles.pinnedPic({ playerBackPic = mine }, mine), true,
+  "the trainer back holds the slot until Go!, on the box like the mon")
+T.eq(Battles.pinnedPic({ player = false, playerBackPic = false }, mine), false,
+  "and with the side blanked outright nothing of it is pinned")
+
 Battles.backSetting:setIndex(1, backGame)          -- and off for the rows below
+T.eq(Battles.pinnedPic(live, mine), false,
+  "with BACK SPRITES off the player's mon is out on the map with the foe")
 end
 
 -- ------- the hour reaches the FLAT world too
@@ -2229,21 +2801,35 @@ local BattlePics = run.loader.exports.DRAMATIC_SHAPE.lib.require("BattlePics")
 -- reader over what came out. The pic is faked at the readback seam, which is
 -- the only thing between this and the pixels the engine would have blitted.
 local lastCanvas = nil                  -- what the readback asked newCanvas for
-local function fill(rows)
+-- '#' is ink and '.' the keyed-out nothing. 'W' is ink too, of the pic's
+-- LIGHTEST shade -- a highlight the decoder happened not to key -- which is
+-- what the paper a hole gets filled with is read off.
+local SHADE = { ["#"] = 0.25, ["W"] = 0.75 }
+-- reuse hands the SAME pic back through, which is how the two bottom rules
+-- can be asked of one image the way a running battle would ask them
+local function fill(rows, sealBottom, reuse)
   local W, H = #rows[1], #rows
   local built = nil
   local function fakeData()
-    local px = {}
+    local px, sh = {}, {}
     for y = 0, H - 1 do
       for x = 0, W - 1 do
-        px[y * W + x] = rows[y + 1]:sub(x + 1, x + 1) == "#" and 1 or 0
+        local shade = SHADE[rows[y + 1]:sub(x + 1, x + 1)]
+        px[y * W + x] = shade and 1 or 0
+        sh[y * W + x] = shade or 0
       end
     end
     return {
-      px = px,
+      px = px, sh = sh,
       getDimensions = function() return W, H end,
-      getPixel = function(self, x, y) return 0, 0, 0, self.px[y * W + x] end,
-      setPixel = function(self, x, y, r, g, b, a) self.px[y * W + x] = a end,
+      getPixel = function(self, x, y)
+        local k = y * W + x
+        return self.sh[k], self.sh[k], self.sh[k], self.px[k]
+      end,
+      setPixel = function(self, x, y, r, g, b, a)
+        self.px[y * W + x] = a
+        self.sh[y * W + x] = r
+      end,
     }
   end
 
@@ -2257,12 +2843,14 @@ local function fill(rows)
     built = data
     return { setFilter = function() end }
   end
-  local pic = { getDimensions = function() return W, H end }
-  local out = BattlePics.filled(pic)
+  local pic = reuse or { getDimensions = function() return W, H end }
+  local out = BattlePics.filled(pic, sealBottom)
   love.graphics.newCanvas, love.graphics.newImage = realNewCanvas, realNewImage
   -- deliberately NOT invalidated: each figure brings its own pic, and the
   -- cache check at the bottom needs one of them still in there
-  return out, pic, built and function(x, y) return built.px[y * W + x] > 0.5 end
+  return out, pic,
+         built and function(x, y) return built.px[y * W + x] > 0.5 end,
+         built and function(x, y) return built.sh[y * W + x] end
 end
 
 -- ------- the cut at the feet, which is what the closed bottom edge is for
@@ -2345,6 +2933,75 @@ local drainOut, drainPic, drain = fill({
 T.check(drainOut ~= drainPic and drain and drain(8, 4),
   "a narrow one is where the drawing ran out, and is paper")
 
+-- ------- but a pic ON THE MENU has no mouth at all
+--
+-- The drain/mouth cut is for a pic standing on the MAP, where a wide opening
+-- along the bottom is a stride with real ground behind it. Under BACK SPRITES
+-- the player's mon is drawn in the GB's own slot with its feet flush on the
+-- text box, and the only thing under its lowest row is white box -- so nothing
+-- reaches it from below, whatever the opening's width, and the rule stops
+-- being a heuristic: paper is whatever the background cannot walk to from the
+-- left, the right or the top.
+--
+-- Which is the difference between a Pikachu and a wireframe. The pale-bodied
+-- back pics -- Pikachu, Seel, Dewgong, Chansey, Jigglypuff -- are drawn as
+-- OUTLINES, every shade-0 pixel inside the ink keyed away, and each of them
+-- leaks out through a bottom opening far too wide to read as a drain. On the
+-- map that reading is right; on the box it left the mon a rim with the arena
+-- showing through it.
+--
+-- The same stride figure the map rule leaves open, now standing on the box.
+local boxOut, boxPic, boxOpaque = fill({
+  "..##############..",
+  "..##############..",
+  "..##############..",
+  "..###........###..",
+  "..###........###..",
+  "..###........###..",
+}, true)
+T.check(boxOut ~= boxPic and boxOpaque,
+  "the gap a stride would have shown the world through is paper on the box")
+T.check(boxOpaque(8, 3) and boxOpaque(8, 5),
+  "and it fills right down to the row the feet are on")
+
+-- the seal is the BOTTOM alone: the sides and the top still let the background
+-- in, which is what keeps the silhouette cutting against the arena instead of
+-- standing the mon in a white block
+local boxGapOut, boxGapPic = fill({
+  "..#####.",
+  "..#...#.",
+  "..#...#.",
+  "....###.",   -- opens at the left, and drains out that way
+  "..#####.",
+  "..#####.",
+}, true)
+T.eq(boxGapOut, boxGapPic,
+  "a pocket that drains out to the side is background on the box too")
+
+-- ------- and a hole is filled with the pic's OWN paper, not with white
+--
+-- Shade 0 is white only while the pic is still grays, and by the time one
+-- reaches here it usually is not: picImage hands it over after the bake -- a
+-- species SGB colour, a BGP fade mid-animation, PAL_BLACK across the whole
+-- screen while the blackout text is up -- and shade 0 travels with the rest.
+-- A hardcoded white belly would be the one lit thing on a blacked-out mon.
+--
+-- So the paper is read off the pic: the lightest shade still standing in it,
+-- which is shade 0 wherever the decoder could not reach one. It never has to
+-- guess -- all 151 of this game's back pics keep at least one, an eye or a
+-- highlight down a cheek.
+local _, _, _, paperShade = fill({
+  "..####..",
+  "..#WW#..",   -- a highlight the decoder did not key: this is the paper
+  "..#..#..",
+  "..#..#..",
+  "..####..",
+})
+T.eq(paperShade(3, 2), paperShade(3, 1),
+  "the hole takes the lightest shade the pic still has")
+T.check(paperShade(3, 2) ~= paperShade(2, 2),
+  "which is not the ink beside it")
+
 -- ------- and the readback is measured in PIXELS, which is what kept the mons
 -- the size of the squares they stand on
 --
@@ -2361,12 +3018,31 @@ T.check(drainOut ~= drainPic and drain and drain(8, 4),
 -- scale that was wrong everywhere.
 T.check(lastCanvas and lastCanvas.opts and lastCanvas.opts.dpiscale == 1,
   "the readback canvas is one texel per pic pixel, on a highdpi phone too")
-T.eq(lastCanvas.w, 18, "and it is the size of the pic, in those pixels")
+T.eq(lastCanvas.w, 8, "and it is the size of the pic, in those pixels")
 
 -- the answer is cached on the image, so a pic costs one readback a session
 -- rather than one a frame -- checked on the first figure, which is still in
 -- there because fill() does not clear it
 T.eq(BattlePics.filled(pic), out, "the rebuilt pic is cached on the original")
+-- and cached PER BOTTOM RULE, because one image answers differently on the map
+-- and on the box. A single table for both would hand whichever caller asked
+-- second the other one's answer -- the map's stencil to the menu, or a menu
+-- fill to a mon standing on grass -- which is this section's bug arriving
+-- through the cache rather than through the flood.
+--
+-- The stride figure again, on the SAME pic the map rule already answered for.
+local reOut = fill({
+  "..##############..",
+  "..##############..",
+  "..##############..",
+  "..###........###..",
+  "..###........###..",
+  "..###........###..",
+}, true, stridePic)
+T.check(reOut ~= stridePic,
+  "the pic the map left open still fills when the box asks for it")
+T.eq(BattlePics.filled(stridePic), stridePic,
+  "and the map's own answer for it is still the pic itself")
 BattlePics.invalidate()
 end
 
@@ -2720,7 +3396,10 @@ Commands.start_battle(ctx, "trainer", "RIVAL1", 1)
 T.check(viaOverworld ~= nil and pushed == nil,
   "a scripted trainer goes through pushBattle: the flash, the wipe and the "
   .. "theme, like any fight walked into")
-T.eq(viaOverworld.kind, "trainer", "with the battle it was asked to start")
+-- guarded index: when the seam above regresses, this must FAIL like any
+-- assertion rather than crash the suite half-run
+T.eq(viaOverworld and viaOverworld.kind, "trainer",
+  "with the battle it was asked to start")
 ctx.overworld = nil
 Commands.start_battle(ctx, "wild", "PIDGEY", 5)
 T.check(pushed ~= nil,
@@ -2844,6 +3523,182 @@ T.check(held > 0 and held < 2 * math.pi, "with the phase advanced by the travel"
 for _ = 1, 20 do VoxelScene.glintStep(g, 112, 100) end
 T.eq(g.amp, 0, "standing still fades it back out within a beat")
 T.eq(g.phase, held, "and the phase does not move while the camera does not")
+end
+
+-- ------- the first-person rung
+--
+-- 1ST rides the same placed-camera seam the battle proved out, so most of
+-- what it adds is arithmetic this suite can hold still: the rig built from
+-- a pose, the compass the grid game still thinks in, the camera-relative
+-- walk vector, and the frame an NPC shows an eye that can stand anywhere.
+
+do
+local FirstPerson =
+  run.loader.exports.DRAMATIC_SHAPE.lib.require("FirstPerson")
+local VoxelState = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelState")
+local FreeMove = run.loader.exports.DRAMATIC_SHAPE.lib.require("FreeMove")
+local Voxel3D = run.loader.exports.DRAMATIC_SHAPE.lib.require("Voxel3D")
+
+T.eq(VoxelState.FP_LEVEL, 6, "1ST is the seventh rung")
+T.check(VoxelState.isFirstPerson(6), "and isFirstPerson answers for it")
+T.check(not VoxelState.isFirstPerson(5), "but not for the 75 orbit")
+T.eq(VoxelState.ANGLE_LABELS[VoxelState.FP_LEVEL + 1], "1ST (EXPERIMENTAL)",
+  "the rung wears the experimental label")
+T.eq(VoxelState.ANGLES_DEG[VoxelState.FP_LEVEL + 1], 75,
+  "and hands the blend the 75-degree orbit as its far end")
+
+-- ------- the compass and the walk vector
+--
+-- Yaw 0 faces south (+Z), the way a resting sprite faces; the compass is
+-- the dominant axis and the walk rotates camera space into world space.
+FirstPerson.yaw, FirstPerson.pitch = 0, 0
+T.eq(FirstPerson.compassFacing(), "down", "yaw 0 looks south")
+FirstPerson.yaw = math.pi / 2
+T.eq(FirstPerson.compassFacing(), "right", "a quarter turn looks east")
+FirstPerson.yaw = math.pi
+T.eq(FirstPerson.compassFacing(), "up", "a half turn looks north")
+FirstPerson.yaw = -math.pi / 2
+T.eq(FirstPerson.compassFacing(), "left", "and three quarters looks west")
+
+local function near(a, b) return math.abs(a - b) < 1e-9 end
+
+FirstPerson.yaw = 0
+local wx, wz = FirstPerson.moveWorld(0, 1)
+T.check(near(wx, 0) and near(wz, 1), "facing south, forward walks south")
+wx, wz = FirstPerson.moveWorld(1, 0)
+T.check(near(wx, -1) and near(wz, 0),
+  "facing south, the right hand points west")
+FirstPerson.yaw = math.pi
+wx, wz = FirstPerson.moveWorld(0, 1)
+T.check(near(wx, 0) and near(wz, -1), "facing north, forward walks north")
+wx, wz = FirstPerson.moveWorld(1, 0)
+T.check(near(wx, 1) and near(wz, 0),
+  "facing north, the right hand points east")
+
+-- the look clamps: pitch stops at the limits, yaw wraps
+FirstPerson.pitch = 0
+FirstPerson.lookBy(0, 100)
+T.eq(FirstPerson.pitch, FirstPerson.PITCH_DOWN, "pitch clamps looking down")
+FirstPerson.lookBy(0, -100)
+T.eq(FirstPerson.pitch, FirstPerson.PITCH_UP, "and looking up")
+FirstPerson.yaw = 0
+FirstPerson.lookBy(2 * math.pi, 0)
+T.check(math.abs(FirstPerson.yaw) < 1e-9, "a full turn of yaw wraps to zero")
+
+-- ------- the rig
+--
+-- frame() is pure arithmetic over the pose and the orbit, so the suite can
+-- stand the blend anywhere and read the record it hands Voxel3D.
+FirstPerson.yaw, FirstPerson.pitch = 0, 0
+FirstPerson.blend = 1
+local me = { px = 100, py = 200, gh = 0, lift = 0 }
+local rig, sx, sy = FirstPerson.frame(me, 500, 600, 320, 288)
+T.check(rig ~= nil, "with the blend in, frame() builds a rig")
+T.eq(Voxel3D.camera, rig, "and hands it to Voxel3D")
+T.check(near(rig.eye[1], 108) and near(rig.eye[3], 208),
+  "the eye stands on the player's centre")
+T.eq(rig.eye[2], FirstPerson.EYE_HEIGHT, "at head height")
+T.check(near(rig.fov, FirstPerson.FOV), "wearing the first-person lens")
+T.check(near(sx, 108) and near(sy, 208),
+  "and the scene centre stands with it")
+T.check(rig.curve == 0,
+  "the world curve is declined outright -- a zero, not a nil the setting "
+  .. "could override")
+T.check(rig.focus[3] > rig.eye[3],
+  "yaw 0 focuses south of the eye")
+
+-- surf bob and ledge lift carry the eye with them
+local bobbed = FirstPerson.frame({ px = 100, py = 200, gh = 4, lift = 6 },
+                                 500, 600, 320, 288)
+T.eq(bobbed.eye[2], 10 + FirstPerson.EYE_HEIGHT,
+  "ground height and lift both raise the eye")
+
+-- mid-blend, the rig is a lerp of the orbit and the head: its eye sits
+-- between the two ends, and the curve is only half declined
+VoxelState.angle = math.rad(75)
+FirstPerson.blend = 0.5
+local mid = FirstPerson.frame(me, 500, 600, 320, 288)
+T.check(mid.eye[2] > FirstPerson.EYE_HEIGHT,
+  "half way out, the eye is higher than the head")
+T.check(mid.eye[2] < 288 * VoxelState.FOCAL,
+  "and lower than the orbit")
+
+-- ------- the cards ask the rig, and only the rig
+FirstPerson.blend = 1
+FirstPerson.frame(me, 500, 600, 320, 288)
+T.check(FirstPerson.cardBlend() == 1, "the free-roam rig turns the cards")
+T.check(FirstPerson.hidePlayer(), "and hides the player's own card")
+
+-- an NPC south of the eye: the card yaws to face north, back at the eye
+local yaw = FirstPerson.cardYaw(108, 300)
+T.check(near(math.sin(yaw), 0) and near(math.cos(yaw), -1),
+  "a card south of the eye turns its face north")
+
+-- the frame an entity SHOWS this eye: stand north of someone facing away
+-- and you see their back; face to face you see their front; flanks show
+-- profiles, named by which flank is toward you
+T.eq(FirstPerson.apparentFacing("down", 108, 300), "up",
+  "an NPC facing south, seen from the north, shows their back")
+T.eq(FirstPerson.apparentFacing("up", 108, 300), "down",
+  "an NPC facing north, seen from the north, shows their face")
+T.eq(FirstPerson.apparentFacing("right", 108, 300), "left",
+  "an NPC facing east, seen from the north, shows their left flank")
+T.eq(FirstPerson.apparentFacing("left", 108, 300), "right",
+  "an NPC facing west, seen from the north, shows their right flank")
+
+-- another camera on the same seam -- the battle's placed shot -- and the
+-- cards stand down: blend still 1, but it is not our rig drawing
+local battleCam = { eye = { 0, 40, 120 }, focus = { 0, 8, 0 },
+                    fov = math.rad(30) }
+Voxel3D.camera = battleCam
+T.eq(FirstPerson.cardBlend(), 0,
+  "a battle camera on the seam turns no cards")
+T.check(not FirstPerson.hidePlayer(),
+  "and hides nobody")
+
+-- blend fully out: frame() clears only a camera that is still ours
+FirstPerson.blend = 0
+T.eq(FirstPerson.frame(me, 500, 600, 320, 288), nil,
+  "with the blend out, frame() answers nil and the orbit rules")
+T.eq(Voxel3D.camera, battleCam,
+  "without touching a camera some other pass placed")
+Voxel3D.camera = nil
+
+-- ------- the free walk's per-cell verdict
+--
+-- The same questions Collision asks a grid step, asked per cell the body
+-- overlaps -- through a map stub shaped like the engine's own.
+local blocked = FreeMove._blockedCell
+local stubMap = {
+  def = { tileset = "OVERWORLD" },
+  inBounds = function(self, x, y)
+    return x >= 0 and y >= 0 and x < 10 and y < 10
+  end,
+  isWalkableCell = function(self, x, y) return x ~= 3 end,
+  isWaterCell = function(self, x, y) return x == 3 and y == 3 end,
+  cellTile = function() return 0 end,
+}
+local p = { cellX = 5, cellY = 5, surfing = false }
+local state = { map = stubMap, entities = {} }
+
+T.eq(blocked(state, p, 5, 5), nil, "the body's own cell never refuses it")
+T.eq(blocked(state, p, 6, 5), nil, "an open neighbour admits it")
+T.eq(blocked(state, p, 3, 5), "tile", "an unwalkable cell refuses it")
+T.eq(blocked(state, p, -1, 5), "bounds", "off the map is the edge's answer")
+T.eq(blocked(state, p, 3, 3), "tile", "water refuses a walker")
+p.surfing = true
+T.eq(blocked(state, p, 3, 3), nil, "and admits a surfer")
+p.surfing = false
+
+state.entities = { { cellX = 6, cellY = 5 } }
+T.eq(blocked(state, p, 6, 5), "entity", "an occupied cell refuses the body")
+state.entities = { { cellX = 7, cellY = 5, targetX = 6, targetY = 5 } }
+T.eq(blocked(state, p, 6, 5), "entity",
+  "and so does one an NPC is mid-step into")
+
+-- the ladder's own state, put back the way the suite found it
+FirstPerson.blend = 0
+VoxelState.reset()
 end
 
 Pipelines.reset()

@@ -146,6 +146,31 @@ function OverworldBattle.backPinOffset(metric, grow)
          (metric.padBottom or 0) * scale
 end
 
+-- Whether a pic is the one drawn in the GB's own slot with its feet on the
+-- text box, rather than geometry standing out on the map.
+--
+-- Exactly the player's side under BACK SPRITES -- its mon, or the trainer back
+-- that holds the slot until "Go!" -- because that is the only pic this mod
+-- ever leaves flat (see drawPicsLayer below). The foe is a billboard on its
+-- tile whichever mode is on, and with the mode off the player's side is one
+-- too, so both of those keep the open bottom that lets the arena through a
+-- stride. What the answer buys is in BattlePics: a pic on the box has nothing
+-- behind its lowest row, so its bottom edge seals.
+-- Read by TRUTHINESS rather than against nil, because sideTexture blanks the
+-- side it is not rendering by setting the field to FALSE (see OFF) and holds
+-- it that way for the whole render -- during which the pic layer runs, and
+-- picImage asks this. A nil test passes a `false` straight through to the
+-- index below, and the error comes out of sideTexture into the pcall that
+-- calls it: the foe's billboard is dropped for the frame and the Pokemon
+-- simply is not there.
+function OverworldBattle.pinnedPic(battle, img)
+  if not (battle and img) then return false end
+  if not OverworldBattle.backPinned() then return false end
+  if img == battle.playerBackPic then return true end
+  local player = battle.player
+  return (player and img == player.sprite) and true or false
+end
+
 -- ------- both mons face you
 --
 -- Standing on a map, seen from in front, a Pokemon showing you its BACK is
@@ -1015,12 +1040,18 @@ function OverworldBattle.install()
   -- behind it. There is a world back there now, so they are filled here
   -- instead -- see BattlePics, which puts the paper back without touching
   -- the silhouette.
+  --
+  -- The pinned pic is told that its feet are on the box, which is what lets
+  -- the pale-bodied back sprites be filled at all: their bellies leak out
+  -- through an opening too wide to read as a drain, and only the box under
+  -- them settles that it is not a hole. Passed the pre-bake image, because
+  -- that is the one the battle holds a reference to.
   local innerPic = BattleState.picImage
   function BattleState:picImage(img)
     local out = innerPic(self, img)
     if not OverworldBattle.shot() then return out end
     if BattleArt.isExternal(out) then return out end
-    return BattlePics.filled(out)
+    return BattlePics.filled(out, OverworldBattle.pinnedPic(self, img))
   end
 
   -- While a billboard texture is being rendered both pics are put in the same

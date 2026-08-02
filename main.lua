@@ -23,9 +23,16 @@
 -- the engine's TILT mode -- is engine plumbing driven by the records
 -- below.  This file declares; lib/ draws.
 --
--- Nothing here reaches collision, movement, triggers or scripts.  Voxel
--- mode is purely presentational: it changes what the world LOOKS like and
--- nothing about what it IS.
+-- Voxel mode is presentational: it changes what the world LOOKS like and
+-- nothing about what it IS.  ONE rung is the deliberate exception. 1ST --
+-- the first-person camera -- replaces the grid WALK with a free,
+-- camera-relative one while it is selected (lib/FreeMove.lua), because a
+-- head you can steer with a mouse demands feet that go where it looks.
+-- Even there the game is untouched: the walk asks the engine's own
+-- collision the same questions a grid step asks, keeps the player's
+-- logical cell synced, and fires the engine's own landing pipeline per
+-- cell crossed -- warps, encounters, ledges, gates and scripts all run
+-- exactly as themselves. Step off the rung and the grid walk is back.
 
 local mod = ...
 
@@ -82,6 +89,10 @@ local BattleArt = V.require("BattleArt")
 local BattleExit = V.require("BattleExit")
 local DayNight = V.require("DayNight")
 local DayTint = V.require("DayTint")
+local Water = V.require("Water")
+local AntiAlias = V.require("AntiAlias")
+local FirstPerson = V.require("FirstPerson")
+local FreeMove = V.require("FreeMove")
 
 -- Forward declaration: the voxel pipeline's update hook (registered below)
 -- calls this, and it is defined further down with the settings it drives.
@@ -161,6 +172,11 @@ mod.content.render_pipelines:register("voxel", {
     -- would fight anyone who changed one deliberately.
     applyFull(level)
     Voxel.update(dt, level)
+    -- the first-person head, on the same tick: its blend in and out of the
+    -- orbit, the mouse capture lifecycle, and the frame's stick-rate look.
+    -- Unconditional like Voxel.update, because the blend has to keep easing
+    -- OUT after the rung is left
+    FirstPerson.update(dt)
     -- the day/night clock, on the same always-running tick: Pipelines.update
     -- runs whatever the level, so time passes with the mode off, through
     -- battles and menus, and a CYCLE evening falls mid-fight exactly as it
@@ -203,20 +219,34 @@ mod.content.render_pipelines:register("voxel", {
     -- a magnified low-res image, while the FX closures keep drawing in
     -- world-pixel units.
     local sw, sh = sceneSize(ctx)
-    local canvas = VoxelScene.render(ctx.state, sw, sh,
+    -- With AA on, the whole pass runs into a canvas BIGGER than the window
+    -- and is folded back down at the end (see AntiAlias).  Nothing between
+    -- these two lines knows: every pass in the frame measures itself in the
+    -- canvas it was handed, so the sky's dither, the water's march and the
+    -- camera itself all come out the same picture at a higher sample rate.
+    local rw, rh = AntiAlias.expand(sw, sh)
+    local canvas = VoxelScene.render(ctx.state, rw, rh,
                                      ctx.vw, ctx.vh, ctx.paletteFor)
     if not canvas then return nil end   -- fall back to the 2D path
     if Voxel3D.beginOverlay() then
+      -- the FX closures are ordinary 2D draws sized in DISPLAY pixels, and
+      -- they are drawing into the supersampled canvas alongside everything
+      -- else -- so the scale goes up with it, or the "!" bubble lands the
+      -- right place at half the size.  project() already answers in canvas
+      -- pixels, so only the scale needs saying.
       ctx.drawFx(function(wx, wy) return Voxel3D.project(wx, 0, wy) end,
-                 ctx.scale)
+                 ctx.scale * AntiAlias.factor())
       Voxel3D.endOverlay()
     end
-    return canvas
+    -- and back to the window's own size, which is what the engine composites
+    -- one canvas pixel to one display pixel.  A pass-through when AA is off.
+    return AntiAlias.resolve(canvas, sw, sh, "world")
   end,
 
   invalidate = function()
     Voxel3D.invalidate()
     OverworldBattle.invalidate()
+    AntiAlias.invalidate()
     ChunkMesher.invalidate()   -- no map id = every cached mesh
   end,
 })
@@ -283,6 +313,10 @@ applyFull = function(level)
   -- the horizon flat. The curve bends the world away from a walking player,
   -- which fights a fixed diorama framing
   WorldCurve.setting:setIndex(1, Game)
+  -- and the water reflecting everything it can: FULL is the diorama at its
+  -- most photographed, and a lake with the sky and the shoreline in it is
+  -- most of what makes the model read as being outdoors
+  Water.setting:setIndex(1, Game)
   -- and the view fitted to the window
   opts.zoom = 0
   Zoom.applyOptions(opts)
@@ -331,6 +365,11 @@ local SETTINGS = {
   { VoxelGrid.setting, "One-pixel wireframe along every voxel edge." },
   { WorldCurve.setting,
     "Bend the world down over the horizon, Animal Crossing style." },
+  { Water.setting,
+    "Reflections on water. FULL adds screen-space reflections of the "
+    .. "shoreline, the trees and the buildings behind it; SKY is the sky, "
+    .. "the sun and the moon alone, which is most of the look for a "
+    .. "fraction of the cost." },
   -- `full` marks a row FULL does not take away. FULL owns the diorama's own
   -- knobs; what a battle is drawn over, and how it is framed, are not that.
   { OverworldBattle.setting,
@@ -393,6 +432,21 @@ local SETTINGS = {
     .. "let CYCLE run it -- ten minutes of sun, ten of moon, with the "
     .. "shadows, the sky and the light following -- or SYNC it to the "
     .. "clock on the wall, so Kanto's evening falls when yours does." },
+  -- Marked `full` for the opposite reason the battle rows are: this is not a
+  -- knob on the look at all, it is what the look COSTS. FULL is a preset for
+  -- the diorama, not a licence to spend four times the fill rate on the
+  -- machine it happens to be running on, so it neither sets this nor takes
+  -- the row away -- the player decides what their hardware can carry, from
+  -- inside FULL like anywhere else.
+  { AntiAlias.setting,
+    "Smooth the stair-stepped edges of the 3D world -- roof ridges, ledge "
+    .. "lips, a tree against the sky -- by rendering the diorama larger than "
+    .. "the window and folding it back down. Every edge in the picture "
+    .. "softens with them, the tileset's own texels included, so the diorama "
+    .. "reads smoother rather than sharper. 2X costs half again as many "
+    .. "pixels in each direction and 4X twice, which makes this the most "
+    .. "expensive row in the mod.",
+    full = true },
 }
 
 local schema = {}
@@ -408,6 +462,7 @@ mod.options:define(schema)
 --   6  T-SHIFT  cycle the blur ladder        (was 9)
 --   7  V-CURVE  cycle the horizon bend       (new)
 --   8  3D-BTL   toggle overworld battles     (new)
+--   9  WATER    cycle the water reflections  (new; 9 was T-SHIFT's old key)
 --
 -- Only 6 arrives by the documented route. Game:keypressed answers the
 -- engine's own display keys FIRST and returns -- 2 COLORS, 3 TILT, 4 ZOOM,
@@ -440,6 +495,7 @@ local HOTKEYS = {
   ["5"] = VoxelGrid.setting,
   ["7"] = WorldCurve.setting,
   ["8"] = OverworldBattle.setting,
+  ["9"] = Water.setting,
 }
 
 do
@@ -489,19 +545,19 @@ do
           return
         end
       elseif Pipelines.canToggle("voxel", top, self.overworld) then
-        -- All three answer to the voxel pass's own free-roam gate --
+        -- All four answer to the voxel pass's own free-roam gate --
         -- borrowed from the registry rather than restated, so a press
         -- mid-warp or mid-cutscene is refused for the wireframe exactly when
-        -- it would be for the mode itself. Two of them parameterise that
-        -- pass; the third (3D-BTL) decides what a battle is drawn over, and
+        -- it would be for the mode itself. Three of them parameterise that
+        -- pass; the fourth (3D-BTL) decides what a battle is drawn over, and
         -- wants the same gate for a different reason: the answer is read
         -- when the fight starts, so flipping it from inside one would be a
         -- switch that appeared to do nothing.
         claim:cycle(self)
         -- 8 is one of the two ways staged battles get switched on, and they
-        -- pin BATTLE LAYOUT to OG (see the rows hook). The other two keys
+        -- pin BATTLE LAYOUT to OG (see the rows hook). The other keys
         -- parameterise the pass and leave the layout alone; the guard answers
-        -- for all three, so nothing here has to know which key it was.
+        -- for all of them, so nothing here has to know which key it was.
         if stagedBattles() then OverworldBattle.forceOG(self) end
         return
       end
@@ -796,6 +852,32 @@ end
 -- so this file keeps naming every engine seam the mod touches.
 OverworldBattle.install()
 
+-- ------- the first-person rung's inputs and its walk
+--
+-- 1ST needs two things no other rung does, and each is a named seam:
+--
+-- FirstPerson.install claims the LOOK inputs the engine ignores: the right
+-- stick's axes (Game:gamepadaxis passes them to Input, which returns early
+-- on anything but the left pair), relative mouse motion (love.mousemoved --
+-- there is no Game handler to wrap; the engine's own callback only feeds
+-- the mouse-as-touch debug path, which stays untouched), the mouse buttons
+-- while the cursor is captured (A and B -- there is no cursor to click UI
+-- with), and any touch that lands off the overlay's controls (a drag on
+-- open screen is the look; the d-pad and buttons still go to
+-- TouchControls, whose own d-pad finger is also read back analog as the
+-- move vector). Every wrap forwards whatever it does not claim, and claims
+-- only while 1ST is actually driving.
+--
+-- FreeMove.install wraps OverworldState:handleInput -- the one choke point
+-- where the grid walk reads the pad, and the same seam the engine's own
+-- Cycling Road pull lives behind. While 1ST drives, the walk is continuous
+-- and camera-relative; the player's logical cell stays synced and every
+-- per-cell consequence still runs through the engine's own machinery
+-- (onStepComplete, checkEdgeExit, checkLedgeHop, checkBoulderPush). The
+-- file argues the whole arrangement.
+FirstPerson.install()
+FreeMove.install()
+
 -- The overworld's own pushBattle is the choke point for a wild encounter or
 -- a trainer, and it is wrapped. A battle that arrives some other way -- a
 -- link battle, a script pushing a BattleState directly -- reaches this
@@ -899,7 +981,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.3.0"
+mod.exports.version = "1.5.0"
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout
 mod.exports.lib = V
