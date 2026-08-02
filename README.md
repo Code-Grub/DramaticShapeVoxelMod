@@ -73,7 +73,10 @@ their README contracts. `tools/package_mod.ps1` nevertheless includes local
 PNGs from them in a test ZIP, so artwork can stay private and uncommitted.
 Use `tools/package_clean_mod.ps1` for a shareable install ZIP that preserves
 the documented battle-art folder layout but excludes every PNG below
-`assets/battle`.
+`assets/battle`. The clean ZIP includes the complete public `tools` folder, so
+users who receive only the archive can import their own art and rebuild it
+without cloning the repository. Generated Python `__pycache__`/`.pyc` files
+remain excluded.
 `BATTLE ART: ANIMATED` reads independent `ANIM FRONT GEN` and `BACK ART SET`
 choices. GEN 1 fronts are ordinary single-frame PNGs from
 `front-animated/gen1`; Gen 2–5 fronts remain animated atlases, including

@@ -88,7 +88,9 @@
   their opaque silhouette from clipping through the left UI-canvas edge.
 - **Clean BYO package builder.** `tools/package_clean_mod.ps1` creates an
   installable ZIP with the complete documented battle-art folder layout while
-  excluding every local PNG below `assets/battle`.
+  excluding every local PNG below `assets/battle`. It includes the public
+  import/download and packaging toolkit for ZIP-only distribution, but omits
+  generated Python bytecode caches.
 - **No stale battle-entry dimmer.** Staged battles suppress the engine's
   translucent world-fade rectangle at the compositor boundary as well as
   clearing its fade state. The normal battle wipe, deliberate battle-exit

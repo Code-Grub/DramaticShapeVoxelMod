@@ -15,10 +15,15 @@ if (-not $Output) {
 }
 $Output = [System.IO.Path]::GetFullPath($Output)
 
-# Match the installable runtime allowlist used by package_mod.ps1.
+# Match the installable runtime allowlist used by package_mod.ps1, then add
+# the public authoring toolkit so a ZIP recipient does not need a Git clone.
 $source = @()
-foreach ($dir in @('data', 'lib')) {
+foreach ($dir in @('data', 'lib', 'tools')) {
   $source += Get-ChildItem -LiteralPath (Join-Path $repo $dir) -Recurse -File |
+    Where-Object {
+      $_.Extension -ine '.pyc' -and
+      $_.FullName -notmatch '(?i)[\\/]__pycache__[\\/]'
+    } |
     ForEach-Object { Relative-Path $_.FullName }
 }
 $source += @('CHANGELOG.md', 'main.lua', 'manifest.json', 'mod.card', 'README.md')
