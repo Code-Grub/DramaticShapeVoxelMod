@@ -842,12 +842,12 @@ return {
       -- console face (76/77) and button panel (6/22) are ALSO wall:
       -- drawn 16px tall against the band, so wall height is their drawn
       -- height and they read as equipment jutting from it.  (The
-      -- `center_heal_machine` template below claims those four tiles at
-      -- every placement and models the console properly; these pins are
-      -- the degradation path when the profile is absent.)  The
-      -- near-black screen tiles must be pinned or the void rule flattens
-      -- them.  What is NOT wall is the machines' two flanks -- see
-      -- `prop` below.
+      -- `center_heal_machine_w`/`_e` templates below claim the full
+      -- 4x4 machine grids at every placement and model the console
+      -- properly; these pins are the degradation path when the profile
+      -- is absent.)  The near-black screen tiles must be pinned or the
+      -- void rule flattens them.  What is NOT wall is the machines'
+      -- two flanks -- see `prop` below.
       wall = { 2, 3, 4, 5, 6, 16, 18, 19, 20, 21, 22, 40, 41,
                76, 77, 92, 93, 94, 95 },
       -- the counters, half a cell high: top band (8) with the nurse's
@@ -899,7 +899,10 @@ return {
       -- game -- 12 maps, the same two cells in each -- so this pin cannot
       -- reach anything but the machines.  72 is still the $48
       -- water-fallback trap and still has to carry SOME pin; it just
-      -- wanted the thin one, not the wall.
+      -- wanted the thin one, not the wall.  (The machine templates now
+      -- claim the flank tiles too and model the hoses and keyboard as
+      -- attached 3D equipment; these standee pins are the degradation
+      -- path when the profile is absent.)
       prop = { 7, 13, 72, 73,
                -- ...and the potted plants -- see THE POTTED PLANTS below
                32, 33, 34, 35, 48, 49, 50, 51 },
@@ -1968,13 +1971,24 @@ return {
       -- on (see `buildings` below).  The pin is only the degradation
       -- path here -- the template claims both placements -- but the two
       -- must not disagree about where the desk's top is.
-      heights = { table = 8 },
+      --
+      -- `stool` is 5 for the same reason: that is the drawn elevation of
+      -- BOTH seats in this tileset -- rows 11-15, the seat's front edge
+      -- over its legs -- and the height the `club_stool` template stands
+      -- them.  Bill's chair and the Fan Club's are different drawings
+      -- above the seat but share tiles 59/60 below it, so they are drawn
+      -- at the same height pixel for pixel; the class default of 8 was
+      -- three voxels over both.  Every one of these cells is WALKABLE,
+      -- so this is also where a character sitting on one ends up.
+      heights = { table = 8, stool = 5 },
       -- the seats: Bill's desk stool (43/44 over 59/60) and the Fan
       -- Club's four members' chairs (61/62 over 59/60), a whole cell
       -- each.  All of them sit in WALKABLE cells, so they were flat
-      -- floor until pinned; the 8px standee pool puts them at seat
-      -- height, which is also where a character standing on the cell
-      -- ends up.
+      -- floor until pinned; the standee pool puts them at seat height,
+      -- which is also where a character standing on the cell ends up.
+      -- The Fan Club's four are modelled in full by `club_stool` below
+      -- and these pins are their degradation path; Bill's chair stays a
+      -- standee, stood up as a part of `bills_desk`.
       stool = { 43, 44, 59, 60, 61, 62 },
       -- flat, and pinned flat on purpose.  31 is the rooms' floor tile
       -- and needs no pin for its 980 walkable placements -- but the
@@ -3737,82 +3751,154 @@ return {
             z = 13 },                                       -- keyboard
         },
       },
-      -- F05: the healing machine behind the counter -- the pair in every
-      -- Center (cells (1,0):(2,1) and (6,0):(7,1)), 22 placements, plus
-      -- the Indigo Plateau lobby's pair under MART below (scan
-      -- "58,59;74,75;76,77;6,22").
+      -- F05: the healing machine behind the counter -- two 4x4-tile
+      -- variants, 24 placements between them (a pair in every Center,
+      -- cells (1,0):(2,1) and (6,0):(7,1), plus the Indigo Plateau
+      -- lobby's pair under MART below).  The variants differ only in
+      -- the east flank: the west machine has the control keyboard
+      -- there (7/13, scan "40,58,59,40;40,74,75,40;72,76,77,7;
+      -- 72,6,22,13" -- 12 placements), the east machine mirrored
+      -- hoses (73, scan "...;72,76,77,73;72,6,22,73" -- 12).
       --
-      -- The drawing is 4x4 tiles but only its middle COLUMN is this
-      -- template's.  The corners are the striped wall band (40), and
-      -- the outer tile columns are the flanking EQUIPMENT -- the hoses
-      -- (72 west, 73 east) and the control keyboard (7/13) -- which are
-      -- separate thin objects, not part of this console: they are
-      -- pinned into the THIN standee pool above and stay out of this
-      -- grid.  What no class can split is the middle -- a wall-height
+      -- The FULL drawing is claimed now: the corners are the striped
+      -- wall band (40), the flanks the machine's own equipment --
+      -- hoses and a keyboard ATTACHED to the cabinet, not furniture
+      -- standing free (their standee pins above stay as the
+      -- degradation path).  What no class can split is a wall-height
       -- cabinet with a monitor perched on its front top edge, drawn
       -- across two map rows because it towers over the 16px band
       -- behind it, which the volume path can only read as more wall.
       --
-      -- Read off the pixels (local x, the whole drawing's x8..x23):
-      --   rows 15-31  the CABINET's front face, 16 wide, 17 tall:
-      --               black front-top edge with vent notches (15),
-      --               white top rail (16), black panel in a white
-      --               frame (17-28), white rail / light plinth / black
-      --               ground line (29-31).
-      --   rows 6-14   the cabinet's TOP FACE seen from above -- not a
-      --               second-story facade: a white expanse with a lit
-      --               west strip (x1 white) and a shaded east strip
-      --               (x14 #555) wrapping the monitor, full-width in
-      --               front of it (13-14), strips beside it (7-12).
-      --               Its 9 rows plus the front edge row 15 ARE the
-      --               cabinet's depth: 10.  `desk.top` lays the band
-      --               flat as the lid; where the monitor's drawing
-      --               occludes it, the lid continues the nearest strip
-      --               (the drawing's own pixels).
-      --   rows 1-13   the MONITOR, x2..x13: black back rim (1) and
-      --               white cap (2-3) seen from above -- 3 rows plus
-      --               the front edge, depth 4 -- then bezel, screen
-      --               and control strip (4-13) face-on, 10 tall,
-      --               standing on the cabinet top at its front: the
-      --               drawn base edge (13) is one band row up from the
-      --               front strip (14), so its front plane is one
-      --               voxel back from the cabinet's -- z 20..23.  The
-      --               screen interior (x5..x10, rows 6-8) is sealed
-      --               behind its own black frame and sinks one voxel
+      -- Read off the pixels (absolute grid x0..x31):
+      --   rows 15-31, x8..x23  the CABINET's front face, 16 wide, 17
+      --               tall: black front-top edge with vent notches
+      --               (15), white top rail (16), black panel in a
+      --               white frame (17-28), white rail / light plinth /
+      --               black ground line (29-31).  `desk.x` bounds the
+      --               desk to the middle columns.
+      --   rows 6-14, x8..x23   the cabinet's TOP FACE seen from above
+      --               -- not a second-story facade: a white expanse
+      --               with a lit west strip (x9) and a shaded east
+      --               strip (x22) wrapping the monitor.  Its 9 rows
+      --               plus the front edge row 15 ARE the cabinet's
+      --               depth: 10, z 16..25 against the wall.
+      --               `desk.top` lays the band flat as the lid; where
+      --               the monitor's drawing occludes it, the lid
+      --               continues the nearest strip (the drawing's own
+      --               pixels).
+      --   rows 1-13, x10..x21  the MONITOR: black back rim (1) and
+      --               white cap (2-3) seen from above -- depth 4 --
+      --               then bezel, screen and control strip (4-13)
+      --               face-on, 10 tall, at the cabinet top's front
+      --               (the drawn base edge 13 is one band row up from
+      --               the front strip 14): z 20..23.  The screen
+      --               interior (x13..x18, rows 6-8) sinks one voxel
       --               via `inset` -- the pane rule applied by hand,
       --               because `panes = false` blocks the global pass.
-      --   rows 0-5    at the flanks: wall stripes and the machine's
-      --               cast shadow on the wall east of it -- BACKGROUND,
-      --               the same standing as the potted plants' floor.
-      --               The `wall` element keeps the band solid over the
-      --               back map row: a 16-tall, 16-deep block cycling
-      --               the drawing's own stripe unit (x0, rows 0-3),
-      --               what the neighbouring cells' wall pins render.
+      --   rows 16-31, x0..x7   the HOSES (tile 72 stacked): one 8-row
+      --               motif per map row, and the two stacked motifs
+      --               are two hoses in DEPTH -- the drawn row band is
+      --               the depth band, and each motif's own rows are
+      --               its elevation WITHIN that band, exactly the
+      --               potted plants' stacked-cell rule.  So both
+      --               hoses hug the floor: a horizontal run off the
+      --               cabinet's side (rows 24-26, x3..x7 -> heights
+      --               5..7) over a shaded drop landing ON the floor
+      --               (rows 27-31, x2..x7 -> heights 0..4) -- all
+      --               measured, the drawn extent maps 1:1 with no
+      --               continuation.  `box` parts at z 18 and z 24, 3
+      --               deep; both wear the LOWER motif's rows (the one
+      --               drawn at its true elevation; the upper motif is
+      --               the same atlas tile, pixel-identical).
+      --   rows 16-31, x24..x31 west variant: the KEYBOARD (7/13), a
+      --               key grid with its cable at the north end and a
+      --               bar down the east edge -- TOP-VIEW art, 16 rows
+      --               = 16 depth rows.  A `flat` part mounted on the
+      --               cabinet's side at COUNTER level (`at` 8, the
+      --               counters' own 8px band -- the one number
+      --               top-view art cannot state, pinned to the room's
+      --               work surface), 3 thick, top face wearing the
+      --               drawn art.  The dark dashes east of it (x30-31)
+      --               are its cast shadow on the floor: background.
+      --               East variant: mirrored hoses (runs x24..x28,
+      --               drops x24..x29), same rows and z slots.
+      --   rows 0-15 elsewhere  wall stripes and the machine's cast
+      --               shadow -- BACKGROUND, the same standing as the
+      --               potted plants' floor.  The `wall` element keeps
+      --               the band solid over the back map row, full grid
+      --               width: a 16-tall, 16-deep block cycling the
+      --               drawing's own stripe unit (x0, rows 0-3), what
+      --               the neighbouring cells' wall pins render.
       --
       -- `depth = 4` is BOTH map rows: the back row is the wall's plot,
-      -- the front row the machine's own, and the cabinet leans against
-      -- the wall at z 16..25.  `panes = false`: the front panel seals
-      -- DARK behind LIGHT (a black panel in a white frame), the
-      -- opposite polarity to the pane rule, so the global recess pass
-      -- would sink the frame and leave the panel proud.
+      -- the front row the machine's own.  `panes = false`: the front
+      -- panel seals DARK behind LIGHT (a black panel in a white
+      -- frame), the opposite polarity to the pane rule, so the global
+      -- recess pass would sink the frame and leave the panel proud.
       {
-        id = "center_heal_machine",
+        id = "center_heal_machine_w",
         tiles = {
-          { 58, 59 },
-          { 74, 75 },
-          { 76, 77 },
-          {  6, 22 },
+          { 40, 58, 59, 40 },
+          { 40, 74, 75, 40 },
+          { 72, 76, 77,  7 },
+          { 72,  6, 22, 13 },
         },
         roofRows = 0, roofBack = 0, roofFront = 0, roofCycle = { 0, 0 },
         slab = 0, frontEave = 0, ledge = nil, depth = 4,
         panes = false,
         wall = { h = 16, depthPx = 16, x = 0, cycle = { 0, 3 } },
-        desk = { fascia = { 15, 16 }, base = { 17, 31 }, z = 16,
-                 depthPx = 10, top = { 6, 14 } },
+        desk = { x = { 8, 23 }, fascia = { 15, 16 }, base = { 17, 31 },
+                 z = 16, depthPx = 10, top = { 6, 14 } },
         parts = {
-          { kind = "upright", x = { 2, 13 }, top = { 1, 3 },
+          { kind = "upright", x = { 10, 21 }, top = { 1, 3 },
             facade = { 4, 13 }, z = 20, depth = 4,
-            inset = { x = { 5, 10 }, rows = { 6, 8 } } },    -- the monitor
+            inset = { x = { 13, 18 }, rows = { 6, 8 } } },   -- the monitor
+          { kind = "box", x = { 3, 7 }, rows = { 24, 26 },
+            z = 18, depth = 3 },                             -- N hose run
+          { kind = "box", x = { 2, 7 }, rows = { 27, 31 },
+            z = 18, depth = 3 },                             -- N hose drop
+          { kind = "box", x = { 3, 7 }, rows = { 24, 26 },
+            z = 24, depth = 3 },                             -- S hose run
+          { kind = "box", x = { 2, 7 }, rows = { 27, 31 },
+            z = 24, depth = 3 },                             -- S hose drop
+          { kind = "flat", x = { 24, 29 }, rows = { 16, 31 },
+            z = 16, at = 8, thick = 3 },                     -- keyboard shelf
+        },
+      },
+      {
+        id = "center_heal_machine_e",
+        tiles = {
+          { 40, 58, 59, 40 },
+          { 40, 74, 75, 40 },
+          { 72, 76, 77, 73 },
+          { 72,  6, 22, 73 },
+        },
+        roofRows = 0, roofBack = 0, roofFront = 0, roofCycle = { 0, 0 },
+        slab = 0, frontEave = 0, ledge = nil, depth = 4,
+        panes = false,
+        wall = { h = 16, depthPx = 16, x = 0, cycle = { 0, 3 } },
+        desk = { x = { 8, 23 }, fascia = { 15, 16 }, base = { 17, 31 },
+                 z = 16, depthPx = 10, top = { 6, 14 } },
+        parts = {
+          { kind = "upright", x = { 10, 21 }, top = { 1, 3 },
+            facade = { 4, 13 }, z = 20, depth = 4,
+            inset = { x = { 13, 18 }, rows = { 6, 8 } } },   -- the monitor
+          { kind = "box", x = { 3, 7 }, rows = { 24, 26 },
+            z = 18, depth = 3 },                             -- NW hose run
+          { kind = "box", x = { 2, 7 }, rows = { 27, 31 },
+            z = 18, depth = 3 },                             -- NW hose drop
+          { kind = "box", x = { 3, 7 }, rows = { 24, 26 },
+            z = 24, depth = 3 },                             -- SW hose run
+          { kind = "box", x = { 2, 7 }, rows = { 27, 31 },
+            z = 24, depth = 3 },                             -- SW hose drop
+          { kind = "box", x = { 24, 28 }, rows = { 24, 26 },
+            z = 18, depth = 3 },                             -- NE hose run
+          { kind = "box", x = { 24, 29 }, rows = { 27, 31 },
+            z = 18, depth = 3 },                             -- NE hose drop
+          { kind = "box", x = { 24, 28 }, rows = { 24, 26 },
+            z = 24, depth = 3 },                             -- SE hose run
+          { kind = "box", x = { 24, 29 }, rows = { 27, 31 },
+            z = 24, depth = 3 },                             -- SE hose drop
         },
       },
     },
@@ -3840,28 +3926,75 @@ return {
         },
       },
       -- F05 again: the Indigo Plateau lobby has the Centers' healing
-      -- machine pair too (cells (5,4):(6,5) and (10,4):(11,5)), and its
-      -- MART tileset shares the POKECENTER atlas, so this is the same
-      -- drawing tile for tile. Same part table as the POKECENTER entry
-      -- above.
+      -- machine pair too -- the west-variant grid at (5,4):(6,5) and
+      -- the east at (10,4):(11,5), verified by region dump -- and its
+      -- MART tileset shares the POKECENTER atlas, so these are the
+      -- same drawings tile for tile. Same part tables as the
+      -- POKECENTER entries above.
       {
-        id = "center_heal_machine",
+        id = "center_heal_machine_w",
         tiles = {
-          { 58, 59 },
-          { 74, 75 },
-          { 76, 77 },
-          {  6, 22 },
+          { 40, 58, 59, 40 },
+          { 40, 74, 75, 40 },
+          { 72, 76, 77,  7 },
+          { 72,  6, 22, 13 },
         },
         roofRows = 0, roofBack = 0, roofFront = 0, roofCycle = { 0, 0 },
         slab = 0, frontEave = 0, ledge = nil, depth = 4,
         panes = false,
         wall = { h = 16, depthPx = 16, x = 0, cycle = { 0, 3 } },
-        desk = { fascia = { 15, 16 }, base = { 17, 31 }, z = 16,
-                 depthPx = 10, top = { 6, 14 } },
+        desk = { x = { 8, 23 }, fascia = { 15, 16 }, base = { 17, 31 },
+                 z = 16, depthPx = 10, top = { 6, 14 } },
         parts = {
-          { kind = "upright", x = { 2, 13 }, top = { 1, 3 },
+          { kind = "upright", x = { 10, 21 }, top = { 1, 3 },
             facade = { 4, 13 }, z = 20, depth = 4,
-            inset = { x = { 5, 10 }, rows = { 6, 8 } } },    -- the monitor
+            inset = { x = { 13, 18 }, rows = { 6, 8 } } },   -- the monitor
+          { kind = "box", x = { 3, 7 }, rows = { 24, 26 },
+            z = 18, depth = 3 },                             -- N hose run
+          { kind = "box", x = { 2, 7 }, rows = { 27, 31 },
+            z = 18, depth = 3 },                             -- N hose drop
+          { kind = "box", x = { 3, 7 }, rows = { 24, 26 },
+            z = 24, depth = 3 },                             -- S hose run
+          { kind = "box", x = { 2, 7 }, rows = { 27, 31 },
+            z = 24, depth = 3 },                             -- S hose drop
+          { kind = "flat", x = { 24, 29 }, rows = { 16, 31 },
+            z = 16, at = 8, thick = 3 },                     -- keyboard shelf
+        },
+      },
+      {
+        id = "center_heal_machine_e",
+        tiles = {
+          { 40, 58, 59, 40 },
+          { 40, 74, 75, 40 },
+          { 72, 76, 77, 73 },
+          { 72,  6, 22, 73 },
+        },
+        roofRows = 0, roofBack = 0, roofFront = 0, roofCycle = { 0, 0 },
+        slab = 0, frontEave = 0, ledge = nil, depth = 4,
+        panes = false,
+        wall = { h = 16, depthPx = 16, x = 0, cycle = { 0, 3 } },
+        desk = { x = { 8, 23 }, fascia = { 15, 16 }, base = { 17, 31 },
+                 z = 16, depthPx = 10, top = { 6, 14 } },
+        parts = {
+          { kind = "upright", x = { 10, 21 }, top = { 1, 3 },
+            facade = { 4, 13 }, z = 20, depth = 4,
+            inset = { x = { 13, 18 }, rows = { 6, 8 } } },   -- the monitor
+          { kind = "box", x = { 3, 7 }, rows = { 24, 26 },
+            z = 18, depth = 3 },                             -- NW hose run
+          { kind = "box", x = { 2, 7 }, rows = { 27, 31 },
+            z = 18, depth = 3 },                             -- NW hose drop
+          { kind = "box", x = { 3, 7 }, rows = { 24, 26 },
+            z = 24, depth = 3 },                             -- SW hose run
+          { kind = "box", x = { 2, 7 }, rows = { 27, 31 },
+            z = 24, depth = 3 },                             -- SW hose drop
+          { kind = "box", x = { 24, 28 }, rows = { 24, 26 },
+            z = 18, depth = 3 },                             -- NE hose run
+          { kind = "box", x = { 24, 29 }, rows = { 27, 31 },
+            z = 18, depth = 3 },                             -- NE hose drop
+          { kind = "box", x = { 24, 28 }, rows = { 24, 26 },
+            z = 24, depth = 3 },                             -- SE hose run
+          { kind = "box", x = { 24, 29 }, rows = { 27, 31 },
+            z = 24, depth = 3 },                             -- SE hose drop
         },
       },
     },
@@ -4234,6 +4367,46 @@ return {
           -- template owe it
           { kind = "upright", x = { 2, 13 }, top = { 20, 21 },
             facade = { 22, 31 }, rise = -8, z = 22, depth = 10 },
+        },
+      },
+      -- F09 once more: the Pokemon Fan Club's four members' chairs,
+      -- drawn round the boardroom table -- POKEMON_FAN_CLUB cells (1,3),
+      -- (1,4), (6,3) and (6,4), and nowhere else in the game.
+      --
+      -- A DIFFERENT drawing from the house stool -- its seat field
+      -- carries a one-pixel white margin where the house's carries two
+      -- -- but the same object band for band: rows 5-10 the seat seen
+      -- from above (its lid), row 11 the seat's own front edge, 12-15
+      -- the legs with the floor showing between them.  Its elevation
+      -- rows are PIXEL-IDENTICAL to the house drawing's, so it takes
+      -- that part table unchanged, growth and all: z 3..13, `stretch`
+      -- mapping the seat band over the deeper lid, `panes = false` so
+      -- the pane rule does not sink the legs' lit faces.
+      --
+      -- Rows 11-15 come from tiles 59/60, which this drawing SHARES
+      -- with Bill's chair (43/44 over 59/60, modelled as a part of
+      -- `bills_desk` above).  That is why the tileset's `stool = 5`
+      -- height override is right for both seats rather than a special
+      -- case for this one: they are drawn at the same height because
+      -- they are drawn with the same pixels.
+      --
+      -- Listed after `bills_desk` although neither grid is a subgrid of
+      -- the other (that grid has 43/44 over 59/60, this one 61/62), so
+      -- the order is free and the bigger, more specific grid keeps
+      -- first claim.
+      {
+        id = "club_stool",
+        tiles = {
+          { 61, 62 },
+          { 59, 60 },
+        },
+        roofRows = 0, roofBack = 0, roofFront = 0, roofCycle = { 0, 0 },
+        slab = 0, frontEave = 0, ledge = nil,
+        panes = false,
+        parts = {
+          { kind = "upright", x = { 2, 13 }, top = { 5, 10 },
+            facade = { 11, 15 }, z = 3, depth = 11,
+            stretch = true },                             -- the stool
         },
       },
     },

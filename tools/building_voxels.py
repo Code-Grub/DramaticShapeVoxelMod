@@ -765,6 +765,35 @@ TEMPLATES = {
                  z=3, depth=11, stretch=True),                # the stool
         ],
     ),
+    # F09 once more, on the interior atlas: the Pokemon Fan Club's four
+    # members' chairs, drawn round the boardroom table -- 4 placements
+    # (cells (1,3), (1,4), (6,3), (6,4)) and nowhere else in the game.
+    # A DIFFERENT drawing from the house stool -- its seat field carries
+    # a one-pixel white margin where the house's carries two -- but the
+    # same object band for band, and its elevation rows (11-15: the
+    # seat's front edge, then the legs) are pixel-identical to the house
+    # drawing's. So it takes the same part table unchanged, including
+    # the two-voxel growth north and south.
+    #
+    # Those elevation rows come from tiles 59/60, which this drawing
+    # SHARES with Bill's chair (43/44 over 59/60, modelled as a part of
+    # `bills_desk`) -- which is why one `stool = 5` height override in
+    # the tileset entry is right for both seats rather than a special
+    # case: they are drawn at the same height because they are drawn
+    # with the same pixels.
+    "club_stool": dict(
+        tiles=[
+            [61, 62],
+            [59, 60],
+        ],
+        roof_rows=0, roof_back=0, roof_front=0, roof_cycle=(0, 0),
+        slab=0, front_eave=0, ledge=None, tileset="interior",
+        panes=False,
+        parts=[
+            dict(kind="upright", x=(2, 13), top=(5, 10), facade=(11, 15),
+                 z=3, depth=11, stretch=True),                # the stool
+        ],
+    ),
     # F04: the Pokemon Center's PC -- every Center's northeast corner
     # (11 placements) plus the Indigo Plateau lobby, whose MART tileset
     # shares this atlas. The lab desk-set read again: a
@@ -829,29 +858,31 @@ TEMPLATES = {
     #               voxel via `inset` -- the pane rule by hand, since
     #               `panes=False` blocks the global pass.
     #   rows 16-31, x0..x7    the HOSES (tile 72 twice): one 8-row
-    #               motif per map row -- a horizontal run high on the
-    #               cabinet's side (16-18, x3..x7 -> heights 13..15,
-    #               measured off the drawn rows) and a shaded drop
-    #               (19-23, x2..x7) that bends down INTO THE FLOOR.
-    #               The two stacked motifs are two hoses in DEPTH (the
-    #               drawn row band is the depth band): `box` parts at
-    #               z 18 and z 24, 3 deep, the drop cycling its two
-    #               shading rows (19-20) down to the floor with the
-    #               drawn foot rows (21-23) landing at the bottom --
-    #               the roof-rim rule turned vertical. The second
-    #               hose re-wears the first motif's rows: the atlas
-    #               tile is the same, so the pixels are identical.
+    #               motif per map row, and the two stacked motifs are
+    #               two hoses in DEPTH -- the drawn row band is the
+    #               depth band, and each motif's own rows are its
+    #               elevation WITHIN that band, exactly the potted
+    #               plants' stacked-cell rule. So both hoses hug the
+    #               floor: a horizontal run off the cabinet's side
+    #               (rows 24-26, x3..x7 -> heights 5..7) over a shaded
+    #               drop landing ON the floor (rows 27-31, x2..x7 ->
+    #               heights 0..4) -- all measured, the drawn extent
+    #               maps 1:1 with no continuation. `box` parts at z 18
+    #               and z 24, 3 deep; both wear the LOWER motif's rows
+    #               (the one drawn at its true elevation; the upper
+    #               motif is the same atlas tile, pixel-identical).
     #   rows 16-31, x24..x31  west variant: the KEYBOARD (7/13), a
     #               key grid with its cable at the north end and a bar
     #               down the east edge -- TOP-VIEW art, 16 rows = 16
     #               depth rows. A `flat` part mounted on the cabinet's
-    #               side at working height (`at` 11, authored -- the
-    #               one number top-view art cannot state), 3 thick,
-    #               top face wearing the drawn art. The stray dark
-    #               dashes east of it (x30-31) are its cast shadow on
-    #               the floor: background. East variant: mirrored
-    #               hoses (runs 16-18 x24..x28, drops 19-23 x24..x29),
-    #               same z slots.
+    #               side at COUNTER level (`at` 8, the counters' own
+    #               8px band -- the one number top-view art cannot
+    #               state, pinned to the room's work surface), 3
+    #               thick, top face wearing the drawn art. The stray
+    #               dark dashes east of it (x30-31) are its cast
+    #               shadow on the floor: background. East variant:
+    #               mirrored hoses (runs x24..x28, drops x24..x29),
+    #               same rows and z slots.
     #   rows 0-15 elsewhere   wall stripes and cast shadow: BACKGROUND.
     #               The `wall` element keeps the band solid over the
     #               back map row, full grid width -- a 16-tall,
@@ -878,16 +909,16 @@ TEMPLATES = {
             dict(kind="upright", x=(10, 21), top=(1, 3), facade=(4, 13),
                  z=20, depth=4,
                  inset=dict(x=(13, 18), rows=(6, 8))),       # the monitor
-            dict(kind="box", x=(3, 7), rows=(16, 18),
+            dict(kind="box", x=(3, 7), rows=(24, 26),
                  z=18, depth=3),                             # north hose run
-            dict(kind="box", x=(2, 7), rows=(19, 23), cycle=(19, 20),
-                 base=0, z=18, depth=3),                     # north hose drop
-            dict(kind="box", x=(3, 7), rows=(16, 18),
+            dict(kind="box", x=(2, 7), rows=(27, 31),
+                 z=18, depth=3),                             # north hose drop
+            dict(kind="box", x=(3, 7), rows=(24, 26),
                  z=24, depth=3),                             # south hose run
-            dict(kind="box", x=(2, 7), rows=(19, 23), cycle=(19, 20),
-                 base=0, z=24, depth=3),                     # south hose drop
+            dict(kind="box", x=(2, 7), rows=(27, 31),
+                 z=24, depth=3),                             # south hose drop
             dict(kind="flat", x=(24, 29), rows=(16, 31),
-                 z=16, at=11, thick=3),                      # keyboard shelf
+                 z=16, at=8, thick=3),                       # keyboard shelf
         ],
     ),
     "center_heal_machine_e": dict(
@@ -907,22 +938,22 @@ TEMPLATES = {
             dict(kind="upright", x=(10, 21), top=(1, 3), facade=(4, 13),
                  z=20, depth=4,
                  inset=dict(x=(13, 18), rows=(6, 8))),       # the monitor
-            dict(kind="box", x=(3, 7), rows=(16, 18),
+            dict(kind="box", x=(3, 7), rows=(24, 26),
                  z=18, depth=3),                             # NW hose run
-            dict(kind="box", x=(2, 7), rows=(19, 23), cycle=(19, 20),
-                 base=0, z=18, depth=3),                     # NW hose drop
-            dict(kind="box", x=(3, 7), rows=(16, 18),
+            dict(kind="box", x=(2, 7), rows=(27, 31),
+                 z=18, depth=3),                             # NW hose drop
+            dict(kind="box", x=(3, 7), rows=(24, 26),
                  z=24, depth=3),                             # SW hose run
-            dict(kind="box", x=(2, 7), rows=(19, 23), cycle=(19, 20),
-                 base=0, z=24, depth=3),                     # SW hose drop
-            dict(kind="box", x=(24, 28), rows=(16, 18),
+            dict(kind="box", x=(2, 7), rows=(27, 31),
+                 z=24, depth=3),                             # SW hose drop
+            dict(kind="box", x=(24, 28), rows=(24, 26),
                  z=18, depth=3),                             # NE hose run
-            dict(kind="box", x=(24, 29), rows=(19, 23), cycle=(19, 20),
-                 base=0, z=18, depth=3),                     # NE hose drop
-            dict(kind="box", x=(24, 28), rows=(16, 18),
+            dict(kind="box", x=(24, 29), rows=(27, 31),
+                 z=18, depth=3),                             # NE hose drop
+            dict(kind="box", x=(24, 28), rows=(24, 26),
                  z=24, depth=3),                             # SE hose run
-            dict(kind="box", x=(24, 29), rows=(19, 23), cycle=(19, 20),
-                 base=0, z=24, depth=3),                     # SE hose drop
+            dict(kind="box", x=(24, 29), rows=(27, 31),
+                 z=24, depth=3),                             # SE hose drop
         ],
     ),
     # F06: the Bike Shop's toolbox -- 2 placements, cells (6,6) and (7,7)

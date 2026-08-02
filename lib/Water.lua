@@ -956,8 +956,15 @@ vec4 effect(mediump vec4 color, Image tex, mediump vec2 tc, mediump vec2 sc) {
   // the bound canvas's own pixel size, the same units sc is measured in, on
   // every display. (`screen` stays in units: skyPos reads it against cell
   // and skyEdge, which are unit-measured with it.)
+  //
+  // The buffer now holds THIS SURFACE too (VoxelScene draws the water flat
+  // before the pass that reflects it), which is what makes one lake able to
+  // hide another -- and it means every fragment here is testing against its
+  // own depth. The two draws reach it through different shader programs, so
+  // ask for a hair of slack rather than bit-equality: far less than the gap
+  // to anything genuinely in front, far more than two compilers disagree by.
   vec2 uv = sc / love_ScreenSize.xy;
-  if (gl_FragCoord.z > Texel(depthTex, uv).r) discard;
+  if (gl_FragCoord.z > Texel(depthTex, uv).r + 1e-5) discard;
 
   // THE COLUMN THIS FRAGMENT IS LOOKING AT. Every water pixel is a bar of
   // its own standing a whole number of pixels tall, and the ray decides

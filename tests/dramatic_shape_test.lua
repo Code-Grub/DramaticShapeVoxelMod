@@ -1915,6 +1915,19 @@ T.check(plain:find("sc / love_ScreenSize.xy", 1, true) ~= nil,
   .. "size -- `screen` counts canvas UNITS, and on a highdpi phone the two "
   .. "differ by the density, which clamped the lookup and cut the water "
   .. "into blocks")
+-- ...and it tests against a buffer that now holds the water surface too,
+-- because VoxelScene lays the meshes down flat before the reflective pass
+-- runs over them. Nothing else can make one lake hide another: the pass
+-- writes no depth (the buffer is detached so it can be READ), so before this
+-- the sheets were simply painted in mesh order. Flat water never showed it --
+-- one plane, and a farther sheet always lands farther down the screen -- but
+-- the world curve drops the far side of the map into the near field of view,
+-- and a sea a hundred and fifty tiles away came out rasterised on top of the
+-- pond at the player's feet, tall grass and all.
+T.check(plain:find("Texel(depthTex, uv).r + 1e-5", 1, true) ~= nil,
+  "with a hair of slack, because every water fragment is now testing "
+  .. "against its own depth through a second shader program")
+T.check(VoxelScene.drawWater ~= nil, "and the flat draw that puts it there")
 
 -- ------- the lift itself
 --

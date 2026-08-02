@@ -440,14 +440,68 @@ local function deskSetModel(sp, pr, t)
       if p.kind == "flat" then
         -- drawn row = depth row by default; `z` renames the origin when
         -- the flat sits below the desk's own drawn top span (the Center
-        -- PC's keyboard)
+        -- PC's keyboard). `at` names the sheet's own height when it does
+        -- not lie on the desk plane (the healing machine's keyboard is a
+        -- shelf mounted on the cabinet's side); `thick` gives it a body
+        -- -- layers below the sheet repeating each column's own texel,
+        -- the same continuation rule every synthesized surface follows.
         local r0 = p.rows[1]
         local z0 = p.z or r0
+        local atY = p.at or plane
+        local thick = p.thick or 1
+        if atY > ytop then ytop = atY end
         for sy = r0, p.rows[2] do
           local z = z0 + (sy - r0)
           if z >= 0 and z < D then
             for sx = x0, x1 do
-              if inside[sy * W + sx] then put(sx, plane, z, sy * W + sx) end
+              if inside[sy * W + sx] then
+                for y = math.max(0, atY - thick + 1), atY do
+                  put(sx, y, z, sy * W + sx)
+                end
+              end
+            end
+          end
+        end
+      elseif p.kind == "box" then
+        -- A BOX part is a drawn rect standing at its own drawn
+        -- elevation -- equipment attached to the machine rather than an
+        -- object on the desk plane. The rows are face-on art: the top
+        -- row's drawn height IS the box's top (ground - 1 - r0,
+        -- measured), and the box runs down to `base` (default the drawn
+        -- extent; 0 continues it to the floor, the legs-continue rule).
+        -- Height beyond the drawn rows fills the way a roof band does:
+        -- rows before `cycle` map 1:1 from the top, rows after it 1:1
+        -- from the bottom -- the healing machine hoses' foot lands ON
+        -- the floor -- and the cycle window repeats between.
+        local r0, r1 = p.rows[1], p.rows[2]
+        local c0 = p.cycle and p.cycle[1] or r1
+        local c1 = p.cycle and p.cycle[2] or r1
+        local pz = p.z or 0
+        local pd = p.depth
+        local top = pr.ground - 1 - r0
+        local bot = p.base or (pr.ground - 1 - r1)
+        local nTop, nBot = c0 - r0, r1 - c1
+        if top > ytop then ytop = top end
+        for y = bot, top do
+          local k, j = top - y, y - bot
+          local sy
+          if k < nTop then
+            sy = r0 + k
+          elseif j < nBot then
+            sy = r1 - j
+          else
+            sy = c0 + (k - nTop) % (c1 - c0 + 1)
+          end
+          for sx = x0, x1 do
+            local i = sy * W + sx
+            if inside[i] then
+              local ix = interiorAt(sx, sy, x0, x1)
+              for z = pz, pz + pd - 1 do
+                if z >= 0 and z < D then
+                  local px = (z == pz or z == pz + pd - 1) and sx or ix
+                  put(sx, y, z, sy * W + px)
+                end
+              end
             end
           end
         end
@@ -700,6 +754,11 @@ local function deskSetModel(sp, pr, t)
   local dz0 = t.desk.z or 0
   local dz1 = dz0 + deskD - 1
   local deskG = b1 + 1
+  -- ...and the desk's COLUMNS (`x`), when the grid is wider than the
+  -- desk: the healing machine's grid carries its flanking hoses and
+  -- keyboard, and the cabinet is only the middle 16 columns.
+  local dx0 = t.desk.x and t.desk.x[1] or 0
+  local dx1 = t.desk.x and t.desk.x[2] or W - 1
 
   -- The WALL element: the band the machine backs onto, whose tiles this
   -- grid claims. The drawing shows it only as the stripe background
@@ -727,9 +786,9 @@ local function deskSetModel(sp, pr, t)
   for sy = b0, b1 do
     Budget.tick()
     local y = deskG - 1 - sy
-    for sx = 0, W - 1 do
+    for sx = dx0, dx1 do
       if inside[sy * W + sx] then
-        local ix = interiorAt(sx, sy, 0, W - 1)
+        local ix = interiorAt(sx, sy, dx0, dx1)
         for z = dz0, dz1 do
           local px = (z == dz0 or z == dz1) and sx or ix
           put(sx, y, z, sy * W + px)
@@ -739,8 +798,9 @@ local function deskSetModel(sp, pr, t)
   end
   for i in pairs(pr.recess) do
     local sy = math.floor(i / W)
-    if sy >= b0 and sy <= b1 then
-      vox[key(i % W, deskG - 1 - sy, dz1)] = nil
+    local sx = i % W
+    if sy >= b0 and sy <= b1 and sx >= dx0 and sx <= dx1 then
+      vox[key(sx, deskG - 1 - sy, dz1)] = nil
     end
   end
 
@@ -748,7 +808,7 @@ local function deskSetModel(sp, pr, t)
   for sy = f0, f1 do
     Budget.tick()
     local y = plane - 1 - (sy - f0)
-    for sx = 0, W - 1 do
+    for sx = dx0, dx1 do
       for z = dz0, dz1 do put(sx, y, z, sy * W + sx) end
     end
   end
@@ -767,19 +827,19 @@ local function deskSetModel(sp, pr, t)
     for z = dz0, dz1 do
       Budget.tick()
       local sy = z == dz1 and f0 or math.min(tr0 + (z - dz0), tr1)
-      for sx = 0, W - 1 do
+      for sx = dx0, dx1 do
         local px = sx
         for _, p in ipairs(t.parts) do
           local px0, px1 = p.x[1], p.x[2]
           local r0, r1
-          if p.kind == "flat" or p.kind == "iso" then
+          if p.kind == "flat" or p.kind == "iso" or p.kind == "box" then
             r0, r1 = p.rows[1], p.rows[2]
           else
             r0, r1 = p.top[1], p.facade[2]
           end
           if sx >= px0 and sx <= px1 and sy >= r0 and sy <= r1 then
             px = (sx - px0 < px1 - sx) and (px0 - 1) or (px1 + 1)
-            px = math.max(0, math.min(W - 1, px))
+            px = math.max(dx0, math.min(dx1, px))
             break
           end
         end
@@ -790,12 +850,12 @@ local function deskSetModel(sp, pr, t)
     -- the lid continues the sibling tables' top -- black rim, white
     -- highlight courses along the north and west, grey field
     local field = t.desk.lid == "white" and WHITE or GREY
-    for sx = 0, W - 1 do
+    for sx = dx0, dx1 do
       for z = dz0, dz1 do
         local shade = field
-        if sx == 0 or sx == W - 1 or z == dz0 or z == dz1 then
+        if sx == dx0 or sx == dx1 or z == dz0 or z == dz1 then
           shade = BLACK
-        elseif sx == 1 or z == dz0 + 1 then
+        elseif sx == dx0 + 1 or z == dz0 + 1 then
           shade = WHITE
         end
         put(sx, plane - 1, z, pr.shadeTexel[shade])
