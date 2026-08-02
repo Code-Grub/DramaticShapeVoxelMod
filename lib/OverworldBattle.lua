@@ -51,6 +51,7 @@ local Voxel3D = V.require("Voxel3D")
 local ChunkMesher = V.require("ChunkMesher")
 
 local OverworldBattle = {}
+local session = nil
 
 -- DS_BATTLE_DEBUG=1 logs what the HUD's brightness probe is reading, once a
 -- second, which is how the glyph flip is checked from a shot run. Read
@@ -81,14 +82,37 @@ end
 -- by: your own Pokemon, seen from behind, sitting on top of the battle menu
 -- with its feet on the box. That silhouette is the series' shot.
 --
--- Kept as a compatibility query for older callers. Both FRONT and BACK are
--- now world cards; neither is pinned to the UI layer.
-
--- Gated on 3D-BTL rather than read alone: with staged battles off there is no
--- staged shot for a back pic to be pinned in FRONT of, and the engine's own
--- battle screen already draws exactly this.
+-- Placement is deliberately independent from the selected art set. WORLD and
+-- OG UI are useful authoring overrides; AUTO follows the intended presentation:
+-- STATIC puts supplied art and ROM fallback in the world, ANIMATED puts a
+-- supplied PNG/atlas in the world but leaves a missing ROM fallback on the
+-- original UI anchor, and ROM uses that OG anchor outright.
 function OverworldBattle.backPinned()
-  return false
+  if not OverworldBattle.enabled() then return false end
+  local battle = session and session.battle
+  local trainerBack = battle and battle.showPlayerBack
+                      and battle.playerBackPic
+  -- PLAYER controls Pokemon views, not the trainer intro. A trainer back can
+  -- still use OG UI while FRONT SPRITES keeps the later Pokemon card in-world.
+  if not trainerBack and BattleArt.playerSide() ~= "back" then return false end
+  local placement = BattleArt.backPlacementSetting:get()
+  if placement == "world" then return false end
+  if placement == "ui" then return true end
+
+  local artMode = BattleArt.setting:get()
+  if artMode == "static" then return false end
+  if artMode == "rom" then return true end
+
+  if not battle then return false end
+  -- Trainer backs never use the Pokemon atlas manager. A supplied player,
+  -- Oak or Old Man PNG is marked external by BattleArt; a ROM trainer pic is
+  -- not. Animated player-trainer art deliberately stays on OG UI in AUTO:
+  -- its one-shot frames are synchronised to that layer's leftward slide.
+  if trainerBack then
+    return true
+  end
+  return battle.player and not AnimatedBattleArt.hasWorldBack(battle.player)
+         or false
 end
 
 -- ------- both mons face you
@@ -100,7 +124,7 @@ end
 -- through the engine's own pokemon.sprite hook -- the seam that exists for
 -- exactly this, so no battle code has to be touched to get it.
 --
--- PLAYER VIEW chooses whether the near card asks for front or back art.
+-- PLAYER chooses whether the near card asks for front or back sprites.
 --
 -- Answered BEFORE a battle exists, because the battler is built before the
 -- battle is pushed. So it cannot ask whether this fight is staged; it asks
@@ -246,7 +270,10 @@ OverworldBattle.HUD_BAND = {
 function OverworldBattle.snapRects(shot)
   local s = shot.scale
   local e, p = OverworldBattle.HUD_RECT.enemy, OverworldBattle.HUD_RECT.player
-  local ex = -e[1] * s                       -- foe: panel's left edge to 0
+  -- Leave two logical pixels between the foe's name and the window edge.
+  -- The whole enemy band moves with the panel, so long names and HUD shakes
+  -- keep their original internal alignment instead of being clipped.
+  local ex = (2 - e[1]) * s
   local px = shot.pw - (p[1] + p[3]) * s     -- player: right edge to the far side
   local rects = {
     enemy = { ex + e[1] * s, shot.ly + e[2] * s, e[3] * s, e[4] * s },
@@ -270,7 +297,7 @@ end
 --
 -- nil when no overworld battle is running. Never more than one: battles do
 -- not nest.
-local session = nil
+session = nil
 
 local function game()
   return require("src.core.Game")
@@ -462,15 +489,12 @@ function OverworldBattle.update(dt)
     local okDof, blurred = pcall(BattleDOF.apply, shot.canvas,
                                  focusY, band, range)
     if okDof and blurred then shot.canvas = blurred end
-    -- the frosted glass the HUDs sit on is built from the FINISHED backdrop,
-    -- so a panel over a blurred far field is frosted from what is actually
-    -- behind it
-    pcall(BattleHud.build, shot.canvas)
-    -- and then the HUDs go ON that backdrop, snapped out to the window's own
+    -- Backplates are absent, so no frost/downsample or zero-alpha composite
+    -- touches the finished arena. The HUDs go directly ON that backdrop,
+    -- snapped out to the window's own
     -- edges (snapHUDs). Here rather than in the battle's draw for the same
-    -- reason the scene is: it binds a canvas of its own. After the frost, so
-    -- the glass is frosted from the world alone and never from the glyphs
-    -- about to sit on it.
+    -- reason the scene is: it binds a canvas of its own. Their only contrast
+    -- treatment is pure white ink plus a dark one-pixel shadow.
     local okHud, up = pcall(OverworldBattle.snapHUDs, session.battle, shot)
     session.snapped = (okHud and up) and true or false
     -- once per battle, not once per frame: a driver that cannot do this cannot
@@ -652,6 +676,7 @@ end
 -- known row. That known point is what the quad is then hung from.
 local TEX_AX, TEX_AY = 80, 96          -- forced pic centre and baseline
 local TRAINER_AX, TRAINER_AY = 124, 56 -- the intro trainer pic's own slot
+local OPPONENT_TRAINER_SCALE = 2       -- trainer cards only; Pokemon stay 1x
 
 OverworldBattle.TEX_AX, OverworldBattle.TEX_AY = TEX_AX, TEX_AY
 
@@ -766,16 +791,20 @@ function OverworldBattle.sideTexture(battle, side)
   g.setBlendMode(prevBlend or "alpha", prevAlpha)
   if not ok then error(err, 0) end
 
-  local trainer = false
+  local trainer = showingTrainer and true or false
   -- The intro trainer pic draws itself straight into its own 7x7 slot rather
   -- than through the placement helpers, so it is hung from that slot instead.
   if side == "enemy" and battle.showEnemyTrainer and battle.trainerPic
      and not metric then
-    ax, ay, trainer = TRAINER_AX, TRAINER_AY, true
-  elseif side == "player" and battle.showPlayerBack and battle.playerBackPic then
-    trainer = true
+    ax, ay = TRAINER_AX, TRAINER_AY
   end
   return { canvas = canvas, ax = ax, ay = ay, trainer = trainer,
+           noDayTint = BattleArt.isStaticFront(shownImage),
+           -- Opponent trainer cards are authored for a compact intro slot.
+           -- Enlarge only those cards in world space, whichever generation
+           -- supplied them. Pokemon remain native 1x and untouched.
+           presentationScale = side == "enemy" and trainer
+                               and OPPONENT_TRAINER_SCALE or 1,
            noMirror = side == "player" and BattleArt.playerSide() == "back" }
 end
 
@@ -840,6 +869,33 @@ function OverworldBattle.install()
     end
     BattleState.dramaticShapeTrainerPartyHook = true
   end
+
+  -- A staged battle is already a finished window-sized world image.  The
+  -- engine's generic warp fade is composited over that image in endFrame,
+  -- after the snapped HUD has been baked into it but before the live dialog
+  -- canvas is drawn.  If a Transition leaves worldFadeAlpha armed, that makes
+  -- the arena and its name/HP blocks uniformly gray while the dialog below
+  -- stays bright white.  Battle entry has BattleTransition's own wipe and
+  -- battle exit has BattleExit's finished-frame veil, so the overworld warp
+  -- fade has no job on this path.  Suppress only that overlay while this
+  -- module's world override is actually active; ordinary map fades and flat
+  -- fallback battles remain untouched.
+  local Renderer = require("src.render.Renderer")
+  if not Renderer.dramaticShapeBattleFadeHook then
+    local innerEndFrame = Renderer.endFrame
+    function Renderer:endFrame(zones, worldZones)
+      if OverworldBattle.shot() and self.worldOverride then
+        self.worldFadeAlpha = nil
+      end
+      return innerEndFrame(self, zones, worldZones)
+    end
+    Renderer.dramaticShapeBattleFadeHook = true
+  end
+
+  -- The renderer guard above is intentionally installed before this return.
+  -- Mod replacement can preserve the engine class and its existing battle
+  -- wrappers for the running process; a newly added renderer seam must still
+  -- be allowed to install in that session.
   if BattleState.dramaticShapeBattleHook then return end
 
   -- Integer scales only. The camera is solved to make one overworld square
@@ -856,6 +912,14 @@ function OverworldBattle.install()
     -- resample the sprite twice -- once into the texture and again on the way
     -- to the screen -- and a twice-resampled Gen 1 pic is mush.
     if texturing then return 1 end
+    -- The engine's trainer/back slot defaults to 2x because ROM back pictures
+    -- are authored at half display resolution. Our animated player-trainer
+    -- frames are already native 80x80 art. Keep those at 1x on OG UI without
+    -- changing ROM backs, static pictures, Pokemon, or world billboards.
+    local battle = session and session.battle
+    if side == "back" and AnimatedBattleArt.hasPlayerTrainerFrame(battle) then
+      return 1
+    end
     if not OverworldBattle.shot() then return base end
     return math.max(1, math.floor((tonumber(base) or 1) + 0.5))
   end
@@ -939,10 +1003,11 @@ function OverworldBattle.install()
   -- nothing left to do here. Skipped rather than left to draw underneath, or
   -- every Pokemon would appear twice: once on its tile and once in its slot.
   --
-  -- Except under BACK SPRITES, where the player's side never became geometry and this
-  -- layer is the only thing that draws it. The engine's own onlySide argument
-  -- does the whole job: one call, the player's branches alone, in the slot and
-  -- at the scale the GB always put them -- feet on the box, 2x, back view.
+  -- Except when a selected generated back is missing or invalid. That fallback
+  -- deliberately never becomes geometry, and this layer is the only thing
+  -- that draws it. The engine's own onlySide argument does the whole job: one
+  -- call, the player's branches alone, in the slot and at the scale the GB
+  -- always put them -- feet on the box, 2x, back view.
   innerPics = BattleState.drawPicsLayer
   function BattleState:drawPicsLayer(slide, sx, sy, onlySide, skipMenuClip)
     local shot = self.dramaticShapeShot
@@ -1144,16 +1209,13 @@ function OverworldBattle.snapHUDs(battle, shot)
   for key, rect in pairs(OverworldBattle.textRects(battle)) do
     live[key] = toWorld(rect, shot)
   end
-  -- measured under the SNAPPED rects: the panels are over whatever the world
-  -- shows at the window's edges now, which is not what was behind them in the
-  -- middle of the frame. ONE verdict over all of them, HUDs and box together,
-  -- for the reason BattleHud.verdict gives: a frame with white glyphs in the
-  -- corner and black ones on the menu reads as a bug rather than as adaptation.
-  local dark = BattleHud.verdict(live, shot, true)
-  -- the box's own ink is flipped where the engine draws it, in the GB frame,
-  -- so the answer has to outlive this function (see drawHudPanels)
-  if session then session.dark = dark end
-  local layer = OverworldBattle.hudTexture(battle, slide, dark)
+  -- Transparent backplates need one stable ink treatment through every phase
+  -- of battle. Always whiten engine ink and add BattleHud's dark one-pixel
+  -- shadow; luminance-driven switching made trainer/send-out frames gray and
+  -- changed colour as the same fight moved between phases.
+  local whiteInk = true
+  if session then session.dark = whiteInk end
+  local layer = OverworldBattle.hudTexture(battle, slide, whiteInk)
   if not layer then return false end
 
   local g = love.graphics
@@ -1162,7 +1224,9 @@ function OverworldBattle.snapHUDs(battle, shot)
   local ok, err = pcall(function()
     g.setCanvas(shot.canvas)
     g.setBlendMode("alpha")
-    for _, rect in pairs(live) do BattleHud.panel(rect, shot, dark, true) end
+    for _, rect in pairs(live) do
+      BattleHud.panel(rect, shot, whiteInk, true)
+    end
     g.setColor(1, 1, 1, 1)
     for side, band in pairs(OverworldBattle.HUD_BAND) do
       local quad = g.newQuad(band[1], band[2], band[3], band[4],
@@ -1190,7 +1254,7 @@ function OverworldBattle.drawHudPanels(battle)
   battle.dramaticShapeDark = nil
   if not shot then return end
   if snapped() then
-    battle.dramaticShapeDark = session and session.dark or nil
+    battle.dramaticShapeDark = true
     return
   end
   local slide = (battle.introSlide or 0) * 4
@@ -1201,9 +1265,8 @@ function OverworldBattle.drawHudPanels(battle)
   if player then live.player = rect.player end
   for key, r in pairs(OverworldBattle.textRects(battle)) do live[key] = r end
   if not next(live) then return end
-  local dark = BattleHud.verdict(live, shot)
-  battle.dramaticShapeDark = dark
-  for _, r in pairs(live) do BattleHud.panel(r, shot, dark) end
+  battle.dramaticShapeDark = true
+  for _, r in pairs(live) do BattleHud.panel(r, shot, true) end
 end
 
 return OverworldBattle

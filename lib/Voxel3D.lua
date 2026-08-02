@@ -869,6 +869,14 @@ function Voxel3D.draw(mesh, texture, model, pull, sunModel)
   love.graphics.draw(mesh)
 end
 
+-- Override the hour tint for one tightly scoped draw, or restore the scene
+-- tint when called without an argument. Other lighting uniforms are untouched.
+function Voxel3D.dayTint(tint)
+  if not (active and activeShader) then return end
+  pcall(activeShader.send, activeShader, "dayTint",
+        tint or Voxel3D.tint or { 1, 1, 1 })
+end
+
 -- Project a world point to canvas pixels: returns (x, y, scale), or nil
 -- when the point is behind the camera. `scale` is how much bigger a thing
 -- at that depth appears than one at the focus point, so a caller can size

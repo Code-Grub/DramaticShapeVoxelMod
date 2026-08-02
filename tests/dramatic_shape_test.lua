@@ -1699,12 +1699,17 @@ local rig, pitch = BattleCam.rig(shot, 0)
 
 local px, py = project(rig, shot.player)
 local ex, ey = project(rig, shot.enemy)
+local function widenedAnchor(v, centre)
+  return centre + (v - centre) / BattleCam.ZOOM_OUT
+end
+local wantPX, wantPY = widenedAnchor(26, 80), widenedAnchor(96, 72)
+local wantEX, wantEY = widenedAnchor(124, 80), widenedAnchor(56, 72)
 T.check(px ~= nil and ex ~= nil, "both marks are in front of the camera")
-T.check(math.abs(px - 26) < 1 and math.abs(py - 96) < 1,
-  ("the player's cell projects onto its pic's feet at (26, 96): got "
+T.check(math.abs(px - wantPX) < 1 and math.abs(py - wantPY) < 1,
+  ("the player's cell follows the widened battle framing: got "
    .. "(%.2f, %.2f)"):format(px, py))
-T.check(math.abs(ex - 124) < 1 and math.abs(ey - 56) < 1,
-  ("the enemy's cell projects onto its pic's feet at (124, 56): got "
+T.check(math.abs(ex - wantEX) < 1 and math.abs(ey - wantEY) < 1,
+  ("the enemy's cell follows the widened battle framing: got "
    .. "(%.2f, %.2f)"):format(ex, ey))
 T.check(px < ex, "which puts the player's mon LEFT of the enemy's")
 T.check(py > ey, "and lower in the frame -- nearer the camera")
@@ -1727,11 +1732,11 @@ local function span(cam, point)
   return math.abs(b - a)
 end
 
-T.check(math.abs(span(rig, shot.player) - 64) < 4,
-  ("the player's square is a back pic wide (64px at 2x): got %.2f")
+T.check(math.abs(span(rig, shot.player) - 64 / BattleCam.ZOOM_OUT) < 4,
+  ("the player's square follows the widened framing: got %.2f")
   :format(span(rig, shot.player)))
-T.check(math.abs(span(rig, shot.enemy) - 56) < 4,
-  ("the enemy's square is a front pic wide (56px at 1x): got %.2f")
+T.check(math.abs(span(rig, shot.enemy) - 56 / BattleCam.ZOOM_OUT) < 4,
+  ("the enemy's square follows the widened framing: got %.2f")
   :format(span(rig, shot.enemy)))
 
 -- ------- the close rig, for rooms the default cannot stand back from
@@ -1763,10 +1768,10 @@ T.check(cd < eyeDistance(rig), "and is nearer than the default")
 
 local cpx, cpy = project(closeRig, shot.player)
 local cex, cey = project(closeRig, shot.enemy)
-T.check(math.abs(cpx - 26) < 1 and math.abs(cpy - 96) < 1,
+T.check(math.abs(cpx - wantPX) < 1 and math.abs(cpy - wantPY) < 1,
   ("the wide lens lands the player's mark on the same anchor: (%.2f, %.2f)")
   :format(cpx, cpy))
-T.check(math.abs(cex - 124) < 1 and math.abs(cey - 56) < 1,
+T.check(math.abs(cex - wantEX) < 1 and math.abs(cey - wantEY) < 1,
   ("and the enemy's too: (%.2f, %.2f)"):format(cex, cey))
 T.check(span(closeRig, shot.player) < span(rig, shot.player),
   "the mons render smaller on it, which is what it trades for fitting")

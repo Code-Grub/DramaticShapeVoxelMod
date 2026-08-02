@@ -1,4 +1,4 @@
--- Dramatic Shape Voxel Mod: a full 3D diorama overworld, shipped as a
+-- DRAMATIC SHAPE VOXEL MOD BATTLE ART: a full 3D diorama overworld, shipped as a
 -- rendering pipeline mod.
 --
 -- The engine's render_pipelines registry (src/mods/Schemas.lua) lets a mod
@@ -342,6 +342,27 @@ local SETTINGS = {
     "Use optional PNGs from assets/battle in fights. Missing art falls "
     .. "back to the ROM. STATIC is the zero-configuration default.",
     when = function() return stagedBattles() end, full = true },
+  { BattleArt.trainerSetting,
+    "Choose the static opponent trainer collection. A class missing from "
+    .. "the selected generation falls back directly to its ROM portrait.",
+    when = function()
+      return stagedBattles() and BattleArt.setting:get() ~= "rom"
+    end, full = true },
+  { BattleArt.playerArtSetting,
+    "Choose the player trainer's static battle-intro portrait. A missing "
+    .. "named choice tries player.png, then ROM. PNG uses player.png "
+    .. "directly. BATTLE ART: ROM pins this row to ROM.",
+    when = function()
+      local mode = BattleArt.setting:get()
+      return stagedBattles() and (mode == "static" or mode == "rom")
+    end, full = true },
+  { BattleArt.playerAnimationSetting,
+    "Choose the five-frame player trainer atlas under ANIMATED. Playback "
+    .. "starts with the leftward intro slide, runs once, and never loops. "
+    .. "Missing art and ROM retain the engine portrait.",
+    when = function()
+      return stagedBattles() and BattleArt.setting:get() == "animated"
+    end, full = true },
   { BattleArt.frontAnimationSetting,
     "Choose the front generation used by BATTLE ART: ANIMATED. STATIC "
     .. "ignores this row. Missing art falls directly back to ROM.",
@@ -349,14 +370,20 @@ local SETTINGS = {
       return stagedBattles() and BattleArt.setting:get() == "animated"
     end, full = true },
   { BattleArt.backAnimationSetting,
-    "Choose the back generation used by BATTLE ART: ANIMATED. STATIC "
-    .. "ignores this row. Missing art falls directly back to ROM.",
+    "Choose the player back-art generation. STATIC reads only a PNG from "
+    .. "back-static/GEN for every choice. ANIMATED reads static GEN 1-4 "
+    .. "PNGs or GEN 5 atlases. Missing art falls back to the ROM.",
     when = function()
-      return stagedBattles() and BattleArt.setting:get() == "animated"
+      return stagedBattles() and BattleArt.setting:get() ~= "rom"
     end, full = true },
   { BattleArt.viewSetting,
-    "Show the player's Pokemon from the front or back. Both choices stay "
-    .. "world-placed, lit, shadowed and depth-occluded.",
+    "Show the player's Pokemon from the front or back. Supplied art stays "
+    .. "world-placed; a missing selected back falls back to the ROM UI pic.",
+    when = function() return stagedBattles() end, full = true },
+  { BattleArt.backPlacementSetting,
+    "Place player back art automatically, force it into the 3D world, or "
+    .. "use gen1recomp's OG UI anchor. AUTO keeps STATIC fallbacks in the "
+    .. "world and ANIMATED/ROM fallbacks on the UI.",
     when = function() return stagedBattles() end, full = true },
   { DayNight.setting,
     "What time it is outdoors: pin the sky to DAY, NIGHT, DUSK or DAWN, "
@@ -571,6 +598,7 @@ mod.hooks:wrap("ui.options.rows", function(next, game, rows)
   -- keypress.
   if stagedBattles() then
     OverworldBattle.forceOG(game)
+    BattleArt.forceRomPlayer(game)
     dropRow(out, "battleLayout")
   end
   local full = Voxel.isFull(Pipelines.level("voxel"))
@@ -613,6 +641,7 @@ mod.events:on("mod.options_changed", function(payload)
   -- the OPTIONS row does. The manager persists its own value; this is the one
   -- that has to follow it.
   if stagedBattles() then OverworldBattle.forceOG() end
+  BattleArt.forceRomPlayer()
   -- and DAYTIME changed from the manager's page while FULL owns it snaps
   -- straight back to SYNC -- the OPTIONS row is hidden, but the manager's is
   -- not, and FULL's pin must hold against both
@@ -709,8 +738,8 @@ end)
 -- and a player who stepped off FULL could not see the rows come back.
 --
 -- Rebuilt in place, and only on a step that changes the LIST: crossing FULL,
--- toggling 3D-BTL, which owns BATTLE LAYOUT, or stepping BATTLE ART into or
--- out of ANIMATED, which owns the FRONT GEN and BACK GEN rows.
+-- toggling 3D-BTL, which owns BATTLE LAYOUT, or changing BATTLE ART, which
+-- owns the TRAINER ART row and, under ANIMATED, the two generation rows.
 -- Every other rung returns the same list, and rebuilding on all of them would
 -- rerun every mod's ui.options.rows hook once per keypress. The cursor is
 -- clamped rather than reset, so it stays on the row it was just used on
@@ -729,15 +758,16 @@ do
     function OptionsMenu:update(dt)
       local before = Pipelines.level("voxel")
       local hadBattles = OverworldBattle.enabled()
-      local hadAnimated = BattleArt.setting:get() == "animated"
+      local hadBattleArt = BattleArt.setting:get()
       local wasOn = idAt(self, self.index)
       inner(self, dt)
+      BattleArt.forceRomPlayer(self.game)
       local after = Pipelines.level("voxel")
       local crossedFull = after ~= before
                           and (Voxel.isFull(before) or Voxel.isFull(after))
-      local hasAnimated = BattleArt.setting:get() == "animated"
+      local hasBattleArt = BattleArt.setting:get()
       if crossedFull or OverworldBattle.enabled() ~= hadBattles
-         or hasAnimated ~= hadAnimated then
+         or hasBattleArt ~= hadBattleArt then
         local rebuilt = OptionsMenu.new(self.game)
         self.rows = rebuilt.rows
         -- Follow the row the cursor was ON rather than the slot it was in:

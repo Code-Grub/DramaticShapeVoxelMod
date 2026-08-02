@@ -10,13 +10,21 @@ local BattleArt = V.require("BattleArt")
 local SETS = {
   gen2 = V.data("animated_battle_sprites_gen2"),
   gen3 = V.data("animated_battle_sprites_gen3"),
+  gen4 = V.data("animated_battle_sprites_gen4"),
   gen5 = V.data("animated_battle_sprites_gen5"),
 }
+local PLAYER_SETS = V.data("animated_player_trainers")
 local AnimatedBattleArt = {}
 
 local loaded, loadOrder = {}, {}
 local LOAD_LIMIT = 6
 local states = setmetatable({}, { __mode = "k" }) -- battler -> playback
+local trainerStates = setmetatable({}, { __mode = "k" }) -- battle -> playback
+
+local function currentImage(state)
+  if not state then return nil end
+  return state.frames and state.frames[state.frame] or state.image
+end
 
 local function forgetFromOrder(def)
   for i = #loadOrder, 1, -1 do
@@ -49,24 +57,38 @@ local function loadFrames(def, mode)
   if not path then return nil end
   local result
   local ok = pcall(function()
-    local width = assert(tonumber(def.width))
-    local height = assert(tonumber(def.height))
-    local columns = assert(tonumber(def.columns))
-    local count = assert(tonumber(def.frames))
-    if width < 1 or height < 1 or columns < 1 or count < 1 then return end
-
     local sheet = love.image.newImageData(path)
     local sheetW, sheetH = sheet:getDimensions()
-    local rows = math.ceil(count / columns)
-    if sheetW < columns * width or sheetH < rows * height then return end
-
     local frames = {}
+    local cells = def.cells
+    local autoColumns = tonumber(def.autoColumns)
+    local count = cells and #cells or autoColumns or assert(tonumber(def.frames))
+    if count < 1 then return end
+    local autoWidth
+    if autoColumns then
+      if autoColumns % 1 ~= 0 or sheetW % autoColumns ~= 0 then return end
+      autoWidth = sheetW / autoColumns
+    end
     for index = 0, count - 1 do
+      local x, y, width, height
+      if cells then
+        local c = cells[index + 1]
+        x, y = tonumber(c.x) or 0, tonumber(c.y) or 0
+        width, height = assert(tonumber(c.width)), assert(tonumber(c.height))
+      elseif autoColumns then
+        x, y = index * autoWidth, 0
+        width, height = autoWidth, sheetH
+      else
+        width = assert(tonumber(def.width))
+        height = assert(tonumber(def.height))
+        local columns = assert(tonumber(def.columns))
+        x = (index % columns) * width
+        y = math.floor(index / columns) * height
+      end
+      if width < 1 or height < 1 or x < 0 or y < 0
+         or x + width > sheetW or y + height > sheetH then return end
       local cell = love.image.newImageData(width, height)
-      cell:paste(sheet, 0, 0,
-        (index % columns) * width,
-        math.floor(index / columns) * height,
-        width, height)
+      cell:paste(sheet, 0, 0, x, y, width, height)
       local image = BattleArt.prepareData(cell, mode)
       if not image then return end
       frames[#frames + 1] = image
@@ -78,10 +100,66 @@ local function loadFrames(def, mode)
   return result
 end
 
+local function restoreTrainer(battle)
+  local state = battle and trainerStates[battle]
+  if not state then return end
+  if battle.playerBackPic == state.frames[state.frame] then
+    battle.playerBackPic = state.original
+  end
+  trainerStates[battle] = nil
+end
+
+-- Five authored poses are tied to SlideTrainerPicOffScreen rather than to a
+-- free-running clock. Frame one waits with the stationary intro portrait;
+-- frames two through five divide the 72-pixel leftward walk, then clamp.
+local function updatePlayerTrainer(battle, mode)
+  if not (battle and battle.showPlayerBack and not battle.demo) then
+    restoreTrainer(battle)
+    return
+  end
+  local selected = BattleArt.playerAnimationSetting:get()
+  local def = selected ~= "rom" and PLAYER_SETS[selected] or nil
+  if not def or not battle.playerBackPic then
+    restoreTrainer(battle)
+    return
+  end
+  local state = trainerStates[battle]
+  if state and (state.def ~= def or state.mode ~= mode) then
+    restoreTrainer(battle)
+    state = nil
+  end
+  if not state then
+    local frames = loadFrames(def, mode)
+    if not frames then return end
+    state = { def = def, mode = mode, original = battle.playerBackPic,
+              frames = frames, frame = 1 }
+    trainerStates[battle] = state
+  elseif battle.playerBackPic ~= state.frames[state.frame]
+     and battle.playerBackPic ~= state.original then
+    trainerStates[battle] = nil
+    return
+  end
+
+  local offset = 0
+  if type(battle.picOffset) == "function" then
+    local ok, got = pcall(battle.picOffset, battle, "back")
+    if ok then offset = tonumber(got) or 0 end
+  end
+  local progress = math.max(0, math.min(72, -offset))
+  if progress <= 0 then
+    state.frame = 1
+  else
+    local movingFrames = math.max(1, #state.frames - 1)
+    state.frame = math.min(#state.frames,
+      2 + math.floor(math.max(0, progress - 1) * movingFrames / 72))
+  end
+  battle.playerBackPic = state.frames[state.frame]
+end
+
 local function restore(battler)
   local state = battler and states[battler]
   if not state then return end
-  if battler.sprite == state.frames[state.frame] then
+  if battler.sprite == currentImage(state) then
     battler.sprite = state.original
   end
   states[battler] = nil
@@ -103,14 +181,16 @@ local function updateBattler(battler, side, dt, mode)
   if not (def and battler.sprite) then restore(battler); return end
 
   local state = states[battler]
-  if state and (state.def ~= def or state.mode ~= mode) then
+  if state and (state.kind ~= "animated" or state.def ~= def
+                or state.mode ~= mode or state.side ~= side) then
     restore(battler)
     state = nil
   end
   if not state then
     local frames = loadFrames(def, mode)
     if not frames then return end -- missing/malformed atlas: retain ROM art
-    state = { def = def, mode = mode, original = battler.sprite,
+    state = { kind = "animated", side = side, def = def, mode = mode,
+              original = battler.sprite,
               frames = frames, frame = 1, elapsed = 0 }
     states[battler] = state
   elseif battler.sprite ~= state.frames[state.frame]
@@ -131,6 +211,29 @@ local function updateBattler(battler, side, dt, mode)
   battler.sprite = state.frames[state.frame]
 end
 
+local function updateStaticBack(battler, generation, mode)
+  if not (battler and battler.sprite) then return end
+  local species = battler.mon and battler.mon.species
+  local image = species and BattleArt.generationBackImage(species, generation)
+  local state = states[battler]
+  if state and (state.kind ~= "static" or state.generation ~= generation
+                or state.mode ~= mode or state.image ~= image) then
+    restore(battler)
+    state = nil
+  end
+  if not image then restore(battler); return end
+  if not state then
+    state = { kind = "static", side = "back", generation = generation,
+              mode = mode, original = battler.sprite, image = image }
+    states[battler] = state
+  elseif battler.sprite ~= state.image and battler.sprite ~= state.original then
+    -- A transform or battle effect owns the sprite for this frame.
+    states[battler] = nil
+    return
+  end
+  battler.sprite = state.image
+end
+
 function AnimatedBattleArt.update(battle, dt)
   if not battle then return end
   if BattleArt.setting:get() ~= "animated" then
@@ -138,18 +241,52 @@ function AnimatedBattleArt.update(battle, dt)
     return
   end
   local mode = BattleArt.displayMode()
+  -- Restore a static PLAYER ART replacement before the animation manager
+  -- captures the engine portrait, then leave managed animation frames alone.
+  BattleArt.applyTrainers(battle)
+  updatePlayerTrainer(battle, mode)
   updateBattler(battle.enemy, "front", dt, mode)
-  updateBattler(battle.player, BattleArt.playerSide(), dt, mode)
+  local playerSide = BattleArt.playerSide()
+  if playerSide == "back" then
+    local generation = BattleArt.backAnimationSetting:get()
+    if generation == "gen5" then
+      updateBattler(battle.player, "back", dt, mode)
+    else
+      updateStaticBack(battle.player, generation, mode)
+    end
+  else
+    updateBattler(battle.player, "front", dt, mode)
+  end
+end
+
+-- The staged renderer asks this before deciding whether to suppress the
+-- engine's original player pics layer. A managed back image belongs in the
+-- world; no managed image means the selected file/atlas was absent or bad,
+-- so the untouched ROM backsprite remains attached to the UI.
+function AnimatedBattleArt.hasWorldBack(battler)
+  local state = battler and states[battler]
+  return state and state.side == "back"
+         and battler.sprite == currentImage(state) or false
+end
+
+-- UI scaling needs to distinguish our native-resolution trainer atlas from
+-- the ROM's deliberately half-resolution back picture. Both occupy the same
+-- engine field, but only the ROM image should receive the Game Boy 2x scale.
+function AnimatedBattleArt.hasPlayerTrainerFrame(battle)
+  local state = battle and trainerStates[battle]
+  return state and battle.playerBackPic == currentImage(state) or false
 end
 
 function AnimatedBattleArt.finish(battle)
   if not battle then return end
+  restoreTrainer(battle)
   restore(battle.enemy)
   restore(battle.player)
 end
 
 function AnimatedBattleArt.invalidate()
   loaded, loadOrder = {}, {}
+  trainerStates = setmetatable({}, { __mode = "k" })
 end
 
 return AnimatedBattleArt

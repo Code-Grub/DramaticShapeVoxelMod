@@ -66,6 +66,11 @@ local V = ...
 
 local BattleCam = {}
 
+-- Leave enough headroom for full-height trainer cards. This opens the solved
+-- battle lens by 70% without resampling any sprite: Pokemon and trainers stay
+-- at their authored world size while more of the arena enters the frame.
+BattleCam.ZOOM_OUT = 1.70
+
 -- ------- the rig, in world pixels (a map cell is 16, a block 32)
 --
 -- Solved against the four anchors and two spans above, with the two mons 48
@@ -181,7 +186,7 @@ function BattleCam.rig(arena, groundY)
   return {
     eye = eye,
     focus = focus,
-    fov = 2 * math.atan((R.frameH / 2) / dist),
+    fov = 2 * math.atan((R.frameH * BattleCam.ZOOM_OUT / 2) / dist),
     -- the world curve is a free-roam flourish that bends the horizon away
     -- from the player; a fixed camera on a staged shot has no player to bend
     -- around, and the bend would tip the arena floor out from under the mons

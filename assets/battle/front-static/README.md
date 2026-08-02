@@ -6,6 +6,9 @@ opaque image has its corner-coloured, border-connected background keyed out.
 
 These local PNGs are ignored by Git. Missing or invalid files fall back to the
 ROM sprite. Enemy sprites are used as authored (facing left).
+Static species fronts preserve their authored brightness and colour in staged
+battles: day/night tint is omitted for these PNGs, while display filters,
+hit effects, depth occlusion, lighting and alpha-shaped shadows still apply.
 
 ## Gen 1 filename exceptions
 
@@ -23,11 +26,11 @@ Filenames are lowercase. The same names apply in every battle-art folder.
 
 ## Static opponent trainer fronts
 
-Trainer pictures are never animated. Put opponent trainer PNGs in this folder
-even when `BATTLE ART` is set to `ANIMATED`. The filename is the engine trainer
-class in lowercase with underscores changed to hyphens:
+Opponent trainer pictures are never animated. Put complete opponent sets in
+`gen1`, `gen2`, and `gen3`; the `TRAINER ART` option selects one of those
+folders even when `BATTLE ART` is set to `ANIMATED`. The filename is the
+engine trainer class in lowercase with underscores changed to hyphens:
 
-```text
 youngster.png       bug-catcher.png     lass.png
 sailor.png          jr-trainer-m.png    jr-trainer-f.png
 pokemaniac.png      super-nerd.png      hiker.png
@@ -44,7 +47,7 @@ erika.png           koga.png            blaine.png
 sabrina.png         gentleman.png       rival2.png
 rival3.png          lorelei.png         channeler.png
 agatha.png          lance.png
-```
 
 Yellow's special Rocket pair uses `jessie-james.png`; other Rocket trainers
-use `rocket.png`. Missing trainer files retain the ROM trainer picture.
+use `rocket.png`. A missing file in the selected generation retains the ROM
+trainer picture. The runtime does not borrow it from either of the other sets.

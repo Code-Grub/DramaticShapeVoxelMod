@@ -6,6 +6,7 @@ contains only the atlas geometry and frame timing needed by the runtime.
 Default sources:
   gen2  https://bluemoonfalls.com/images/sprites/crystal/normal/
   gen3  https://pkmn.net/sprites/emerald/
+  gen4  https://archives.bulbagarden.net/wiki/Category:Diamond_and_Pearl_sprites
   gen5  https://img.pokemondb.net/sprites/black-white/anim/
 """
 
@@ -16,6 +17,8 @@ import math
 import re
 import time
 import urllib.request
+import urllib.error
+import urllib.parse
 from io import BytesIO
 from pathlib import Path
 
@@ -33,6 +36,12 @@ COLLECTIONS = {
         "base": "https://pkmn.net/sprites/emerald",
         "title": "Pokemon Emerald animated fronts, National Dex #001-#151.",
         "numbered": True,
+        "sides": (("front", None),),
+    },
+    "gen4": {
+        "base": "https://archives.bulbagarden.net/wiki/Special:Redirect/file",
+        "title": "Pokemon Diamond/Pearl animated fronts, National Dex #001-#151.",
+        "numbered": "bulbagarden-gen4",
         "sides": (("front", None),),
     },
     "gen5": {
@@ -70,6 +79,32 @@ def download(url: str, retries: int = 4) -> bytes:
                 raise
             time.sleep(1.5 * (attempt + 1))
     raise AssertionError("unreachable")
+
+
+def download_gen4(base: str, number: int) -> bytes:
+    """Fetch the ordinary Gen 4 front APNG, preferring the male variant.
+
+    Diamond/Pearl stores sexually dimorphic species as `NNN m` and `NNN f`
+    while species without a visual variant use bare `NNN`. The engine has one
+    default front per species, so male is the predictable default; bare and
+    female are fallbacks for archive records that provide no male title.
+    """
+    errors = []
+    # Most species use the bare title. Archive redirects for a dimorphic
+    # species may already resolve that to its default; otherwise prefer male,
+    # then female, without making 151 guaranteed-failing male probes first.
+    for suffix in ("", " m", " f"):
+        filename = f"Spr 4d {number:03d}{suffix}.png"
+        url = f"{base}/{urllib.parse.quote(filename)}"
+        try:
+            raw = download(url, retries=1)
+            # A missing Special:Redirect title can return an HTML error page.
+            if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+                raise ValueError("response is not a PNG")
+            return raw
+        except (urllib.error.URLError, ValueError) as exc:
+            errors.append(f"{filename}: {exc}")
+    raise RuntimeError("; ".join(errors))
 
 
 def convert(raw: bytes, destination: Path, columns: int = 16,
@@ -130,11 +165,15 @@ def main() -> None:
     for number, (engine_name, slug) in enumerate(species(root), 1):
         sides = {}
         for side, remote in config["sides"]:
-            url = (f"{base}/{number}.gif" if config["numbered"]
-                   else f"{base}/{remote}/{slug}.gif")
+            if config["numbered"] == "bulbagarden-gen4":
+                raw = download_gen4(base, number)
+            else:
+                url = (f"{base}/{number}.gif" if config["numbered"]
+                       else f"{base}/{remote}/{slug}.gif")
+                raw = download(url)
             relative = f"assets/battle/{side}-animated/{args.set}/{slug}.png"
             print(f"[{number:03d}/151] {side:5s} {slug}", flush=True)
-            sides[side] = (relative, convert(download(url), root / relative))
+            sides[side] = (relative, convert(raw, root / relative))
         records.append((engine_name, sides))
 
     lines = [

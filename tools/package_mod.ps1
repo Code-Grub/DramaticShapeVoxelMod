@@ -29,18 +29,32 @@ $contracts = @(Get-ChildItem -LiteralPath (Join-Path $repo 'assets\battle') `
 # include them. This bridges a clean public branch and private BYO artwork.
 $localArt = @(Get-ChildItem -LiteralPath (Join-Path $repo 'assets\battle') `
   -Recurse -File -Filter '*.png' -ErrorAction SilentlyContinue | ForEach-Object {
-    Relative-Path $_.FullName
+    $relative = Relative-Path $_.FullName
+    # Authoring drafts may live beside a collection in a folder literally
+    # named "backup". They are never runtime candidates and must not inflate
+    # or leak into the private test package.
+    if ($relative -notmatch '(?i)(^|/)backup(/|$)') { $relative }
   })
 $files = @($source + $contracts + $localArt | Sort-Object -Unique)
 if (-not $files.Count) { throw "no package files found" }
 
 if (Test-Path -LiteralPath $Output) { Remove-Item -LiteralPath $Output -Force }
+$fileList = [System.IO.Path]::GetTempFileName()
+[System.IO.File]::WriteAllLines(
+  $fileList,
+  [string[]]$files,
+  [System.Text.UTF8Encoding]::new($false)
+)
 Push-Location $repo
 try {
-  & tar -a -cf $Output @files
+  # Passing hundreds of asset paths as individual arguments exceeds the
+  # Windows command-line limit. tar's list-file option keeps the invocation
+  # short while preserving repository-relative paths inside the archive.
+  & tar -a -cf $Output -T $fileList
   if ($LASTEXITCODE -ne 0) { throw "tar failed: $LASTEXITCODE" }
 } finally {
   Pop-Location
+  Remove-Item -LiteralPath $fileList -Force -ErrorAction SilentlyContinue
 }
 
 $entries = @(tar -tf $Output)

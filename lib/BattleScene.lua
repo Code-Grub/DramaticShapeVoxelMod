@@ -185,6 +185,12 @@ local function monMatrix(tex, x, groundY, z, mirror)
   local yaw = BattleBillboard.yawToward(x, z, Voxel3D.eye)
   local card = Mat4.mul(Mat4.translate(ox, oy, 0), Mat4.scale(w, h, 1))
   if mirror then card = Mat4.mul(Mat4.scale(-1, 1, 1), card) end
+  local presentationScale = tonumber(tex.presentationScale) or 1
+  if presentationScale ~= 1 then
+    -- Scale about the reported foot anchor. This is deliberately metadata on
+    -- trainer cards, not a texture resize and not a Pokemon-wide multiplier.
+    card = Mat4.mul(Mat4.scale(presentationScale, presentationScale, 1), card)
+  end
   return Mat4.mul(Mat4.mul(Mat4.translate(x, groundY, z), Mat4.rotateY(yaw)),
                   card)
 end
@@ -200,6 +206,7 @@ local function monCards(arena, groundY, textures)
       local mirror = (side == "player") and not tex.trainer
                      and not tex.noMirror
       out[#out + 1] = { tex = tex.canvas,
+                        noDayTint = tex.noDayTint,
                         model = monMatrix(tex, cell[1], groundY, cell[2],
                                           mirror) }
     end
@@ -417,10 +424,15 @@ function BattleScene.render(state, arena, textures, token)
     -- tileset atlas, so the mask's coordinates mean nothing on them
     Voxel3D.glass(false)
     for _, card in ipairs(monCards(arena, groundY, textures)) do
+      -- Static front illustrations retain their authored brightness instead
+      -- of being dimmed or colour-cast by the clock. Only the hour tint is
+      -- neutral here; depth and alpha-shaped lighting/shadows stay active.
+      if card.noDayTint then Voxel3D.dayTint({ 1, 1, 1 }) end
       -- the sun stored this card snugged (castShadows), so its own shadow
       -- lookup must read the same snugged transform -- see ShadowMap.snug
       Voxel3D.draw(BattleBillboard.mesh(), card.tex, card.model,
                    BattleBillboard.PULL, ShadowMap.snug(card.model))
+      if card.noDayTint then Voxel3D.dayTint() end
     end
     Voxel3D.glass(true)
     Voxel3D.seams(true)

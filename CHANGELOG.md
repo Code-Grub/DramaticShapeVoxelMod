@@ -5,27 +5,61 @@
 ### Added
 
 - **Zero-configuration bring-your-own battle PNGs.** `BATTLE ART: STATIC`
-  looks in `front-static` and `back-static`, uses native image dimensions,
+  looks in `front-static` and the selected `back-static/gen1` through `gen5`,
+  uses native image dimensions,
   preserves alpha or keys a border-connected corner matte, and falls back per
   species to ROM art. No Pokémon art is distributed or tracked.
-- **World-placed player front/back choice.** `PLAYER VIEW` replaces the old
-  UI-pinned back-sprite toggle. Both views use the depth buffer, world and
-  day/night tint, display filtering, hit flash and alpha-shaped shadow.
+- **World-placed player front/back choice.** `PLAYER: FRONT SPRITES` and
+  `PLAYER: BACK SPRITES` replace the old global UI-pinned back-sprite toggle.
+  Supplied views use the depth buffer, world and day/night tint, display
+  filtering, hit flash and alpha-shaped shadow; a missing selected generated
+  back deliberately retains the ROM sprite in the UI layer.
 - **Private test packaging.** The four battle-art folders ignore local art in
   Git while `tools/package_mod.ps1` deliberately includes those PNGs in a ZIP.
-- **Static trainer cards.** Opponent trainer classes resolve from
-  `front-static`; the player, Professor Oak, and Old Man backs resolve from
-  `back-static`. Trainer art never uses either animated folder.
+- **Selectable static opponent trainer cards.** `TRAINER ART: GEN 1 / GEN 2 / GEN 3`
+  resolves opponent classes from matching `front-static` subfolders, with a
+  direct per-class ROM fallback and no cross-generation mixing. The player,
+  Professor Oak, and Old Man backs still resolve from `back-static`.
+- **Selectable player trainer portrait.** `PLAYER ART` defaults to generic
+  PNG, and also chooses GEN 1–5, ASH, GARY, or ROM for the normal player
+  battle intro. Missing named art tries `player.png` before ROM. It is
+  independent of species `BATTLE ART`; Oak and Old Man retain their scripted
+  filenames.
+- **One-shot animated player intros.** `PLAYER ANIM` selects GEN 1–5, ASH,
+  GARY, or ROM five-pose player strips in ANIMATED mode. Frame one holds until
+  the engine begins its leftward intro slide; the remaining poses advance
+  with that slide once and never loop. AUTO uses OG UI, explicit back
+  placement still overrides it, and a missing or malformed strip retains the
+  ROM portrait. Five equal cells are decoded at native resolution, supporting
+  both existing 320-pixel and normalized 400-pixel strips. Custom frames stay
+  1x on OG UI; only the ROM's half-resolution player back keeps its normal 2x.
 - **Native-resolution animated atlas playback.** `BATTLE ART: ANIMATED`
   extracts timed PNG-atlas cells through `ImageData`, avoiding canvas DPI
   scaling, and sends every frame through the same transparency, display
   filtering, world lighting, depth and shadow path as static art. Missing or
   malformed atlases fall back per Pokemon to ROM art.
-- **Independent animated front/back sets.** `FRONT GEN` and `BACK GEN` each
-  select GEN 2, GEN 3, or GEN 5 from matching generation subfolders, and are
-  shown in-game only under ANIMATED; STATIC and ROM ignore them. Missing art
-  falls directly back to ROM instead of mixing visual styles. One importer builds all three
-  formats; only generated dimensions/timings are committed, never art.
+- **Independent front/back sets.** `ANIM FRONT GEN` selects animated GEN 2,
+  GEN 3, GEN 4, or GEN 5 fronts. `BACK ART SET` selects the static GEN 1–5 folder in
+  STATIC mode; ANIMATED uses static GEN 1–4 PNGs or animated GEN 5 atlases.
+  The mode always decides whether atlas decoding is allowed. Supplied backs
+  are world geometry; missing or malformed art falls back to ROM.
+- **Independent back placement.** `BACK PLACEMENT: AUTO / WORLD / OG UI`
+  separates an art set from its presentation. AUTO keeps STATIC fallbacks in
+  the world, supplied ANIMATED backs in the world, and ROM/ANIMATED fallbacks
+  on gen1recomp's OG UI anchor; the other choices force either layer.
+- **Transparent-HUD contrast.** White battle HUD ink now receives a crisp
+  one-logical-pixel dark shadow, improving readability without restoring the
+  translucent backplates. Ink remains white through trainer intros, send-out,
+  active battle, and post-battle frames instead of switching through gray.
+  The obsolete zero-alpha frost composite is skipped entirely, preventing a
+  driver-dependent dim veil over the arena.
+- **Untinted static front illustrations.** Supplied species PNGs from
+  `front-static` retain their authored brightness and colour instead of being
+  multiplied by the day/night tint. They remain world geometry with display
+  filtering, hit effects, depth occlusion, and alpha-shaped shadows.
+- **Strict ROM player fallback.** `BATTLE ART: ROM` now restores the engine's
+  player portrait even when a named `PLAYER ART` choice was previously saved.
+  The PLAYER ART row remains visible in ROM mode and is pinned to ROM.
 - **Crystal and Emerald front collections.** The local imports cover #001-#151
   while preserving every source frame's native canvas and delay. Gen 5 keeps
   its existing animated fronts and backs in the same folder convention.

@@ -7,14 +7,47 @@ local BattleArt = {}
 
 BattleArt.setting = ModSetting.new("battleArt", "BATTLE ART",
   { "static", "animated", "rom" }, { "STATIC", "ANIMATED", "ROM" })
-BattleArt.frontAnimationSetting = ModSetting.new("frontAnimatedSet", "FRONT GEN",
-  { "gen2", "gen3", "gen5" }, { "GEN 2", "GEN 3", "GEN 5" })
--- Gen 5 is currently the supplied animated-back collection, so it is the
--- sensible fallback for a save with no explicit back-generation choice.
-BattleArt.backAnimationSetting = ModSetting.new("backAnimatedSet", "BACK GEN",
-  { "gen2", "gen3", "gen5" }, { "GEN 2", "GEN 3", "GEN 5" }, 3)
-BattleArt.viewSetting = ModSetting.new("playerView", "PLAYER VIEW",
-  { "front", "back" }, { "FRONT", "BACK" })
+BattleArt.frontAnimationSetting = ModSetting.new("frontAnimatedSet", "ANIM FRONT GEN",
+  { "gen2", "gen3", "gen4", "gen5" },
+  { "GEN 2", "GEN 3", "GEN 4", "GEN 5" })
+-- The selected generation names the static back folder in STATIC mode. In
+-- ANIMATED mode Gen 1-4 still use those single images, while Gen 5 selects
+-- the animated atlas collection. The mode, not the generation, decides the
+-- decoder.
+BattleArt.backAnimationSetting = ModSetting.new("backAnimatedSet", "BACK ART SET",
+  { "gen1", "gen2", "gen3", "gen4", "gen5" },
+  { "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5" }, 5)
+BattleArt.viewSetting = ModSetting.new("playerView", "PLAYER",
+  { "front", "back" }, { "FRONT SPRITES", "BACK SPRITES" })
+BattleArt.backPlacementSetting = ModSetting.new(
+  "backPlacement", "BACK PLACEMENT",
+  { "auto", "world", "ui" }, { "AUTO", "WORLD", "OG UI" })
+BattleArt.trainerSetting = ModSetting.new(
+  "trainerArtSet", "TRAINER ART",
+  { "gen1", "gen2", "gen3" }, { "GEN 1", "GEN 2", "GEN 3" })
+BattleArt.playerArtSetting = ModSetting.new(
+  "playerArtSet", "PLAYER ART",
+  { "png", "gen1", "gen2", "gen3", "gen4", "gen5", "ash", "gary", "rom" },
+  { "PNG", "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5", "ASH", "GARY", "ROM" })
+BattleArt.playerAnimationSetting = ModSetting.new(
+  "playerAnimatedSet", "PLAYER ANIM",
+  { "gen1", "gen2", "gen3", "gen4", "gen5", "ash", "gary", "rom" },
+  { "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5", "ASH", "GARY", "ROM" })
+
+-- BATTLE ART: ROM owns the normal player portrait as completely as it owns
+-- species art. Keep the visible PLAYER ART row honest instead of leaving a
+-- stale named PNG selected while the renderer silently ignores it.
+function BattleArt.forceRomPlayer(game)
+  if BattleArt.setting:get() ~= "rom"
+     or BattleArt.playerArtSetting:get() == "rom" then return false end
+  for i, value in ipairs(BattleArt.playerArtSetting.values) do
+    if value == "rom" then
+      BattleArt.playerArtSetting:setIndex(i, game)
+      return true
+    end
+  end
+  return false
+end
 
 local cache = {}
 local external = setmetatable({}, { __mode = "k" })
@@ -42,8 +75,16 @@ local function pathFor(species, side)
   -- Keep the folder and setting stable while that decoder is added; an
   -- unrecognised atlas must never appear as one giant sprite sheet.
   if mode == "animated" then return nil end
-  local rel = ("assets/battle/%s-%s/%s.png"):format(
-    side, "static", slug(species))
+  local rel
+  if side == "back" then
+    -- STATIC never consults an atlas. In particular, GEN 5 means the ordinary
+    -- PNG at back-static/gen5 here; only AnimatedBattleArt may resolve the
+    -- similarly named animated generation.
+    rel = ("assets/battle/back-static/%s/%s.png"):format(
+      BattleArt.backAnimationSetting:get(), slug(species))
+  else
+    rel = ("assets/battle/front-static/%s.png"):format(slug(species))
+  end
   local path = V.mod.assets:path(rel)
   local fs = love and love.filesystem
   if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
@@ -188,12 +229,69 @@ end
 
 function BattleArt.image(species, side)
   local path = pathFor(species, side)
-  return path and prepare(path, displayMode()) or nil
+  local image = path and prepare(path, displayMode()) or nil
+  -- Authored static species fronts preserve their illustration brightness in
+  -- the battle scene. BattleScene reads this tag to omit only the clock tint;
+  -- ordinary world lighting, shadows, depth and display filtering remain.
+  if image and side == "front" and metrics[image] then
+    metrics[image].staticFront = true
+  end
+  return image
+end
+
+-- Back-generation choices Gen 1-5 are ordinary, independently replaceable
+-- PNGs. They use the same transparency keying, palette filtering and native
+-- pixel metrics as BATTLE ART: STATIC, but live in generation subfolders so
+-- switching the selector does not require renaming or replacing files.
+function BattleArt.generationBackImage(species, generation)
+  if not tostring(generation or ""):match("^gen[1-5]$") then return nil end
+  local rel = ("assets/battle/back-static/%s/%s.png"):format(
+    generation, slug(species))
+  local path = V.mod.assets:path(rel)
+  local fs = love and love.filesystem
+  if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
+  return prepare(path, displayMode())
 end
 
 function BattleArt.namedImage(name, side)
   local path = staticPathFor(name, side)
   return path and prepare(path, displayMode()) or nil
+end
+
+-- Opponent trainer pictures are always static, but can be switched as a
+-- complete generation set without renaming files. Deliberately do not fall
+-- through to another generation (or to the old flat folder): a missing class
+-- is useful and predictable as a per-trainer ROM fallback.
+function BattleArt.trainerImage(name)
+  if BattleArt.setting:get() == "rom" then return nil end
+  local generation = BattleArt.trainerSetting:get()
+  local rel = ("assets/battle/front-static/%s/%s.png"):format(
+    generation, name)
+  local path = V.mod.assets:path(rel)
+  local fs = love and love.filesystem
+  if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
+  return prepare(path, displayMode())
+end
+
+-- The normal player trainer intro has its own collection, independent of
+-- Pokemon BATTLE ART. This is why ROM is an explicit choice here: users can
+-- keep custom species and opponent trainers while retaining the original
+-- player portrait. Oak and Old Man remain separately named scripted roles.
+function BattleArt.playerTrainerImage()
+  local set = BattleArt.playerArtSetting:get()
+  if set == "rom" then return nil end
+  local fs = love and love.filesystem
+  local function load(name)
+    local rel = "assets/battle/back-static/" .. name
+    local path = V.mod.assets:path(rel)
+    if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
+    return prepare(path, displayMode())
+  end
+  if set == "png" then return load("player.png") end
+  -- A named collection may be incomplete without making every battle fall
+  -- all the way back to ROM. player.png is the collection-independent BYO
+  -- fallback; only its own absence reaches the engine portrait.
+  return load(set .. "player.png") or load("player.png")
 end
 
 local function trainerKey(battle)
@@ -224,19 +322,30 @@ function BattleArt.applyTrainers(battle)
   if not battle then return end
   local enemy = battle.showEnemyTrainer and trainerKey(battle) or nil
   replaceTrainerField(battle, "trainerPic",
-    enemy and BattleArt.namedImage(enemy, "front") or nil)
+    enemy and BattleArt.trainerImage(enemy) or nil)
 
-  local player
+  local player, playerImage
   if battle.showPlayerBack then
-    if battle.demo then
+    local artMode = BattleArt.setting:get()
+    if artMode == "rom" then
+      -- A stale PLAYER ART selection must never leak a custom trainer back
+      -- into ROM mode. nil restores the engine-owned portrait.
+      playerImage = nil
+    elseif battle.demo then
       player = tostring(battle.demoName or ""):find("OAK", 1, true)
                and "oak" or "old-man"
+      playerImage = BattleArt.namedImage(player, "back")
+    elseif artMode == "animated" then
+      -- AnimatedBattleArt owns this field in animated mode. Passing nil here
+      -- first restores any static PLAYER ART image from a live mode switch;
+      -- on subsequent frames it leaves the animation manager's image alone.
+      playerImage = nil
     else
-      player = "player"
+      playerImage = BattleArt.playerTrainerImage()
     end
   end
   replaceTrainerField(battle, "playerBackPic",
-    player and BattleArt.namedImage(player, "back") or nil)
+    playerImage)
 end
 
 function BattleArt.apply(battle)
@@ -245,7 +354,8 @@ function BattleArt.apply(battle)
     local species = battler and battler.mon and battler.mon.species
     if not species then return end
     -- AnimatedBattleArt owns Pokemon sprites in this mode. Trainers still
-    -- pass through applyTrainers below because trainer art is always static.
+    -- pass through applyTrainers below for opponent and scripted trainer art;
+    -- AnimatedBattleArt separately owns the normal player's animated intro.
     if BattleArt.setting:get() == "animated" then
       if original[battler] then
         battler.sprite, original[battler] = original[battler], nil
@@ -269,6 +379,10 @@ end
 
 function BattleArt.isExternal(img) return external[img] and true or false end
 function BattleArt.metrics(img) return metrics[img] end
+function BattleArt.isStaticFront(img)
+  local m = img and metrics[img]
+  return m and m.staticFront == true or false
+end
 
 function BattleArt.invalidate()
   cache = {}

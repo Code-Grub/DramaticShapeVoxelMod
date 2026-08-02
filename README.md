@@ -1,4 +1,4 @@
-# Dramatic Shape Voxel Mod
+# DRAMATIC SHAPE VOXEL MOD BATTLE ART
 
 A mod for the [Pokémon Gen 1 Recompilation
 Project](https://github.com/bryanthaboi/pokemon-gen1-recomp-project).
@@ -35,9 +35,14 @@ menu.
 | `7`, or the **V-CURVE** options row | OFF → 1 → 2 → 3 — bend the world over the horizon |
 | `8`, or the **3D-BTL** options row | ON / OFF — fight on the map instead of on a white field |
 | the **BATTLE ART** options row | STATIC / ANIMATED / ROM — use optional battle-only art, with a direct ROM fallback when a file or atlas is absent |
-| the **FRONT GEN** options row | GEN 2 / GEN 3 / GEN 5 — choose the animated front collection |
-| the **BACK GEN** options row | GEN 2 / GEN 3 / GEN 5 — independently choose the animated back collection |
-| the **PLAYER VIEW** options row | FRONT / BACK — choose the player's view while keeping it world-placed, lit, shadowed and depth-occluded |
+| the **TRAINER ART** options row | GEN 1 / GEN 2 / GEN 3 — choose a static opponent-trainer collection |
+| the **PLAYER ART** options row | PNG / GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 / ASH / GARY / ROM — choose the static player trainer battle-intro portrait; BATTLE ART: ROM pins it to ROM |
+| the **PLAYER ANIM** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 / ASH / GARY / ROM — choose a five-pose player intro while ANIMATED is selected |
+| the **ANIM FRONT GEN** options row | GEN 2 / GEN 3 / GEN 4 / GEN 5 — choose the animated front collection |
+| the **BACK ART SET** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 — STATIC always uses generation PNGs; ANIMATED uses Gen 1–4 PNGs or Gen 5 atlases |
+| the **PLAYER** options row | FRONT SPRITES / BACK SPRITES — supplied art is world-placed; a missing selected back uses the ROM's UI-attached pic |
+| the **BACK PLACEMENT** options row | AUTO / WORLD / OG UI — use the mode-aware default or force every player back onto one layer |
+| battle HUD ink | HUD and dialogue glyphs stay white through every battle phase and receive a one-pixel dark shadow over transparent panels |
 | the **DAYTIME** options row | SYNC / DAY / NIGHT / DUSK / DAWN / CYCLE — what time it is outdoors, on the diorama *and* on the flat 2D world; held at SYNC (and off the menu) while VOXEL is FULL |
 
 **3D-BTL** is on by default and is independent of **VOXEL**: battles draw
@@ -45,8 +50,9 @@ on the world whether or not the free-roam camera is pitched over.
 
 ## Bring your own battle art
 
-`BATTLE ART: STATIC` is the default. Drop a PNG named for the species into
-`assets/battle/front-static` or `assets/battle/back-static`; for example,
+`BATTLE ART: STATIC` is the default. Drop a front PNG named for the species
+into `assets/battle/front-static`, or a back PNG into the selected
+`assets/battle/back-static/gen1` through `gen5` folder; for example,
 `caterpie.png`, `farfetchd.png`, or `mr-mime.png`. No Lua sidecar or fixed
 resolution is required, and the image is not resized. Existing alpha is
 preserved. For a fully opaque PNG, the corner-coloured background connected
@@ -55,26 +61,57 @@ left intact.
 
 Enemy front art is used as authored, facing left. Player front art is mirrored
 to face right; authored player back art already faces right and is not
-mirrored. Every imported sprite remains a card in the 3D world, so the normal
-world tint, day/night lighting, hit flash, depth occlusion and alpha-shaped
-shadow apply. OG, inverted and CLASSIC display filters also apply to imported
-art. Missing or unreadable files fall straight back to the ROM art.
+mirrored. Every imported sprite remains a card in the 3D world, so hit flash,
+depth occlusion and alpha-shaped shadows apply. Static species front
+illustrations preserve their authored brightness instead of receiving the
+day/night colour tint; other art continues to follow the hour. OG, inverted
+and CLASSIC display filters still apply to imported art. Missing or unreadable
+files fall straight back to the ROM art.
 
 The four battle-art directories are intentionally ignored by Git except for
 their README contracts. `tools/package_mod.ps1` nevertheless includes local
 PNGs from them in a test ZIP, so artwork can stay private and uncommitted.
-`BATTLE ART: ANIMATED` reads independent `FRONT GEN` and `BACK GEN` choices
-from the matching generation folders. These selectors are ignored by STATIC
-and ROM modes and only appear on the in-game menu while ANIMATED is selected.
-The authoring importer generates the PNG atlases and one
-metadata table per set; the runtime extracts native-resolution cells without
-a DPI-scaled canvas and falls back per missing or malformed atlas directly to
-ROM art.
+`BATTLE ART: ANIMATED` reads independent `ANIM FRONT GEN` and `BACK ART SET`
+choices. Front choices remain animated atlases, including converted
+Diamond/Pearl APNGs for GEN 4. Back GEN 1 through GEN 4 read
+ordinary species PNGs from `back-static/gen1` through `back-static/gen4`; they
+need no atlas or metadata. Back GEN 5 reads `back-animated/gen5` atlases. A
+loaded back is world-placed, lit, depth-occluded and shadowed. If its selected
+PNG or atlas is missing or malformed, the unmodified ROM backsprite remains in
+the original UI layer, including its normal battle motion and filtering.
+`BACK ART SET` also appears under STATIC. In that mode every choice, including
+GEN 5, reads only `back-static/<generation>/<species>.png`; it never inspects
+an animated atlas. GEN 1 remains selectable when its directory is absent so
+users can create it for ROM-hack art. `ANIM FRONT GEN` remains exclusive to
+ANIMATED, and ROM ignores both selectors.
 
-Trainer cards are always static. Opponent trainer fronts use class filenames
-in `front-static` (for example `youngster.png`, `cooltrainer-f.png`, and
-`jessie-james.png`). Player-side trainer backs use `back-static/player.png`,
-`back-static/oak.png`, or `back-static/old-man.png`. The folder READMEs carry
+`BACK PLACEMENT: AUTO` keeps STATIC-mode player backs in the world, including
+ROM fallbacks. Under ANIMATED, supplied Gen 1–4 PNGs and Gen 5 atlases stay in
+the world while a missing selection leaves the ROM backsprite on its OG UI
+anchor. ROM mode also uses OG UI. `WORLD` and `OG UI` override that decision
+for testing any art set; large supplied art may crop when forced onto OG UI.
+
+Opponent trainer cards are always static. `TRAINER ART` chooses fronts from
+`front-static/gen1`, `front-static/gen2`, or `front-static/gen3`, using class
+filenames such as `youngster.png`, `cooltrainer-f.png`, and
+`jessie-james.png`. A missing class falls directly back to its ROM portrait;
+generations are never silently mixed. In STATIC mode, `PLAYER ART` selects
+player trainer backs
+such as `back-static/gen1player.png`, `back-static/ashplayer.png`, or ROM.
+PNG is the default and reads `back-static/player.png`; every missing named
+choice tries that same generic PNG before falling back to ROM.
+In ANIMATED mode, `PLAYER ANIM` selects the corresponding five-frame strip
+from `back-animated`, or the engine portrait under ROM. Frame one holds during
+the stationary entrance pose. Frames two through five advance once with the
+engine's leftward intro slide and then stop; they do not loop. AUTO placement
+keeps this intro on OG UI, while WORLD and OG UI remain explicit overrides.
+Both the original five-by-64 strips and normalized five-by-80 strips are read
+at native resolution. Unlike the ROM's half-resolution player back, a custom
+animated trainer remains 1x when attached to OG UI. Use
+`tools/player-animation-template-400x80.png` as the authoring guide, then
+remove its coloured dividers from the finished atlas.
+`back-static/oak.png` and `back-static/old-man.png` remain the scripted demo
+portraits. The folder READMEs carry
 the complete trainer-class list and the four exceptional Pokémon filenames.
 
 Two of the engine's own rows are taken away while this mod is installed:

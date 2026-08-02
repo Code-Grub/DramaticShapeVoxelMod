@@ -30,12 +30,11 @@ local BattleHud = {}
 -- How solid the frost is over the world behind it, and how far the tint
 -- pushes it toward the far end from the text.
 --
--- Both deliberately light. The panel is there to make glyphs legible, not to
--- put a slab in the corner of the frame: at these values the sharp world
--- still reads through it and the blur registers as a pane of glass rather
--- than as a second background.
-BattleHud.FROST = 0.55
-BattleHud.TINT = 0.26
+-- Keep the backplates fully transparent. Contrast still comes from the
+-- luminance verdict below, which switches the engine's glyphs between black
+-- and white without placing a translucent slab over the arena.
+BattleHud.FROST = 0.0
+BattleHud.TINT = 0.0
 
 -- The luminance the glyphs flip at, with a dead band so a drift across it
 -- settles rather than strobes.
@@ -256,6 +255,10 @@ end
 -- used, so the contrast is guaranteed rather than hoped for: a dark panel
 -- gets darker under white text, a bright one brighter under black text.
 function BattleHud.panel(rect, box, dark, world)
+  -- Fully transparent means absent, not a zero-alpha draw. Avoid touching the
+  -- destination canvas or blend state at all; premultiplied driver paths can
+  -- otherwise retain RGB from a transparent sample as a dim veil.
+  if BattleHud.FROST <= 0 and BattleHud.TINT <= 0 then return true end
   if not (frost and box and box.scale and box.scale > 0) then return false end
   local fx, fy, fw, fh = mapper(world)(rect, box)
   local ok = pcall(function()
@@ -300,7 +303,25 @@ local FLIP = [[
   }
 ]]
 
+-- A one-logical-pixel shadow belongs to the flipped (white) ink, not to the
+-- transparent panel behind it. Build it from the same black source pixels the
+-- flip shader recognises, then put the white result over it. Because this is
+-- done before the HUD texture is enlarged, the offset remains aligned to the
+-- Game Boy pixel grid at every window scale.
+local SHADOW_ALPHA = 0.72
+local SHADOW = [[
+  uniform float ink;
+  uniform float opacity;
+  vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
+    vec4 p = Texel(tex, tc);
+    float luma = dot(p.rgb, vec3(0.299, 0.587, 0.114));
+    float a = (p.a > 0.0 && luma <= ink * p.a) ? p.a * opacity : 0.0;
+    return vec4(0.0, 0.0, 0.0, a) * color;
+  }
+]]
+
 local flipShader = nil
+local shadowShader = nil
 local layer = nil
 
 local function getFlip()
@@ -309,6 +330,14 @@ local function getFlip()
     flipShader = (ok and sh) or false
   end
   return flipShader or nil
+end
+
+local function getShadow()
+  if shadowShader == nil then
+    local ok, sh = pcall(love.graphics.newShader, SHADOW)
+    shadowShader = (ok and sh) or false
+  end
+  return shadowShader or nil
 end
 
 -- Whether the flip pass can run at all, for the shot driver's log.
@@ -343,6 +372,14 @@ function BattleHud.flipGlyphs(w, h, fn)
   love.graphics.setBlendMode(prevBlend or "alpha", prevAlpha)
   if not ok then error(err, 0) end
 
+  local shadow = getShadow()
+  if shadow then
+    love.graphics.setShader(shadow)
+    pcall(shadow.send, shadow, "ink", INK)
+    pcall(shadow.send, shadow, "opacity", SHADOW_ALPHA)
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(layer, 1, 1)
+  end
   love.graphics.setShader(sh)
   pcall(sh.send, sh, "ink", INK)
   love.graphics.setColor(1, 1, 1, 1)

@@ -66,11 +66,16 @@ function BattleExit.veil()
   -- answer is used. The walk only happens while a fade is live.
   local stack = live.game and live.game.stack
   local states = stack and stack.states
-  local onStack = false
-  for i = #(states or {}), 1, -1 do
-    if states[i] == live then onStack = true break end
+  local top = states and states[#states]
+  -- The veil owns the finished frame only while its state owns the top of
+  -- the stack. Merely finding an old instance somewhere underneath a newer
+  -- battle is not enough: painting from there uniformly multiplies the new
+  -- arena (and its baked HUD) while leaving the later UI canvas bright.
+  -- A legitimate exit is topmost on both halves of the transition.
+  if top ~= live then
+    live = nil
+    return nil
   end
-  if not onStack then live = nil; return nil end
   local a = live.t / live.frames
   if live.phase == "in" then a = 1 - a end
   return math.max(0, math.min(1, a))
