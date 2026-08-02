@@ -1,5 +1,207 @@
 # Changelog
 
+## 1.4.3
+
+### Added
+
+- **The furniture of the whole game goes through the building
+  pipeline.** 1.4.1 put four drawings through it; this is the rest of
+  the rooms. Every one of them is the same read -- the drawing's own
+  bands say what is a top seen from above, what is a face seen head-on,
+  and where the thing ends on the floor -- and every one of them
+  replaces a pinned box that wore its drawing as a decal. The pins all
+  stay as the degradation path, neutralized wherever a template stamps.
+
+  - **The bookcase, the commonest piece of furniture in the game** --
+    58 placements across two drawings on the town-house atlas (books
+    and a bowl on each shelf at the west end of eighteen homes, books
+    on both at the east), plus Red's and the Copycat's pair. Pinned
+    `desk` it was a 24px box with the books painted on its flat front.
+    Modelled it is 23 voxels of cabinet with its top seen from above,
+    and every book, bowl and door panel sunk a voxel behind the frame
+    the drawing seals it in.
+  - **Celadon's display cabinets** -- the tall one with the trophy
+    behind its glass and the short one beside it, band for band the
+    same object as the town house's on another atlas, which is what
+    makes the pair read as one line of furniture: 23 voxels and 15,
+    exactly the 8 rows of drawing between them.
+  - **The dining table, everywhere it is drawn** -- the generic town
+    house's at 18 placements, Red's and the Copycat's, and the chief's
+    long table at four cells wide. All of them the lab table's read at
+    a different width, all of them 6 voxels, all of them standing on
+    the ground line their legs are drawn stopping at rather than on
+    the grid's floor.
+  - **The stool at every one of those tables** -- 94 placements on the
+    house atlas alone, ten more in Red's and the Copycat's, and the Fan
+    Club's four members' chairs, a different drawing that is
+    pixel-identical from the seat down. The first template with no base
+    piece at all: a stool is drawn mid-cell over its own floor, so it
+    is a desk-set of exactly one part, seat lid over legs with the
+    floor showing between them.
+  - **The Pokemon Center's healing machine** -- two variants, 24
+    placements, plus the Indigo Plateau lobby's pair. A wall-height
+    cabinet with its monitor perched on the front of its top face,
+    drawn across two map rows because it towers over the 16px band
+    behind it, which the volume path could only read as more wall. The
+    hoses leaving its side are modelled as hoses, at the elevation and
+    the depth the two stacked motifs put them; the west machine's
+    keyboard is a shelf at counter height wearing its own top-view art.
+  - **Bill's desk, and the Silph president's** -- the same drawing in
+    both rooms. Its terminal is drawn in 2:1 isometric, turned 45
+    degrees to the map, and builds as a cube rather than the slab a 2:1
+    reading gives; the kinked dark run between keyboard and computer is
+    raised to the keyboard's height and reads as the cable it is. The
+    desk stops at its own two cells because the artist drew its apron
+    into the walkable cell in front, sharing tiles with the chair
+    pushed up to it -- so the chair is modelled as a part of the desk.
+  - **The Bike Shop's open toolbox.** The drawing looks down INTO the
+    tray, which is why every solid treatment failed it -- as a
+    `billboard` the whole cell went up as one 10-voxel slab wearing the
+    drawing as a decal. `tray` builds four walls, a floor and air
+    between them, with the lid standing open on its hinge.
+
+  What the template language grew to carry them: `tray`; a `desk` band
+  that lays its top face flat as a lid; the `box`, `flat` and `iso`
+  part kinds; `stretch` for a band mapped over a deeper plot than it
+  was drawn on; `inset` for a pane sunk by hand; `panes = false` where
+  the global recess pass has the polarity backwards; a `wall` element
+  so a template can keep the band behind it solid; `plane` for a height
+  the drawing states elsewhere; and `scrub`/`keep`/`support`, which let
+  a template model a surface while leaving an object standing on it to
+  its own standee -- Red's potted plant on the dining table.
+
+- **Round bins: the `can` class.** Vermilion Gym's switch puzzle stands
+  fifteen galvanised trash cans in a row, and the S.S. Anne redraws the
+  same object pixel for pixel as its galley barrels. Left to the thin
+  standee pool they were flat discs on edge -- fifteen coins standing
+  in a row; pinned a plain `cylinder` the drawing's base arc revolves
+  too and they came out as barrels balanced on a three-voxel stem.
+  `can` is the round hull cut at both ends, hollowed and tapered: the
+  drawn mouth ellipse projects across the top and down the well so you
+  look into the bin, the drawn base ellipse is ground contact rather
+  than body, and the plan narrows toward the floor. The two ellipses
+  are measured off the pixels; the height, the well and the taper are
+  authored, and the entry says why.
+
+- **The rock gyms' boulders are round.** 87 placements over Pewter's
+  walls and maze and Bruno's clusters, and every one of them was a
+  square bar wearing a boulder texture in relief -- the repeat-aware
+  scenery path extruding the whole drawing as one course. Each cell is
+  now a hull whose plan is its own drawn width profile turned in depth:
+  a dome full-width from the drawn shoulder down, tapering over the top
+  five rows exactly where the art tapers, with the floor's corner
+  diamonds opening between them the way the drawing has them. Still
+  16px, so nothing standing on or beside a rock moves.
+
+- **The potted plant stands as a plant.** The most repeated interior
+  prop in the game -- 78 placements over 13 maps, six per Pokemon
+  Center -- and its urn was rendering as a hollow black frame, because
+  the drawing's foot lies flush on the block's bottom edge and the
+  background vote took the plant's own darks away with the floor. Named
+  outright as light and white instead, it stands as one organic
+  silhouette 32px tall over its two stacked cells, crown overhanging
+  the stem. `planter` carries the same reading for a round drawing
+  stacked two cells high on one cell of plot.
+
+- **Bicycles, in both places the Bike Shop draws them.** The six on the
+  showroom floor get their own pool at two voxels rather than the thin
+  pool's five: a bike is a line drawing, and at five voxels every
+  stroke closes the gap to its neighbour with its own side faces, so
+  from any angle but dead-on the air inside the frames filled in and
+  the six came out as one dark lump. And the two against the north wall
+  get `mounted`, a new authored-mask escape for a thing drawn INTO a
+  wall band: it holds the wall's plane as a thin per-pixel slab instead
+  of standing up as a sprite card, and it keeps its drawn elevation, so
+  a bicycle hung clear of the floor stays hung. Its mask is measured
+  rather than hand-drawn -- the plain panel tile composited across the
+  same grid and the background flooded in through the pixels that still
+  match it, which separates bicycle from stripe exactly.
+
+- **The Marts' cash register is a machine, not a decal.** An authored
+  figure may now state a `depth`, which makes it an object rather than
+  a person: a per-pixel solid standing on the counter instead of the
+  flat card that turned edge-on with the camera. And the drawing is not
+  a box -- its black linework packs two facings, an L of base and arm
+  around a keypad that is the machine's deck seen from above. `flat`
+  lays that rect horizontal in the notch of the L, and `thin` gives the
+  receipt curl a paper's thickness where the body's would have made it
+  a wedge.
+
+- **Shelf fronts have relief.** Everything the `bookcase` collapse is
+  used for is a shelf, a rack or a display case, and all of them seal
+  their contents behind the drawing's own black frame -- so those
+  regions now sink a voxel, the same rule a facade's window panes are
+  recessed by, and the books stand in the shelf instead of being
+  painted on it. A tileset that borrows the collapse for something that
+  is not a shelf says `bookcase_relief = false`: the League's masonry
+  and pilasters, whose courses are the wall itself, and Bill's
+  transporter drums, whose light regions are a lit barrel.
+
+### Changed
+
+- **Class heights now follow the models under them.** A tileset's
+  `heights` gets stools at 5 and tables at 6 in the houses, Bill's desk
+  at 8, and cans at 9 -- each of them the drawn elevation the new
+  template or hull stands at, so whoever sits on a stool sits on the
+  seat, and whatever object sprite stands on a table lands on the
+  modelled top rather than three voxels over it or under it.
+- The healing machines' two flanks leave the `wall` pin for the thin
+  standee pool. They are equipment standing beside the console -- a
+  pair of pipes and a keyboard -- and as wall each was boxed into a
+  solid 16px half-cell wearing its drawing in relief.
+
+### Fixed
+
+- **Water no longer hides behind water.** The reflective pass writes no
+  depth -- the depth canvas is detached for the length of it so the
+  shader can read it -- so nothing put a lake in the buffer and no lake
+  could occlude another; the sheets were simply painted in mesh order.
+  Flat water never showed it, one plane, a farther sheet always landing
+  farther down the screen. The world curve ends that: it drops the far
+  side of the map into the near field of view, and a sea a hundred and
+  fifty tiles away came out rasterised on top of the pond at the
+  player's feet, tall grass and all -- water and terrain "from the
+  other side of the map", not reflected but there. The water meshes now
+  go down flat first, through the ordinary scene shader with depth
+  writes on, and the reflective pass draws over what survived. The
+  buffer holds the surface, so the pass's own test throws the far sheet
+  away; the reflection copy holds it too, so a ray grazing another part
+  of the lake reads water rather than the void behind it; and a frame
+  that cannot run the pass at all is unchanged, because the flat draw
+  is the fallback that was already there.
+- **Reflections under the world curve.** The bend tips the world away
+  and the things standing on it do not lean with it -- and a lake is
+  one of those things. Reflected off the bowl the bend makes, the far
+  half of a pond was a mirror tilted twenty degrees: it threw the ray
+  past the vertical, where the sky ramp's own measure swings from one
+  end to the other across a single column, and hard-edged patches of
+  the wrong sky stamped into the water; the same tilt sent the
+  screen-space march grazing along the bank rather than over it, which
+  is what smeared the dock and the roofs across the harbour. What the
+  water reflects is now worked out in the flat world, exactly as it
+  would be with the curve off, and every marched sample is bent on its
+  way to the screen by the vertex stage's own displacement -- so the
+  ray is straight where it should be and lands where the geometry did.
+  The wave columns are read on the flat sheet too: the relief walk is
+  built on an even slab over a level plane, and in the curved world
+  that slab is a bowl, which handed back a column a pixel or three off
+  per fragment -- a patch of noise in the middle of a pond.
+- **Merged runs tore open under the curve.** A quad's interior is the
+  chord of a parabola its neighbours draw the arc of, so a long run
+  hangs below the short quads butted against it. Nothing bounded a
+  run's length, and the ones that ran away were those wearing a
+  constant texel -- a roof's black eave outline, its fascia, its shaded
+  underside -- because a flat run has no art to break it. At 102px
+  across a gym the eave tore off the roof and the slot showed the
+  building's dark interior through it. Runs now stop at the next 8px
+  lattice line, which is the lattice buildings are stamped on and the
+  one every other quad in the scene already ends on, so every join is
+  vertex-for-vertex and the bend carries them together. It costs quads
+  whether the curve is on or not -- Cerulean's object stream goes from
+  35.7k to 41.6k -- and that is deliberate: the mesh is cached per map
+  and built over seconds, so meshing for the curve's sake only when the
+  curve is on would mean rebuilding every live map on a keypress.
+
 ## 1.4.1
 
 ### Added

@@ -4198,6 +4198,60 @@ return {
         roofRows = 28, roofBack = 24, roofFront = 0, roofCycle = { 2, 23 },
         slab = 3, frontEave = 0, ledge = nil,
       },
+      -- F10: the town house's BOOKCASE -- the commonest piece of
+      -- furniture in the game at 58 placements across three drawings,
+      -- and the piece this family was really for: pinned `desk` it was a
+      -- 24px box with a flat front and the books PAINTED on it.  Band for
+      -- band it is the Celadon display cabinet (F05/F06 under MANSION)
+      -- on a different atlas, and it takes those numbers unchanged: rows
+      -- 0-8 the top seen from above (black rim, white highlight courses
+      -- along the north and west, grey field, the front corner shaded at
+      -- row 8); row 9 the top's own black front edge -- which is what the
+      -- rim treatment paints, so slab = 1 and that row folds into the
+      -- roof band instead of extruding under it; 10-31 the front: two
+      -- shelves in their dark openings over the cupboard's two panelled
+      -- doors.  Every book, bowl and door panel is a non-black region the
+      -- drawing seals behind its own black frame, so the measured pane
+      -- pass sinks each one a voxel and the frames stand proud of them --
+      -- the relief the `bookcase` class now carries too, arrived at the
+      -- same way.
+      --
+      -- Nine drawn top rows over a 32px plot: the rims map 1:1 (the drawn
+      -- front-corner shading lands one voxel behind the front edge) and
+      -- the uniform field cycles between.  BOTH cell rows of the plot are
+      -- blocked and both are cabinet drawing, so D is the whole grid --
+      -- the case is built into the room's north wall.  23 voxels tall,
+      -- one under the `desk` pin it replaces and exactly the Celadon
+      -- trophy case's stand; the `desk` pins stay as the degradation
+      -- path, neutralized wherever this stamps.
+      --
+      -- This drawing carries books and a bowl on each shelf: 36
+      -- placements, the west end of eighteen homes.
+      {
+        id = "house_bookcase_bowls",
+        tiles = {
+          { 38, 41 },
+          { 14, 15 },
+          { 14, 15 },
+          { 30, 31 },
+        },
+        roofRows = 10, roofBack = 8, roofFront = 2, roofCycle = { 2, 7 },
+        slab = 1, frontEave = 0, ledge = nil,
+      },
+      -- F10 again: its twin at the east end, books on both shelves -- 22
+      -- placements, and the only one of the two that Cerulean's trashed
+      -- house also puts at the west end.
+      {
+        id = "house_bookcase_books",
+        tiles = {
+          { 38, 41 },
+          { 48, 49 },
+          { 48, 49 },
+          { 30, 31 },
+        },
+        roofRows = 10, roofBack = 8, roofFront = 2, roofCycle = { 2, 7 },
+        slab = 1, frontEave = 0, ledge = nil,
+      },
       -- F09: the stool at every one of those tables (94 placements on
       -- this tileset) -- the first template with NO base piece.  The
       -- drawing is one object, a round seat on legs, drawn MID-CELL over
@@ -4267,6 +4321,22 @@ return {
         scrub = { { 10, 5, 21, 15 } },
         keep = { 40, 54, 55, 56, 57 },
         support = 6,
+      },
+      -- F10 again: Red's and the Copycat's bookcase pair, cells (0,0)
+      -- and (1,0) of both maps (4 placements).  The same object as the
+      -- town house's, one shelf of each of its two drawings -- 48/49
+      -- books above, 34/35 below -- and the same band numbers; see HOUSE
+      -- above for the read.
+      {
+        id = "reds_bookcase",
+        tiles = {
+          { 38, 41 },
+          { 48, 49 },
+          { 34, 35 },
+          { 50, 51 },
+        },
+        roofRows = 10, roofBack = 8, roofFront = 2, roofCycle = { 2, 7 },
+        slab = 1, frontEave = 0, ledge = nil,
       },
       -- F09 again: the stools around it (10 placements across Red's and
       -- the Copycat's ground floors), pixel for pixel the house

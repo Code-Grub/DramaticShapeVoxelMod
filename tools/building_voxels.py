@@ -723,6 +723,65 @@ TEMPLATES = {
         slab=3, front_eave=0, ledge=None, tileset="reds_house",
         scrub=[(10, 5, 21, 15)],
     ),
+    # F10: the town house's bookcase -- the commonest piece of furniture
+    # in the game at 58 placements across three drawings, and the reason
+    # this family exists: the `desk` box it used to be had a flat front
+    # with the books PAINTED on it. Band for band it is the Celadon
+    # cabinet (F05/F06) on a different atlas, and it takes those numbers
+    # unchanged: 0-8 the top seen from above (black rim, white highlight
+    # courses along the north and west, grey field, the front corner
+    # shaded at row 8), row 9 the top's own black front edge -- so
+    # slab = 1 and that row folds into the roof band -- and 10-31 the
+    # front: two shelves in their dark openings over the cupboard's two
+    # panelled doors. Every one of those is a non-black region the
+    # drawing seals behind its own black frame, so the measured pane
+    # pass sinks each a voxel and the frames stand proud of them.
+    # Nine drawn top rows over a 32px plot: the rims map 1:1 and the
+    # uniform field cycles between. BOTH cell rows of the plot are
+    # blocked and both are cabinet drawing, so D is the whole grid --
+    # the case is built into the room's north wall. 23 voxels tall,
+    # one under the `desk` pin it replaces, and the same 23 the Celadon
+    # trophy case stands.
+    #
+    # This one carries books and a bowl on each shelf; 36 placements,
+    # the west end of eighteen homes.
+    "house_bookcase_bowls": dict(
+        tiles=[
+            [38, 41],
+            [14, 15],
+            [14, 15],
+            [30, 31],
+        ],
+        roof_rows=10, roof_back=8, roof_front=2, roof_cycle=(2, 7),
+        slab=1, front_eave=0, ledge=None, tileset="house",
+    ),
+    # F10 again: its twin at the east end, books on both shelves --
+    # 22 placements, and the only drawing of the two that the trashed
+    # house in Cerulean puts at the west end as well.
+    "house_bookcase_books": dict(
+        tiles=[
+            [38, 41],
+            [48, 49],
+            [48, 49],
+            [30, 31],
+        ],
+        roof_rows=10, roof_back=8, roof_front=2, roof_cycle=(2, 7),
+        slab=1, front_eave=0, ledge=None, tileset="house",
+    ),
+    # F10 once more, on the reds_house atlas: Red's and the Copycat's
+    # ground-floor pair (4 placements). The same object, one shelf of
+    # each drawing -- 48/49 books above, 34/35 below -- and the same
+    # band numbers.
+    "reds_bookcase": dict(
+        tiles=[
+            [38, 41],
+            [48, 49],
+            [34, 35],
+            [50, 51],
+        ],
+        roof_rows=10, roof_back=8, roof_front=2, roof_cycle=(2, 7),
+        slab=1, front_eave=0, ledge=None, tileset="reds_house",
+    ),
     # F09: the stool at every one of those tables -- the first template
     # with NO base piece. The drawing is one object, a round seat on
     # legs, drawn MID-CELL over its own floor (rows 0-4 are the room
