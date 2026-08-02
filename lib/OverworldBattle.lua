@@ -884,10 +884,43 @@ function OverworldBattle.install()
   if not Renderer.dramaticShapeBattleFadeHook then
     local innerEndFrame = Renderer.endFrame
     function Renderer:endFrame(zones, worldZones)
-      if OverworldBattle.shot() and self.worldOverride then
+      local staged = OverworldBattle.shot() and self.worldOverride
+      if staged then
         self.worldFadeAlpha = nil
       end
-      return innerEndFrame(self, zones, worldZones)
+
+      -- Newer renderer chains can decide to paint their transition after an
+      -- outer wrapper has entered endFrame.  Clearing the field above is then
+      -- one instruction too early.  Guard the actual compositor rectangle as
+      -- well: a translucent, window-sized black fill inside Renderer:endFrame
+      -- is its world fade and nothing else.  The battle-entry cascade uses
+      -- opaque tile/strip rects, while BattleExit paints after this wrapper has
+      -- returned, so both deliberate transitions remain intact.
+      local gfx = love.graphics
+      local rectangle = gfx.rectangle
+      if staged and rectangle then
+        gfx.rectangle = function(mode, x, y, w, h, ...)
+          if mode == "fill" and x == 0 and y == 0 then
+            local ww, wh = gfx.getDimensions()
+            local r, g, b, a = gfx.getColor()
+            if w >= ww and h >= wh and r < 0.001 and g < 0.001 and b < 0.001
+               and a > 0 and a < 0.999 then
+              if session and not session.fadeWarned then
+                session.fadeWarned = true
+                V.mod.log:info("suppressed staged battle compositor fade "
+                               .. "(alpha %.3f)", a)
+              end
+              return
+            end
+          end
+          return rectangle(mode, x, y, w, h, ...)
+        end
+      end
+
+      local ok, result = pcall(innerEndFrame, self, zones, worldZones)
+      gfx.rectangle = rectangle
+      if not ok then error(result, 0) end
+      return result
     end
     Renderer.dramaticShapeBattleFadeHook = true
   end

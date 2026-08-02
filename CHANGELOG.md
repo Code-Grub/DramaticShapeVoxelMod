@@ -53,6 +53,10 @@
   active battle, and post-battle frames instead of switching through gray.
   The obsolete zero-alpha frost composite is skipped entirely, preventing a
   driver-dependent dim veil over the arena.
+- **No stale battle-entry dimmer.** Staged battles suppress the engine's
+  translucent world-fade rectangle at the compositor boundary as well as
+  clearing its fade state. The normal battle wipe, deliberate battle-exit
+  fade, and overworld warp fades are unchanged.
 - **Untinted static front illustrations.** Supplied species PNGs from
   `front-static` retain their authored brightness and colour instead of being
   multiplied by the day/night tint. They remain world geometry with display
