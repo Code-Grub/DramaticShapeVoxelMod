@@ -960,11 +960,29 @@ vec4 effect(mediump vec4 color, Image tex, mediump vec2 tc, mediump vec2 sc) {
   // The buffer now holds THIS SURFACE too (VoxelScene draws the water flat
   // before the pass that reflects it), which is what makes one lake able to
   // hide another -- and it means every fragment here is testing against its
-  // own depth. The two draws reach it through different shader programs, so
-  // ask for a hair of slack rather than bit-equality: far less than the gap
-  // to anything genuinely in front, far more than two compilers disagree by.
+  // own depth. That raises the bar on the fragment's own z: gl_FragCoord is
+  // allowed to be MEDIUMP on GLES (and is, on Adreno), and fp16 near the far
+  // end of the range steps by about half a thousandth -- which the old test
+  // against the terrain far behind the surface never felt, and a comparison
+  // of the surface against itself loses outright. Every fragment failed, the
+  // pass discarded the whole lake, and Android showed the flat draw
+  // underneath. So the depth is recomputed HERE, in highp, from the same
+  // vBent and vp the vertex stage used -- full precision on every driver.
+  //
+  // The slack is sized to what remains after that, which is not rounding:
+  // the buffer holds depth interpolated LINEARLY IN SCREEN SPACE, while the
+  // recomputation projects the perspective-interpolated vBent -- the exact
+  // answer. The two agree at the vertices and drift apart across a quad's
+  // interior, by more the bigger the quad stands on screen; on a phone
+  // (fit scale 6, water quads hundreds of pixels tall) the drift crosses
+  // 1e-5 mid-quad, which discarded the middle of every tile row and looked
+  // like flat water with reflective seams. Anything GENUINELY in front of a
+  // water pixel is whole world units nearer -- upward of 1e-3 in depth --
+  // so 2e-4 clears the drift with room while still catching every occluder.
   vec2 uv = sc / love_ScreenSize.xy;
-  if (gl_FragCoord.z > Texel(depthTex, uv).r + 1e-5) discard;
+  vec4 selfC = vp * vec4(vBent, 1.0);
+  float selfZ = selfC.z / selfC.w * 0.5 + 0.5;
+  if (selfZ > Texel(depthTex, uv).r + 2e-4) discard;
 
   // THE COLUMN THIS FRAGMENT IS LOOKING AT. Every water pixel is a bar of
   // its own standing a whole number of pixels tall, and the ray decides

@@ -1924,9 +1924,11 @@ T.check(plain:find("sc / love_ScreenSize.xy", 1, true) ~= nil,
 -- the world curve drops the far side of the map into the near field of view,
 -- and a sea a hundred and fifty tiles away came out rasterised on top of the
 -- pond at the player's feet, tall grass and all.
-T.check(plain:find("Texel(depthTex, uv).r + 1e-5", 1, true) ~= nil,
-  "with a hair of slack, because every water fragment is now testing "
-  .. "against its own depth through a second shader program")
+T.check(plain:find("vec4 selfC = vp * vec4(vBent, 1.0)", 1, true) ~= nil
+        and plain:find("Texel(depthTex, uv).r + 2e-4", 1, true) ~= nil,
+  "testing a HIGHP recomputed depth (gl_FragCoord.z is mediump on mobile "
+  .. "GLES -- fp16 loses a self-comparison outright) with slack covering "
+  .. "the buffer's screen-linear interpolation drift across big quads")
 T.check(VoxelScene.drawWater ~= nil, "and the flat draw that puts it there")
 
 -- ------- the lift itself

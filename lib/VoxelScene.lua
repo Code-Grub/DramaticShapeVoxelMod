@@ -583,7 +583,7 @@ end
 -- The overworld's alone: the staged battle draws its water plain, always --
 -- its placed camera reads this pass wrong, and a stage set wants painted
 -- water anyway (see BattleScene, where the choice is argued).
--- ------- and why the flat draw happens FIRST, every time
+-- ------- and why the flat draw happens FIRST while the world is curved
 --
 -- The reflective pass writes no depth -- it cannot, the depth canvas is
 -- detached for the length of it so the shader can READ it -- and it does its
@@ -592,31 +592,39 @@ end
 -- one: WATER IN FRONT OF WATER. Nothing puts water in the depth buffer, so
 -- no lake can hide another, and the pass simply paints them in mesh order.
 --
--- On flat water that never mattered, because every surface lies in the one
--- plane at its own recessed height and a farther sheet always lands farther
--- down the screen. THE WORLD CURVE ENDS THAT. The bend drops the world by
--- the square of its distance, so the far side of the map swings down and
--- back up into the near field of view -- and a sheet of sea a hundred and
--- fifty tiles away, drawn later in the same mesh, paints straight over the
--- pond at the player's feet. That is the tall grass and the water "from the
--- other side of the map": not a reflection of them, THEM, rasterised on top
--- of the water in front of you.
+-- On a flat world that never matters: every surface lies in the one plane
+-- at its own recessed height, and a farther sheet always lands farther down
+-- the screen. THE WORLD CURVE ENDS THAT. The bend drops the world by the
+-- square of its distance, so the far side of the map swings down and back
+-- up into the near field of view -- and a sheet of sea a hundred and fifty
+-- tiles away, drawn later in the same mesh, paints straight over the pond
+-- at the player's feet. Not a reflection of the far shore: the far shore
+-- itself, rasterised on top of the water in front of you.
 --
--- So the meshes go down flat first, through the ordinary scene shader with
--- depth writes on, and the reflective pass draws over the top of what
--- survived. Three things fall out of it and all three are wanted: the depth
--- buffer now holds the water surface, so the pass's own test throws the far
--- sheet away; the reflection COPY holds it too, so a ray grazing another
--- part of the lake reads water rather than the void behind it; and the flat
--- draw is the same fallback this function already ended with, so a frame
--- that cannot run the reflective pass is unchanged.
+-- So WHILE THE CURVE IS ON, the meshes go down flat first, through the
+-- ordinary scene shader with depth writes on, and the reflective pass draws
+-- over the top of what survived: the depth buffer now holds the water
+-- surface, so the pass's own test throws the far sheet away, and the
+-- reflection COPY holds it too, so a ray grazing another part of the lake
+-- reads water rather than the void behind it.
 --
--- It costs one more rasterisation of the water meshes. Water is a small
--- share of a frame's triangles and this is the cheapest shader in the mode.
+-- With the curve OFF the prepass is not just unnecessary, it is a LIABILITY,
+-- and it stays off -- the reflective pass tests only against terrain, as it
+-- always did. Painting the surface into the depth texture turns the pass's
+-- test into a comparison of the surface against ITSELF, which asks the two
+-- rasterisations to agree to within interpolation error -- and on mobile
+-- GPUs they don't reliably (that fight is what put the Android port back on
+-- flat water). Confined to the curve there is no regression to reach: the
+-- flat world never had the far-shore bug in the first place.
 function VoxelScene.drawWater(draws, cast)
-  for _, d in ipairs(draws) do
-    Voxel3D.draw(d[1], d[2], d[3])
+  -- prepass only under the bend; see the header
+  local curved = (Voxel3D.curveK or 0) > 0
+  if curved then
+    for _, d in ipairs(draws) do
+      Voxel3D.draw(d[1], d[2], d[3])
+    end
   end
+  local plain = not curved
   if Water.enabled() and Voxel3D.depthReadable() then
     local mirror, depth = Voxel3D.beginWater(cast)
     local w, h = Voxel3D.size()
@@ -634,14 +642,21 @@ function VoxelScene.drawWater(draws, cast)
         Water.draw(d[1], d[2], d[3])
       end
       Water.finish()
+      plain = false
     end
     -- Unconditionally, and OUTSIDE the success branch: beginWater unbinds
     -- the shader and the depth mode BEFORE it can discover it cannot go on,
     -- so a frame that bails halfway through has to be put back together
     -- exactly like one that succeeded -- otherwise every pass after it runs
-    -- with no shader and no depth test. (What a bail leaves on screen is the
-    -- flat draw above, which is where this function used to end anyway.)
+    -- with no shader and no depth test.
     Voxel3D.endWater()
+  end
+  -- the fallback flat draw -- unless the curve's prepass already put the
+  -- same meshes down, in which case a bailed frame is already whole
+  if plain then
+    for _, d in ipairs(draws) do
+      Voxel3D.draw(d[1], d[2], d[3])
+    end
   end
 end
 
