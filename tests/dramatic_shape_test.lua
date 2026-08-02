@@ -1800,9 +1800,21 @@ T.check(plain:find("waveNormal(vec2 q, float tilt)", 1, true) ~= nil
         and plain:find("waveNormal(col,", 1, true) ~= nil,
   "still one answer per column, so the surface stays pixel-quantised in "
   .. "space while the value it reflects with is continuous")
-T.check(plain:find("relief(vBent, view, hit, col, face, axis)", 1, true) ~= nil,
+T.check(plain:find("relief(sheet, view, hit, col, face, axis)", 1, true) ~= nil,
   "and the visible column is found by walking the view ray through the "
   .. "slab, which is what makes a tall bar hide the short ones behind it")
+-- ...over the FLAT sheet, which is the one thing that walk is built on: an
+-- even slab over a level plane. The world curve drops each bar straight down
+-- by its own column's drop, so undoing that drop hands relief() the field it
+-- was written for. Walked in the world as DRAWN instead, the slab is a bowl:
+-- the backward step up the ray climbs the bowl's near side as fast as it
+-- climbs out of the water, the walk starts inside the sheet, and it returns a
+-- column a pixel or three off -- differently per fragment, which is a
+-- hard-edged patch of noise in the middle of a pond.
+T.check(plain:find("vec3 sheet = vec3(vBent.x, vBent.y + bendDrop(vBent.xz), vBent.z)",
+                   1, true) ~= nil,
+  "and it walks the sheet the mesh was AUTHORED as, the bend taken back off, "
+  .. "because a slab walk over a bowl starts inside the water")
 -- the march's reach grows as one over the ray's descent, so a grazing camera
 -- asks for hundreds of world pixels of it from a fixed number of samples --
 -- which stepped over whole crests and smeared the surface into streaks
@@ -1830,7 +1842,7 @@ T.check(plain:find("waveUV(tc, col)", 1, true) ~= nil,
   "and the column is what is handed to it")
 
 -- the wireframe is ruled on the COLUMNS, not on the flat sheet they stand on
-T.check(gridded:find("columnSeam(hit, vBent, axis)", 1, true) ~= nil,
+T.check(gridded:find("columnSeam(hit, sheet, axis)", 1, true) ~= nil,
   "with V-GRID on, the seams outline the column the ray landed on -- every "
   .. "voxel of water its own block -- rather than ruling a grid across the "
   .. "flat quad underneath and ignoring the bars entirely")
@@ -1839,6 +1851,25 @@ T.check(gridded:find("vec3 w = fwidth(base);", 1, true) ~= nil,
   .. "between neighbouring fragments and its own derivative is a step")
 T.check(plain:find("march(surf, r)", 1, true) ~= nil,
   "the reflection marches from that column, not from the raw fragment")
+-- The two halves of the world curve, and they pull opposite ways. WHAT the
+-- lake reflects is worked out FLAT -- the same rule the rest of the mode
+-- keeps, that the world tips away and the things standing on it do not lean
+-- with it. Reflect off the bowl the bend has made instead and the far half
+-- of a pond is a mirror tilted twenty degrees, throwing the ray past the
+-- vertical, where the sky ramp's own measure (a screen row, through the
+-- frame's matrix) swings from one end of the ramp to the other across a
+-- single column and stamps hard-edged patches of the wrong sky into the
+-- water.  But WHERE it lands has to be found in the world as DRAWN, because
+-- that is what the depth buffer holds -- so the ray stays straight in the
+-- flat world and every sample of it is bent on the way to the screen, by the
+-- vertex stage's own displacement.
+T.check(plain:find("p.y -= bendDrop(p.xz);", 1, true) ~= nil,
+  "and every marched sample is bent into the world as DRAWN before it is "
+  .. "projected, because that is the world the depth buffer holds")
+T.check(plain:find("vec3 r = reflect(view, n);", 1, true) ~= nil
+        and plain:find("reflect(view, vec3(0.0, 1.0, 0.0))", 1, true) ~= nil,
+  "while the reflection itself is taken about the FLAT normal, so a curved "
+  .. "world does not tip the lake the way it does not lean the buildings")
 T.check(plain:find("mod(col.x + col.y, 2.0)", 1, true) ~= nil,
   "and the dither's checkerboard is cut from the columns too, so a camera "
   .. "pan slides the world through nothing")

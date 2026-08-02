@@ -381,9 +381,32 @@ Water.EDGE_FADE = 0.14         -- reflection eased off over this much of the fra
 --
 -- The scene shader's own vertex path, plus the world position the geometry
 -- was actually DRAWN at -- after the world curve, because that is the space
--- the depth buffer holds and therefore the space the march has to walk in.
--- (The curve only ever moves Y, so a fragment's world XZ is the same on both
--- sides of it and the ripple can be measured off this one too.)
+-- the surface the eye MEETS lives in: which wave column a screen pixel is
+-- looking at is a question about the geometry as drawn, and relief() answers
+-- it there. (The curve only ever moves Y, so a fragment's world XZ is the
+-- same on both sides of it and the ripple can be measured off this one too.)
+--
+-- WHAT IT REFLECTS is worked out on the other side of the bend, in the FLAT
+-- world, and this is the same rule the rest of the mode keeps: the curve
+-- tips the world away and the things standing on it do not lean with it (see
+-- WorldCurve -- buildings stay upright, shadows are resolved before the bend
+-- and ride along). A lake is one of those things. Reflect off the bowl the
+-- bend has made instead and the far half of a pond is a mirror tilted twenty
+-- degrees: it throws the ray past the vertical, where the sky ramp's own
+-- measure -- a screen row, through the frame's matrix -- swings from one end
+-- of the ramp to the other across a single column, and the pond comes out
+-- with hard-edged patches of the wrong sky stamped into it -- the overhead
+-- band and the horizon band abutting in the middle of a lake, which reads as
+-- something other than water showing through. The same tilt sends the
+-- screen-space march grazing along the bank instead of over it, which is the
+-- other half: the dock and the roofs smeared across the harbour.
+--
+-- So the reflection is taken with the flat view ray about the flat normal,
+-- exactly as it would be with the curve off -- and the MARCH still has to
+-- walk the world as drawn, because that is what the depth buffer holds. Both
+-- at once: the ray is straight in the flat world, and project() bends each
+-- sample on its way to the screen, which is the same displacement the vertex
+-- stage applies and therefore lands in the same place the geometry did.
 local SHADER_SRC = [[
 varying float vShade;
 varying vec3 vSun;
@@ -435,6 +458,20 @@ uniform vec3 eye;
 uniform vec2 screen;         // the canvas, in pixels
 uniform float cell;          // one diorama pixel, in canvas pixels
 uniform float pxAngle;       // radians of view one screen pixel subtends
+// The same bend the vertex stage applied. This stage has to undo it to get
+// back to the flat world it reflects in, and re-apply it on every marched
+// sample to get back to the screen. Declared in both stages, like `vp`, and
+// both are highp here.
+uniform vec3 curve;          // xy = the focus in world XZ, z = k; 0 = off
+
+// How far the bend has pushed the world down at world XZ `q` -- the vertex
+// stage's own displacement, as a number this stage can add and subtract.
+// Zero when the curve is off, which is the shader's "skip it" everywhere.
+float bendDrop(vec2 q) {
+  if (curve.z <= 0.0) return 0.0;
+  vec2 d = q - curve.xy;
+  return dot(d, d) * curve.z;
+}
 
 // the sun's own pass, exactly as the scene shader reads it
 uniform Image sunMap;
@@ -658,10 +695,14 @@ vec3 bodyAt(vec3 d, vec3 c, float parity) {
 // clip-space Y flip is already baked into `vp`, and a canvas texture's v runs
 // the same way its pixel rows do, so one 0.5x+0.5 answers for both.
 //
-// This is why the march walks in the world as DRAWN rather than as authored:
-// the depth buffer holds the curved world, so a straight line in that space
-// is the ray, and a straight line in the flat one would bend through it.
+// The point arrives in the FLAT world -- the space the ray is straight in --
+// and is bent here, by the same displacement the vertex stage applied, so it
+// lands exactly where the geometry it is being compared against landed. That
+// split is the whole trick: the reflection is worked out in a world that has
+// not been tipped, and every sample of it is tipped on the way to the screen,
+// so the march reads the depth buffer it actually has.
 vec4 project(vec3 p) {
+  p.y -= bendDrop(p.xz);
   vec4 c = vp * vec4(p, 1.0);
   if (c.w <= 1e-6) return vec4(0.0, 0.0, 0.0, 0.0);
   return vec4(c.xy / c.w * 0.5 + 0.5, c.z / c.w * 0.5 + 0.5, 1.0);
@@ -925,12 +966,23 @@ vec4 effect(mediump vec4 color, Image tex, mediump vec2 tc, mediump vec2 sc) {
   // drawn at, with no smooth shading anywhere across it. (The depth test
   // above is the one thing that stays per fragment: that is the hardware's
   // own question and it is asked in screen space.)
-  vec3 view = normalize(vBent - eye);
+  //
+  // Answered on the FLAT sheet, which is where the bars are a slab of even
+  // thickness over a level plane -- the one thing relief() is built on. The
+  // bend translates every bar straight down by its own column's drop, so the
+  // field keeps its shape and only its height moves; undo that here and the
+  // walk is the walk it was written for. Try it in the world as DRAWN
+  // instead and the slab is a bowl: the backward step up the ray climbs the
+  // bowl's near side as fast as it climbs out of the water, the walk starts
+  // inside the sheet, and it hands back a column a pixel or three off -- per
+  // fragment, differently, which is a patch of noise rather than parallax.
+  vec3 sheet = vec3(vBent.x, vBent.y + bendDrop(vBent.xz), vBent.z);
+  vec3 view = normalize(sheet - eye);
   vec3 hit;
   vec2 col;
   float face;
   float axis;
-  relief(vBent, view, hit, col, face, axis);
+  relief(sheet, view, hit, col, face, axis);
   // and the bar's centre, so a column is sampled and reflected from one
   // place rather than from wherever inside it the fragment happened to land
   vec3 surf = vec3(col.x + 0.5, hit.y, col.y + 0.5);
@@ -1001,7 +1053,7 @@ vec4 effect(mediump vec4 color, Image tex, mediump vec2 tc, mediump vec2 sc) {
   vec3 rgb = mix(base, refl, clamp(f, 0.0, 1.0));
 
 #ifdef VOXEL_GRID
-  rgb *= 1.0 - gridDark * columnSeam(hit, vBent, axis);
+  rgb *= 1.0 - gridDark * columnSeam(hit, sheet, axis);
 #endif
   return vec4(rgb, 1.0) * color;
 }
