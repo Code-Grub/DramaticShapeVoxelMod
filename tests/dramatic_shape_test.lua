@@ -384,11 +384,17 @@ end
 Pipelines.setLevel("voxel", 2)
 local hookedRows = Runtime.call("ui.options.rows", function(_, r) return r end,
                                { data = Data }, { { id = "text_speed" } })
-T.eq(#hookedRows, 8, "the options hook added a row per setting")
-local grid, curve, water = hookedRows[2], hookedRows[3], hookedRows[4]
-local battles, backRow, daytime = hookedRows[5], hookedRows[6], hookedRows[7]
--- the AA row is hookedRows[8]; it is read in its own block below, because
--- this chunk is one main function and has 200 local slots to spend
+T.eq(#hookedRows, 13,
+  "the options hook added the upstream and visible Battle Art settings")
+local hookedByLabel = {}
+for _, row in ipairs(hookedRows) do hookedByLabel[row.label] = row end
+local grid, curve, water = hookedByLabel["V-GRID"], hookedByLabel["V-CURVE"],
+                           hookedByLabel.WATER
+local battles, battleArt, daytime = hookedByLabel["3D-BTL"],
+                                    hookedByLabel["BATTLE ART"],
+                                    hookedByLabel.DAYTIME
+-- the AA row is read in its own block below, because this chunk is one main
+-- function and has 200 local slots to spend
 T.eq(water.label, "WATER", "the water row carries its label")
 T.eq(water.value(), "FULL",
   "and defaults to FULL -- reflections are the point of having the row")
@@ -406,12 +412,12 @@ T.eq(battles.label, "3D-BTL", "the overworld-battle row carries its label")
 T.eq(battles.value(), "ON",
   "overworld battles are on by default -- the mode's headline is the world "
   .. "in 3D, and a battle is where the player spends half the game")
-T.eq(backRow.label, "BACK SPRITES", "the back-pic row carries its label")
-T.eq(backRow.value(), "OFF",
-  "and is off by default -- what the mode advertises is BOTH mons out on the "
-  .. "map, so the classic slot is opt-in")
-T.check(backRow.id ~= battles.id and backRow.id:find("battleBack", 1, true),
-  "on its own key, so it persists beside 3D-BTL rather than over it")
+T.eq(battleArt.value(), "STATIC",
+  "the merged menu retains the bring-your-own-art default")
+T.eq(hookedByLabel.PLAYER.value(), "FRONT SPRITES",
+  "the Battle Art player-view row supersedes upstream's boolean back row")
+T.eq(hookedByLabel["BACK PLACEMENT"].value(), "AUTO",
+  "and its mode-aware placement row remains available")
 
 -- stepping writes through to the one place both rows read
 local settingGame = { save = { options = {} }, mods = { modOptions = {} } }
@@ -477,7 +483,7 @@ do
 local AntiAlias = run.loader.exports.DRAMATIC_SHAPE.lib.require("AntiAlias")
 local VoxelGrid = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelGrid")
 local aaGame = { save = { options = {} }, mods = { modOptions = {} } }
-local aa = hookedRows[8]
+local aa = hookedByLabel.AA
 T.eq(aa.label, "AA", "the anti-aliasing row carries its label")
 T.eq(aa.value(), "OFF",
   "and starts off -- supersampling is a cost knob, and a mod must not spend "
