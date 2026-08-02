@@ -69,6 +69,9 @@
 - **Platinum static back importer.** The Gen 4 authoring tool resolves reused
   `4d` sprites and `4p` replacements per species, selecting the male member of
   a dimorphic pair as the deterministic Gen 1 default.
+- **Black/White static back importer.** The Gen 5 authoring tool copies all
+  151 `back-normal` source PNGs without changing their pixels or transparency,
+  independently of the existing animated Gen 5 atlas collection.
 
 ## 1.3.0
 

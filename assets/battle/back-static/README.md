@@ -56,6 +56,11 @@ It discovers both Platinum `Spr b 4p` files and reused Diamond/Pearl `Spr b
 4d` files. When the archive provides a male/female pair, the male image is the
 predictable Gen 1 default, matching the animated Gen 4 front importer.
 
+For Gen 5, `python tools/import_black_white_static_back_sprites.py --root .`
+copies the first 151 Black/White `back-normal` PNGs unchanged into
+`back-static/gen5`. These files are used only by STATIC mode; ANIMATED + GEN 5
+continues to read atlases from `back-animated/gen5`.
+
 `BACK PLACEMENT` can override the layer for comparison. AUTO uses supplied
 generation PNGs in the world and keeps a missing ANIMATED fallback on OG UI;
 WORLD and OG UI force either presentation.

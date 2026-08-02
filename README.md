@@ -99,6 +99,10 @@ Run `python tools/import_platinum_back_sprites.py --root .` to populate the
 static GEN 4 back set. It follows the Platinum category's mixture of `4p` and
 reused `4d` files and chooses the male image for a dimorphic species.
 
+Run `python tools/import_black_white_static_back_sprites.py --root .` to
+populate static GEN 5 with the first 151 Black/White back-normal PNGs. This
+does not replace or alter the animated GEN 5 atlas collection.
+
 `BACK PLACEMENT: AUTO` keeps STATIC-mode player backs in the world, including
 ROM fallbacks. Under ANIMATED, supplied Gen 1–4 PNGs and Gen 5 atlases stay in
 the world while a missing selection leaves the ROM backsprite on its OG UI
