@@ -35,19 +35,21 @@ youngster.png       bug-catcher.png     lass.png
 sailor.png          jr-trainer-m.png    jr-trainer-f.png
 pokemaniac.png      super-nerd.png      hiker.png
 biker.png           burglar.png         engineer.png
-unused-juggler.png  fisher.png          swimmer.png
+fisher.png          swimmer.png         agatha.png
 cue-ball.png        gambler.png         beauty.png
 psychic-tr.png      rocker.png          juggler.png
 tamer.png           bird-keeper.png     blackbelt.png
-rival1.png          prof-oak.png        chief.png
+rival1.png          prof-oak.png        lance.png
 scientist.png       giovanni.png        rocket.png
 cooltrainer-m.png   cooltrainer-f.png   bruno.png
 brock.png           misty.png           lt-surge.png
 erika.png           koga.png            blaine.png
 sabrina.png         gentleman.png       rival2.png
 rival3.png          lorelei.png         channeler.png
-agatha.png          lance.png
 
 Yellow's special Rocket pair uses `jessie-james.png`; other Rocket trainers
 use `rocket.png`. A missing file in the selected generation retains the ROM
 trainer picture. The runtime does not borrow it from either of the other sets.
+
+The front static sprites work differently than animated, to allow mix & match.
+Basically put any rightsized sprite named in here, and it will be in the game.
