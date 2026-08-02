@@ -2031,6 +2031,26 @@ T.eq(Battles.backPinned(), false,
   "with 3D-BTL off the setting decides nothing, whatever it is left at")
 T.eq(Battles.backSetting:get(), true, "without being rewritten underneath")
 
+-- Supplied back PNGs are already full-display art. Their visible silhouette,
+-- rather than the outer canvas, owns the classic x=26 / y=96 back-pic anchor.
+-- Symmetric grow-in changes size around the same centre, while transparent
+-- rows below the feet are compensated in proportion to the current growth.
+local pinX, pinY = Battles.backPinOffset(
+  { w = 80, center = 40, padBottom = 18 }, 1)
+T.eq(pinX, -22, "an 80px supplied back is centred on the classic OG UI anchor")
+T.eq(pinY, 18, "transparent rows below its feet are moved beneath the anchor")
+
+local growX, growY = Battles.backPinOffset(
+  { w = 80, center = 40, padBottom = 18 }, 0.5)
+T.eq(growX, -22, "symmetric send-out growth keeps that visible centre pinned")
+T.eq(growY, 9, "bottom-padding compensation follows send-out growth")
+
+local unevenX, unevenY = Battles.backPinOffset(
+  { w = 80, center = 35, padBottom = 10 }, 0.5)
+T.eq(unevenX, -19.5,
+  "an asymmetric silhouette is anchored by its alpha centre, not canvas centre")
+T.eq(unevenY, 5, "asymmetric art still lands its visible foot on the UI")
+
 -- ...so the row comes off the menu with it, on the same reasoning the mod's
 -- other absent rows come off: a row that no longer decides anything is worse
 -- than no row

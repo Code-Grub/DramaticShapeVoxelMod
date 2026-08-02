@@ -64,6 +64,10 @@
   one integer display rung below the battle letterbox (2x becomes native 1x),
   stays pixel-sharp and right-anchored, and no longer stretches across the
   arena far enough to cover the opposing Pokemon or the live textbox.
+- **Alpha-anchored OG UI backs.** Supplied species backs render at their native
+  1x instead of the ROM-only 2x default, sit on the classic left-side anchor,
+  and use their opaque bottom edge rather than transparent canvas padding to
+  meet the textbox. ROM backs and trainer intros retain upstream placement.
 - **No stale battle-entry dimmer.** Staged battles suppress the engine's
   translucent world-fade rectangle at the compositor boundary as well as
   clearing its fade state. The normal battle wipe, deliberate battle-exit

@@ -115,6 +115,31 @@ function OverworldBattle.backPinned()
          or false
 end
 
+-- A supplied species back is already a full-display PNG (56px and up), not
+-- the ROM's half-resolution 32px picture. OG UI draws it at native 1x and
+-- moves the COMPLETE engine draw so its alpha silhouette, rather than its
+-- transparent canvas, owns the classic player anchor. Keeping this as an
+-- outer translation preserves send-out growth, damage bounce and shake.
+local function pinnedSpeciesMetric()
+  local battle = session and session.battle
+  if not (battle and battle.player and battle.player.sprite)
+     or battle.showPlayerBack or not OverworldBattle.backPinned() then
+    return nil
+  end
+  local image = battle.player.sprite
+  if not BattleArt.isExternal(image) then return nil end
+  return BattleArt.metrics(image)
+end
+
+function OverworldBattle.backPinOffset(metric, grow)
+  if not metric then return 0, 0 end
+  local scale = tonumber(grow) or 1
+  local left = 8 + metric.w * (1 - scale) / 2
+  local center = left + metric.center * scale
+  return OverworldBattle.ANCHOR.player[1] - center,
+         (metric.padBottom or 0) * scale
+end
+
 -- ------- both mons face you
 --
 -- Standing on a map, seen from in front, a Pokemon showing you its BACK is
@@ -960,10 +985,11 @@ function OverworldBattle.install()
     -- to the screen -- and a twice-resampled Gen 1 pic is mush.
     if texturing then return 1 end
     -- The engine's trainer/back slot defaults to 2x because ROM back pictures
-    -- are authored at half display resolution. Our animated player-trainer
-    -- frames are already native 80x80 art. Keep those at 1x on OG UI without
-    -- changing ROM backs, static pictures, Pokemon, or world billboards.
+    -- are authored at half display resolution. Supplied species backs and
+    -- animated player-trainer frames are already full-display art, so both
+    -- stay native 1x on OG UI. ROM backs retain their intended 2x scale.
     local battle = session and session.battle
+    if side == "back" and pinnedSpeciesMetric() then return 1 end
     if side == "back" and AnimatedBattleArt.hasPlayerTrainerFrame(battle) then
       return 1
     end
@@ -1071,6 +1097,18 @@ function OverworldBattle.install()
       -- the mon, it would remap it to the wrong shade. SE_WAVY_SCREEN lasts a
       -- second and the hour survives it fine.
       local tint = not self.grayPics and shot.tint or nil
+      local metric = pinnedSpeciesMetric()
+      if metric then
+        local grow = self.player and self:growInScale(self.player) or nil
+        local dx, dy = OverworldBattle.backPinOffset(metric, grow)
+        love.graphics.push()
+        love.graphics.translate(math.floor(dx + 0.5), math.floor(dy + 0.5))
+        local ok, result = pcall(withTint, tint, innerPics, self, slide,
+                                 sx, sy, "player", skipMenuClip)
+        love.graphics.pop()
+        if not ok then error(result, 0) end
+        return result
+      end
       return withTint(tint, innerPics, self, slide, sx, sy, "player",
                       skipMenuClip)
     end
