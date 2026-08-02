@@ -2,9 +2,9 @@
 
 Optional animated player-back battle atlases are grouped here by generation.
 Local PNG files are ignored by Git. Authored back art faces right and is never
-mirrored. Only GEN 5 uses animated back atlases here. `BACK ART SET` choices
-GEN 1 through GEN 4 instead read single-frame PNGs from sibling folders
-`../back-static/gen1` through `../back-static/gen4`, with no atlas processing.
+mirrored. GEN 3 and GEN 5 use animated back atlases here. `BACK ART SET`
+choices GEN 1, GEN 2 and GEN 4 instead read single-frame PNGs from their
+sibling `../back-static` generation folders, with no atlas processing.
 Missing selected art retains the ROM back sprite in its original UI layer.
 This selector only affects ANIMATED mode.
 
@@ -44,6 +44,11 @@ The importer creates both the atlases and the selected set's shared metadata;
 users do not write one Lua file per Pokemon. Run
 `python tools/import_animated_sprites.py --set gen5` from the repository root
 to generate both Gen 5 fronts and backs.
+
+For Emerald, run `python tools/import_emerald_back_sprites.py --root .`. It
+converts all 151 `Spr b 3e` APNGs into `gen3` atlases, generates their shared
+Lua metadata, and also copies the corresponding `Spr b 3r` single-frame PNGs
+unchanged into `../back-static/gen3`.
 
 ## Gen 1 filename exceptions
 

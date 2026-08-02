@@ -20,9 +20,10 @@ ROM sprite.
 Under `BATTLE ART: STATIC`, all five choices read only these ordinary PNGs.
 Static GEN 5 never loads or decodes the similarly named animated atlas.
 
-Under `BATTLE ART: ANIMATED`, GEN 1 through GEN 4 use the same single-frame
-PNGs, while GEN 5 uses `back-animated/gen5`. If the selected file is absent or
-invalid, the ROM backsprite is used instead. An absent `gen1` directory does
+Under `BATTLE ART: ANIMATED`, GEN 3 and GEN 5 use atlases from their
+`back-animated` folders. GEN 1, GEN 2 and GEN 4 use these same single-frame
+PNGs. If the selected file is absent or invalid, the ROM backsprite is used
+instead. An absent `gen1` directory does
 not remove GEN 1 from the menu; it is an intentional empty slot for ROM-hack
 or other user-supplied artwork.
 
@@ -37,6 +38,10 @@ python tools/import_yellow_sgb_back_sprites.py --root .
 It writes the source PNG bytes unchanged into `back-static/gen1`. The artwork
 remains ignored by Git but is included by `tools/package_mod.ps1` in local test
 ZIPs.
+
+For Gen 3, `python tools/import_emerald_back_sprites.py --root .` copies the
+151 Emerald `Spr b 3r` source PNGs byte-for-byte into `back-static/gen3` while
+also preparing the separate animated `Spr b 3e` collection.
 
 `BACK PLACEMENT` can override the layer for comparison. AUTO uses supplied
 generation PNGs in the world and keeps a missing ANIMATED fallback on OG UI;

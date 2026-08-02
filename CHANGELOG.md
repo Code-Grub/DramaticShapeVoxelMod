@@ -40,7 +40,7 @@
   malformed atlases fall back per Pokemon to ROM art.
 - **Independent front/back sets.** `ANIM FRONT GEN` selects animated GEN 2,
   GEN 3, GEN 4, or GEN 5 fronts. `BACK ART SET` selects the static GEN 1–5 folder in
-  STATIC mode; ANIMATED uses static GEN 1–4 PNGs or animated GEN 5 atlases.
+  STATIC mode; ANIMATED uses animated GEN 3/5 atlases or static GEN 1/2/4 PNGs.
   The mode always decides whether atlas decoding is allowed. Supplied backs
   are world geometry; missing or malformed art falls back to ROM.
 - **Independent back placement.** `BACK PLACEMENT: AUTO / WORLD / OG UI`

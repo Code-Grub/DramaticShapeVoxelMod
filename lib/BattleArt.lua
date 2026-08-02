@@ -11,9 +11,8 @@ BattleArt.frontAnimationSetting = ModSetting.new("frontAnimatedSet", "ANIM FRONT
   { "gen2", "gen3", "gen4", "gen5" },
   { "GEN 2", "GEN 3", "GEN 4", "GEN 5" })
 -- The selected generation names the static back folder in STATIC mode. In
--- ANIMATED mode Gen 1-4 still use those single images, while Gen 5 selects
--- the animated atlas collection. The mode, not the generation, decides the
--- decoder.
+-- ANIMATED mode uses atlases for Gen 3 and Gen 5; Gen 1, 2 and 4 use their
+-- single images. The mode, not just the generation, decides the decoder.
 BattleArt.backAnimationSetting = ModSetting.new("backAnimatedSet", "BACK ART SET",
   { "gen1", "gen2", "gen3", "gen4", "gen5" },
   { "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5" }, 5)

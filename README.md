@@ -39,7 +39,7 @@ menu.
 | the **PLAYER ART** options row | PNG / GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 / ASH / GARY / ROM — choose the static player trainer battle-intro portrait; BATTLE ART: ROM pins it to ROM |
 | the **PLAYER ANIM** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 / ASH / GARY / ROM — choose a five-pose player intro while ANIMATED is selected |
 | the **ANIM FRONT GEN** options row | GEN 2 / GEN 3 / GEN 4 / GEN 5 — choose the animated front collection |
-| the **BACK ART SET** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 — STATIC always uses generation PNGs; ANIMATED uses Gen 1–4 PNGs or Gen 5 atlases |
+| the **BACK ART SET** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 — STATIC always uses generation PNGs; ANIMATED uses Gen 3/5 atlases and Gen 1/2/4 PNGs |
 | the **PLAYER** options row | FRONT SPRITES / BACK SPRITES — supplied art is world-placed; a missing selected back uses the ROM's UI-attached pic |
 | the **BACK PLACEMENT** options row | AUTO / WORLD / OG UI — use the mode-aware default or force every player back onto one layer |
 | battle HUD ink | HUD and dialogue glyphs stay white through every battle phase and receive a one-pixel dark shadow over transparent panels |
@@ -73,9 +73,9 @@ their README contracts. `tools/package_mod.ps1` nevertheless includes local
 PNGs from them in a test ZIP, so artwork can stay private and uncommitted.
 `BATTLE ART: ANIMATED` reads independent `ANIM FRONT GEN` and `BACK ART SET`
 choices. Front choices remain animated atlases, including converted
-Diamond/Pearl APNGs for GEN 4. Back GEN 1 through GEN 4 read
-ordinary species PNGs from `back-static/gen1` through `back-static/gen4`; they
-need no atlas or metadata. Back GEN 5 reads `back-animated/gen5` atlases. A
+Diamond/Pearl APNGs for GEN 4. Animated back GEN 3 and GEN 5 read atlases from
+`back-animated/gen3` and `back-animated/gen5`. Back GEN 1, GEN 2 and GEN 4 read
+ordinary species PNGs from their `back-static` generation folders. A
 loaded back is world-placed, lit, depth-occluded and shadowed. If its selected
 PNG or atlas is missing or malformed, the unmodified ROM backsprite remains in
 the original UI layer, including its normal battle motion and filtering.
@@ -84,6 +84,11 @@ GEN 5, reads only `back-static/<generation>/<species>.png`; it never inspects
 an animated atlas. GEN 1 remains selectable when its directory is absent so
 users can create it for ROM-hack art. `ANIM FRONT GEN` remains exclusive to
 ANIMATED, and ROM ignores both selectors.
+
+Run `python tools/import_emerald_back_sprites.py --root .` to import both the
+animated Emerald `Spr b 3e` backs and the static `Spr b 3r` backs for the
+first 151 species. The generated atlases and ordinary PNGs remain local,
+ignored artwork; only their shared atlas metadata is committed.
 
 `BACK PLACEMENT: AUTO` keeps STATIC-mode player backs in the world, including
 ROM fallbacks. Under ANIMATED, supplied Gen 1–4 PNGs and Gen 5 atlases stay in

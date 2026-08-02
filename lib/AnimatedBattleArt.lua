@@ -13,6 +13,10 @@ local SETS = {
   gen4 = V.data("animated_battle_sprites_gen4"),
   gen5 = V.data("animated_battle_sprites_gen5"),
 }
+local BACK_SETS = {
+  gen3 = V.data("animated_battle_backs_gen3"),
+  gen5 = SETS.gen5,
+}
 local PLAYER_SETS = V.data("animated_player_trainers")
 local AnimatedBattleArt = {}
 
@@ -170,7 +174,8 @@ local function definition(battler, side)
   local key = species and tostring(species):upper()
   local setting = side == "back" and BattleArt.backAnimationSetting
                                   or BattleArt.frontAnimationSetting
-  local selected = SETS[setting:get()]
+  local collections = side == "back" and BACK_SETS or SETS
+  local selected = collections[setting:get()]
   local bySide = selected and key and selected[key]
   return bySide and bySide[side] or nil
 end
@@ -249,7 +254,7 @@ function AnimatedBattleArt.update(battle, dt)
   local playerSide = BattleArt.playerSide()
   if playerSide == "back" then
     local generation = BattleArt.backAnimationSetting:get()
-    if generation == "gen5" then
+    if generation == "gen3" or generation == "gen5" then
       updateBattler(battle.player, "back", dt, mode)
     else
       updateStaticBack(battle.player, generation, mode)
