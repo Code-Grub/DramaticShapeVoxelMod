@@ -1849,6 +1849,12 @@ T.eq(Art.frontAnimationSetting.labels[1], "GEN 1",
   "the new collection has the expected options-menu label")
 T.eq(Art.frontAnimationSetting.defaultIndex, 2,
   "adding Gen 1 does not change the established Gen 2 default")
+T.eq(Art.playerAnimationSetting.values[1], "png",
+  "animated player intros expose the ordinary player.png choice")
+T.eq(Art.playerAnimationSetting.labels[1], "PNG",
+  "the static animated-mode portrait has the expected menu label")
+T.eq(Art.playerAnimationSetting.defaultIndex, 2,
+  "adding PNG does not change the established Gen 1 player default")
 T.eq(Battles.flashing(nil), false, "no battle, no flash")
 T.eq(Battles.flashing({ fx = {}, frame = 0 }), false,
   "a battle with no flash counter is not flashing")
@@ -1909,9 +1915,9 @@ do
 local hudShot = { lx = 100, ly = 12, scale = 3, pw = 1000, ph = 500 }
 local hudRects, bandPlacement = Battles.snapRects(hudShot)
 local hudRect = Battles.HUD_RECT
-local playerScale = hudShot.scale - 1
+local hudScale = hudShot.scale - 1
 
-T.eq(hudRects.enemy[1], 2 * hudShot.scale,
+T.eq(hudRects.enemy[1], 2 * hudScale,
   "the foe's panel keeps its two-logical-pixel left inset")
 T.eq(hudRects.player[1] + hudRects.player[3], hudShot.pw,
   "and the player's ends at the right one")
@@ -1926,14 +1932,16 @@ T.eq(hudRects.enemy[2], hudShot.ly + hudRect.enemy[2] * hudShot.scale,
 T.eq(hudRects.player[2], hudShot.ly + hudRect.player[2] * hudShot.scale,
   "and so does the player's")
 
--- The foe retains the frame scale. The near/player block takes one smaller
--- INTEGER rung, keeping every source pixel square without covering the foe.
-T.eq(hudRects.enemy[3], hudRect.enemy[3] * hudShot.scale,
-  "a block is its own width at the frame's scale")
-T.eq(hudRects.player[3], hudRect.player[3] * playerScale,
-  "the player block is one integer display rung narrower")
-T.eq(hudRects.player[4], hudRect.player[4] * playerScale,
+-- Both status blocks take one smaller INTEGER rung, keeping every source
+-- pixel square without either block dominating or covering the arena.
+T.eq(hudRects.enemy[3], hudRect.enemy[3] * hudScale,
+  "the foe block is one integer display rung narrower")
+T.eq(hudRects.enemy[4], hudRect.enemy[4] * hudScale,
   "and one integer display rung shorter")
+T.eq(hudRects.player[3], hudRect.player[3] * hudScale,
+  "the player block uses that same compact integer rung")
+T.eq(hudRects.player[4], hudRect.player[4] * hudScale,
+  "and therefore matches the foe's pixel scale")
 
 -- the band each block is cut out of is placed so the block lands on the rect
 -- above; that is what the panel and the glyphs agreeing depends on
@@ -1953,8 +1961,8 @@ local snug = { lx = 0, ly = 0, scale = 4, pw = 160 * 4, ph = 144 * 4 }
 local snugRects = Battles.snapRects(snug)
 T.eq(snugRects.player[1] + snugRects.player[3], snug.pw,
   "on a GB-shaped window the compact player block keeps the right edge")
-T.eq(snugRects.enemy[1], 2 * snug.scale,
-  "and the foe retains its readable left inset")
+T.eq(snugRects.enemy[1], 2 * (snug.scale - 1),
+  "and the compact foe retains its readable left inset")
 
 -- the bands together cover every row drawHUDs draws into (0-96: the two HUDs,
 -- the pokeball rows and the safari ball count) and never overlap, so nothing it

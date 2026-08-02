@@ -268,7 +268,8 @@ end
 -- display rung smaller than the battle letterbox. At the common 2x layout it
 -- is therefore native 1x: every source pixel stays a sharp screen pixel while
 -- the block no longer reaches halfway across the arena and covers the foe.
--- The enemy block retains the letterbox scale.
+-- The enemy block uses that same compact rung, so neither side dominates the
+-- screen merely because its HUD was left at the letterbox scale.
 --
 -- They cannot simply be MOVED there: the engine draws them into the 160x144 UI
 -- canvas and everything outside it is clipped away. So the layer is rendered to
@@ -295,28 +296,28 @@ OverworldBattle.HUD_BAND = {
 -- which is the whole cost of the snap and is invisible.
 function OverworldBattle.snapRects(shot)
   local s = shot.scale
-  local ps = math.max(1, s - 1)
+  local hs = math.max(1, s - 1)
   local e, p = OverworldBattle.HUD_RECT.enemy, OverworldBattle.HUD_RECT.player
   -- Leave two logical pixels between the foe's name and the window edge.
   -- The whole enemy band moves with the panel, so long names and HUD shakes
   -- keep their original internal alignment instead of being clipped.
-  local ex = (2 - e[1]) * s
-  local px = shot.pw - (p[1] + p[3]) * ps    -- player: right edge to the far side
+  local ex = (2 - e[1]) * hs
+  local px = shot.pw - (p[1] + p[3]) * hs    -- player: right edge to the far side
   local rects = {
-    enemy = { ex + e[1] * s, shot.ly + e[2] * s, e[3] * s, e[4] * s },
-    player = { px + p[1] * ps, shot.ly + p[2] * s,
-               p[3] * ps, p[4] * ps },
+    enemy = { ex + e[1] * hs, shot.ly + e[2] * s, e[3] * hs, e[4] * hs },
+    player = { px + p[1] * hs, shot.ly + p[2] * s,
+               p[3] * hs, p[4] * hs },
   }
   local playerBand = OverworldBattle.HUD_BAND.player
   return rects, {
-    enemy = { x = ex, y = shot.ly, scale = s },
+    enemy = { x = ex, y = shot.ly, scale = hs },
     -- Preserve the HUD's original top row while shrinking its internal
     -- distance from the band boundary. This leaves clear world between its
     -- lower bracket and the live textbox rather than placing it underneath.
     player = {
       x = px,
-      y = shot.ly + p[2] * s - (p[2] - playerBand[2]) * ps,
-      scale = ps,
+      y = shot.ly + p[2] * s - (p[2] - playerBand[2]) * hs,
+      scale = hs,
     },
   }
 end
@@ -986,8 +987,9 @@ function OverworldBattle.install()
     if texturing then return 1 end
     -- The engine's trainer/back slot defaults to 2x because ROM back pictures
     -- are authored at half display resolution. Supplied species backs and
-    -- animated player-trainer frames are already full-display art, so both
-    -- stay native 1x on OG UI. ROM backs retain their intended 2x scale.
+    -- custom player-trainer PNGs are already full-display art, so both static
+    -- images and atlas frames stay native 1x on OG UI. ROM backs retain their
+    -- intended 2x scale.
     local battle = session and session.battle
     if side == "back" and pinnedSpeciesMetric() then return 1 end
     if side == "back" and AnimatedBattleArt.hasPlayerTrainerFrame(battle) then

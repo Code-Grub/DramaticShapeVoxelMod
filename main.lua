@@ -357,9 +357,10 @@ local SETTINGS = {
       return stagedBattles() and (mode == "static" or mode == "rom")
     end, full = true },
   { BattleArt.playerAnimationSetting,
-    "Choose the five-frame player trainer atlas under ANIMATED. Playback "
-    .. "starts with the leftward intro slide, runs once, and never loops. "
-    .. "Missing art and ROM retain the engine portrait.",
+    "Choose player.png as a static portrait or a five-frame player trainer "
+    .. "atlas under ANIMATED. Atlas playback starts with the leftward intro "
+    .. "slide, runs once, and never loops. Missing art and ROM retain the "
+    .. "engine portrait.",
     when = function()
       return stagedBattles() and BattleArt.setting:get() == "animated"
     end, full = true },

@@ -131,10 +131,34 @@ end
 local function restoreTrainer(battle)
   local state = battle and trainerStates[battle]
   if not state then return end
-  if battle.playerBackPic == state.frames[state.frame] then
+  if battle.playerBackPic == currentImage(state) then
     battle.playerBackPic = state.original
   end
   trainerStates[battle] = nil
+end
+
+local function updateStaticPlayerTrainer(battle, mode)
+  local image = BattleArt.namedImage("player", "back")
+  local state = trainerStates[battle]
+  if state and (state.kind ~= "static" or state.mode ~= mode
+                or state.image ~= image) then
+    restoreTrainer(battle)
+    state = nil
+  end
+  if not image or not battle.playerBackPic then
+    restoreTrainer(battle)
+    return
+  end
+  if not state then
+    state = { kind = "static", mode = mode, original = battle.playerBackPic,
+              image = image }
+    trainerStates[battle] = state
+  elseif battle.playerBackPic ~= state.image
+     and battle.playerBackPic ~= state.original then
+    trainerStates[battle] = nil
+    return
+  end
+  battle.playerBackPic = state.image
 end
 
 -- Five authored poses are tied to SlideTrainerPicOffScreen rather than to a
@@ -146,6 +170,10 @@ local function updatePlayerTrainer(battle, mode)
     return
   end
   local selected = BattleArt.playerAnimationSetting:get()
+  if selected == "png" then
+    updateStaticPlayerTrainer(battle, mode)
+    return
+  end
   local def = selected ~= "rom" and PLAYER_SETS[selected] or nil
   if not def or not battle.playerBackPic then
     restoreTrainer(battle)
@@ -159,7 +187,8 @@ local function updatePlayerTrainer(battle, mode)
   if not state then
     local frames = loadFrames(def, mode)
     if not frames then return end
-    state = { def = def, mode = mode, original = battle.playerBackPic,
+    state = { kind = "animated", def = def, mode = mode,
+              original = battle.playerBackPic,
               frames = frames, frame = 1 }
     trainerStates[battle] = state
   elseif battle.playerBackPic ~= state.frames[state.frame]
@@ -331,9 +360,10 @@ function AnimatedBattleArt.hasWorldBack(battler)
          and battler.sprite == currentImage(state) or false
 end
 
--- UI scaling needs to distinguish our native-resolution trainer atlas from
--- the ROM's deliberately half-resolution back picture. Both occupy the same
--- engine field, but only the ROM image should receive the Game Boy 2x scale.
+-- UI scaling needs to distinguish any supplied native-resolution player image
+-- (the static PNG or an animated atlas frame) from the ROM's deliberately
+-- half-resolution back picture. Both occupy the same engine field, but only
+-- the ROM image should receive the Game Boy 2x scale.
 function AnimatedBattleArt.hasPlayerTrainerFrame(battle)
   local state = battle and trainerStates[battle]
   return state and battle.playerBackPic == currentImage(state) or false

@@ -72,6 +72,12 @@
   ordinary single-frame species PNGs from `front-animated/gen1`, while the
   selected five-frame player-trainer introduction continues independently.
   Missing species retain their ROM front sprite; Gen 2–5 keep atlas playback.
+- **Static player portrait under ANIMATED.** `PLAYER ANIM: PNG` reads
+  `back-static/player.png` as a single non-looping portrait, preserving the
+  engine's intro slide and falling back to its ROM portrait when absent.
+- **Matched compact battle HUDs.** Enemy and player Pokémon status blocks now
+  share the same smaller integer display scale and retain their left/right
+  screen-edge anchors.
 - **No stale battle-entry dimmer.** Staged battles suppress the engine's
   translucent world-fade rectangle at the compositor boundary as well as
   clearing its fade state. The normal battle wipe, deliberate battle-exit

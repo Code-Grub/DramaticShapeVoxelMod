@@ -37,7 +37,7 @@ menu.
 | the **BATTLE ART** options row | STATIC / ANIMATED / ROM — use optional battle-only art, with a direct ROM fallback when a file or atlas is absent |
 | the **TRAINER ART** options row | GEN 1 / GEN 2 / GEN 3 — choose a static opponent-trainer collection |
 | the **PLAYER ART** options row | PNG / GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 / ASH / GARY / ROM — choose the static player trainer battle-intro portrait; BATTLE ART: ROM pins it to ROM |
-| the **PLAYER ANIM** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 / ASH / GARY / ROM — choose a five-pose player intro while ANIMATED is selected |
+| the **PLAYER ANIM** options row | PNG / GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 / ASH / GARY / ROM — choose a static `player.png` or five-pose player intro while ANIMATED is selected |
 | the **ANIM FRONT GEN** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 — choose a single-frame Gen 1 compatibility set or an animated Gen 2–5 collection |
 | the **BACK ART SET** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 — STATIC always uses generation PNGs; ANIMATED uses Gen 3/5 atlases and Gen 1/2/4 PNGs |
 | the **PLAYER** options row | FRONT SPRITES / BACK SPRITES — supplied art is world-placed; a missing selected back uses the ROM's UI-attached pic |
@@ -119,11 +119,13 @@ player trainer backs
 such as `back-static/gen1player.png`, `back-static/ashplayer.png`, or ROM.
 PNG is the default and reads `back-static/player.png`; every missing named
 choice tries that same generic PNG before falling back to ROM.
-In ANIMATED mode, `PLAYER ANIM` selects the corresponding five-frame strip
-from `back-animated`, or the engine portrait under ROM. Frame one holds during
-the stationary entrance pose. Frames two through five advance once with the
-engine's leftward intro slide and then stop; they do not loop. AUTO placement
-keeps this intro on OG UI, while WORLD and OG UI remain explicit overrides.
+In ANIMATED mode, `PLAYER ANIM: PNG` reads the static
+`back-static/player.png`. Named choices select the corresponding five-frame
+strip from `back-animated`, while ROM retains the engine portrait. Frame one
+holds during the stationary entrance pose. Frames two through five advance
+once with the engine's leftward intro slide and then stop; they do not loop.
+AUTO placement keeps this intro on OG UI, while WORLD and OG UI remain
+explicit overrides.
 Both the original five-by-64 strips and normalized five-by-80 strips are read
 at native resolution. Unlike the ROM's half-resolution player back, a custom
 animated trainer remains 1x when attached to OG UI. Use

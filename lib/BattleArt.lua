@@ -30,8 +30,8 @@ BattleArt.playerArtSetting = ModSetting.new(
   { "PNG", "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5", "ASH", "GARY", "ROM" })
 BattleArt.playerAnimationSetting = ModSetting.new(
   "playerAnimatedSet", "PLAYER ANIM",
-  { "gen1", "gen2", "gen3", "gen4", "gen5", "ash", "gary", "rom" },
-  { "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5", "ASH", "GARY", "ROM" })
+  { "png", "gen1", "gen2", "gen3", "gen4", "gen5", "ash", "gary", "rom" },
+  { "PNG", "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5", "ASH", "GARY", "ROM" }, 2)
 
 -- BATTLE ART: ROM owns the normal player portrait as completely as it owns
 -- species art. Keep the visible PLAYER ART row honest instead of leaving a

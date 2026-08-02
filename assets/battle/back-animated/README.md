@@ -13,11 +13,13 @@ generation under `../back-static` instead.
 in the world and leaves a missing atlas's ROM fallback on OG UI. Forcing OG UI
 is supported for comparison, but large atlas frames may crop there.
 
-This folder also accepts five-pose player-trainer strips selected by the
-`PLAYER ANIM` row in ANIMATED mode:
+`PLAYER ANIM` also controls the player-trainer introduction in ANIMATED mode.
+PNG reads the ordinary static `../back-static/player.png`; the named choices
+below read five-pose strips from this folder:
 
 | Option | Filename |
 | --- | --- |
+| PNG | `../back-static/player.png` (single static image) |
 | GEN 1 | `gen1player.png` |
 | GEN 2 | `gen2player.png` |
 | GEN 3 | `gen3player.png` |
@@ -27,14 +29,13 @@ This folder also accepts five-pose player-trainer strips selected by the
 | GARY | `garyplayer.png` |
 | ROM | no file; use the engine portrait |
 
-Each PNG is one horizontal row of exactly five equal-width frames. Existing
-320-pixel strips are read as five 64-pixel cells; the recommended 400x80
-format is five 80x80 cells. Copy poses into
+Each named strip is one horizontal row of exactly five equal-width frames.
+The recommended 400x80 format is five 80x80 cells. Copy poses into
 `tools/player-animation-template-400x80.png`, but remove the coloured guide
 dividers in the finished PNG. The first frame holds while the portrait is
 stationary; frames two through five play once as the trainer slides left and
-then stop. The animation never loops and is never resampled. Missing or
-malformed selected art falls back to the ROM portrait. Under `BACK PLACEMENT:
+then stop. The animation never loops and is never resampled. A missing static
+PNG or malformed selected strip falls back to the ROM portrait. Under `BACK PLACEMENT:
 AUTO`, player-trainer animation uses OG UI; WORLD and OG UI can override it.
 Custom player frames remain 1x on OG UI, while its ROM fallback retains the
 engine's intended 2x scale.

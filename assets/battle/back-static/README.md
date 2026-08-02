@@ -2,7 +2,7 @@
 
 Drop `<species>.png` player back sprites into a generation subfolder. Art is
 used as authored and is not mirrored; it should face right toward the
-opponent. Files may use any pixel dimensions and require no Lua or metadata.
+opponent. Files may use 96x96 pixel dimensions and require no Lua or metadata.
 
 These local PNGs are ignored by Git. Missing or invalid files fall back to the
 ROM sprite.
@@ -18,14 +18,14 @@ ROM sprite.
 - `back-static/gen5/<species>.png`
 
 Under `BATTLE ART: STATIC`, all five choices read only these ordinary PNGs.
-Static GEN 5 never loads or decodes the similarly named animated atlas.
+Static GEN5 never loads or decodes the similarly named animated GEN5 atlas.
 
 Under `BATTLE ART: ANIMATED`, GEN 3 and GEN 5 use atlases from their
 `back-animated` folders. GEN 1, GEN 2 and GEN 4 use these same single-frame
 PNGs. If the selected file is absent or invalid, the ROM backsprite is used
 instead. An absent `gen1` directory does
 not remove GEN 1 from the menu; it is an intentional empty slot for ROM-hack
-or other user-supplied artwork.
+artwork to be dropped or other user-supplied artwork.
 
 For a complete Gen 1 set with prepared transparency, the optional importer
 downloads the 151 Pokemon Yellow Super Game Boy back sprites from
@@ -81,9 +81,10 @@ Filenames are lowercase. The same names apply in every battle-art folder.
 
 ## Static player-side trainer backs
 
-This folder supplies the static `PLAYER ART` portraits. ANIMATED mode instead
-reads the five-pose player strips documented in `../back-animated/`. Professor
-Oak and Old Man remain static and always resolve here:
+This folder supplies the static `PLAYER ART` portraits. ANIMATED mode normally
+reads the five-pose player strips documented in `../back-animated/`, but its
+`PLAYER ANIM: PNG` choice also reads `player.png` here. Professor Oak and Old
+Man remain static and always resolve here:
 
 | Battle role | Expected filename |
 | --- | --- |
