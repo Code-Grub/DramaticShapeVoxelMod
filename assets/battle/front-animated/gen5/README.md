@@ -1,6 +1,9 @@
 # Generation 5 animated front sprites
 
-Source reference: [Black/White animated front sprites — Pokémon Database](https://img.pokemondb.net/sprites/black-white/anim/normal/)
+Source reference: [Pokémon Database sprite archive](https://pokemondb.net/sprites)
+
+The importer downloads individual files using the documented asset pattern,
+for example `https://img.pokemondb.net/sprites/black-white/anim/normal/pikachu.gif`.
 
 ```powershell
 python tools/import_animated_sprites.py --set gen5 --root .

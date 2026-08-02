@@ -1,6 +1,9 @@
 # Generation 5 animated back sprites
 
-Source reference: [Black/White animated back sprites — Pokémon Database](https://img.pokemondb.net/sprites/black-white/anim/back-normal/)
+Source reference: [Pokémon Database sprite archive](https://pokemondb.net/sprites)
+
+The importer downloads individual files using the documented asset pattern,
+for example `https://img.pokemondb.net/sprites/black-white/anim/back-normal/pikachu.gif`.
 
 From the repository root, run:
 
