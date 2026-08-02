@@ -26,6 +26,18 @@ invalid, the ROM backsprite is used instead. An absent `gen1` directory does
 not remove GEN 1 from the menu; it is an intentional empty slot for ROM-hack
 or other user-supplied artwork.
 
+For a complete Gen 1 set with prepared transparency, the optional importer
+downloads the 151 Pokemon Yellow Super Game Boy back sprites from
+[Bulbagarden Archives](https://archives.bulbagarden.net/wiki/Category:Yellow_back_sprites_(Super_Game_Boy)):
+
+```powershell
+python tools/import_yellow_sgb_back_sprites.py --root .
+```
+
+It writes the source PNG bytes unchanged into `back-static/gen1`. The artwork
+remains ignored by Git but is included by `tools/package_mod.ps1` in local test
+ZIPs.
+
 `BACK PLACEMENT` can override the layer for comparison. AUTO uses supplied
 generation PNGs in the world and keeps a missing ANIMATED fallback on OG UI;
 WORLD and OG UI force either presentation.
