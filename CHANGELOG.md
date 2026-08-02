@@ -81,8 +81,11 @@
 - **Native static player portraits on OG UI.** Supplied `PLAYER ART` PNGs now
   remain at native 1x when OG UI placement is forced. Only the deliberately
   half-resolution ROM player portrait receives the engine's 2x UI scale.
-- **Player HUD edge spacing.** The compact player status block now sits one
-  logical pixel left of the right window edge, retaining integer pixel scale.
+- **Player HUD edge spacing.** The compact player status block now sits two
+  logical pixels left of the right window edge, retaining integer pixel scale.
+- **Safe OG UI back-sprite bounds.** Wide supplied Pokemon backs retain the
+  classic centre anchor when possible and shift right only enough to keep
+  their opaque silhouette from clipping through the left UI-canvas edge.
 - **No stale battle-entry dimmer.** Staged battles suppress the engine's
   translucent world-fade rectangle at the compositor boundary as well as
   clearing its fade state. The normal battle wipe, deliberate battle-exit

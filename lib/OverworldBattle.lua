@@ -136,7 +136,13 @@ function OverworldBattle.backPinOffset(metric, grow)
   local scale = tonumber(grow) or 1
   local left = 8 + metric.w * (1 - scale) / 2
   local center = left + metric.center * scale
-  return OverworldBattle.ANCHOR.player[1] - center,
+  local dx = OverworldBattle.ANCHOR.player[1] - center
+  -- Wide supplied backs can extend farther left of the classic 32px slot
+  -- than its centre anchor has room for. Keep that centre when it fits, but
+  -- never let the opaque silhouette cross the UI canvas edge.
+  local opaqueLeft = left + (metric.x0 or 0) * scale
+  dx = math.max(dx, 1 - opaqueLeft)
+  return dx,
          (metric.padBottom or 0) * scale
 end
 
@@ -290,7 +296,7 @@ OverworldBattle.HUD_BAND = {
 -- glass is cut to, plus the x its band is blitted at.
 --
 -- The foe's panel starts near the window's left edge and the player panel keeps
--- one logical pixel clear of the right one. The vertical is untouched, so both
+-- two logical pixels clear of the right one. The vertical is untouched, so both
 -- stay on the rows the GB put them on. A band's own origin sits outside the
 -- window by the panel's inset --
 -- the couple of pixels a HUD shake can push past the edge are clipped there,
@@ -303,8 +309,8 @@ function OverworldBattle.snapRects(shot)
   -- The whole enemy band moves with the panel, so long names and HUD shakes
   -- keep their original internal alignment instead of being clipped.
   local ex = (2 - e[1]) * hs
-  -- Keep one logical pixel of breathing room at the right window edge.
-  local px = shot.pw - (p[1] + p[3] + 1) * hs
+  -- Keep two logical pixels of breathing room at the right window edge.
+  local px = shot.pw - (p[1] + p[3] + 2) * hs
   local rects = {
     enemy = { ex + e[1] * hs, shot.ly + e[2] * s, e[3] * hs, e[4] * hs },
     player = { px + p[1] * hs, shot.ly + p[2] * s,

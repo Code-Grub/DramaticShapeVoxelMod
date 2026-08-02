@@ -1919,8 +1919,8 @@ local hudScale = hudShot.scale - 1
 
 T.eq(hudRects.enemy[1], 2 * hudScale,
   "the foe's panel keeps its two-logical-pixel left inset")
-T.eq(hudRects.player[1] + hudRects.player[3], hudShot.pw - hudScale,
-  "and the player's keeps a one-logical-pixel right margin")
+T.eq(hudRects.player[1] + hudRects.player[3], hudShot.pw - 2 * hudScale,
+  "and the player's keeps a two-logical-pixel right margin")
 T.check(hudRects.enemy[1] < hudShot.lx,
   "so the foe's block has left the letterbox it used to sit in")
 T.check(hudRects.player[1] > hudShot.lx + hudRect.player[1] * hudShot.scale,
@@ -1957,11 +1957,12 @@ T.eq(bandPlacement.player.y
      hudRects.player[2], "the compact band preserves the player's top row")
 
 -- Even on a GB-shaped window the compact player block remains right-anchored,
--- with the same one-logical-pixel breathing room.
+-- with the same two-logical-pixel breathing room.
 local snug = { lx = 0, ly = 0, scale = 4, pw = 160 * 4, ph = 144 * 4 }
 local snugRects = Battles.snapRects(snug)
-T.eq(snugRects.player[1] + snugRects.player[3], snug.pw - (snug.scale - 1),
-  "on a GB-shaped window the player block keeps its one-pixel margin")
+T.eq(snugRects.player[1] + snugRects.player[3],
+  snug.pw - 2 * (snug.scale - 1),
+  "on a GB-shaped window the player block keeps its two-pixel margin")
 T.eq(snugRects.enemy[1], 2 * (snug.scale - 1),
   "and the compact foe retains its readable left inset")
 
@@ -2048,12 +2049,13 @@ T.eq(Battles.backPinned(), false,
 T.eq(Battles.backSetting:get(), true, "without being rewritten underneath")
 
 -- Supplied back PNGs are already full-display art. Their visible silhouette,
--- rather than the outer canvas, owns the classic x=26 / y=96 back-pic anchor.
+-- rather than the outer canvas, owns the classic x=26 / y=96 back-pic anchor
+-- whenever it fits. Wide full-size art is clamped inside the left canvas edge.
 -- Symmetric grow-in changes size around the same centre, while transparent
 -- rows below the feet are compensated in proportion to the current growth.
 local pinX, pinY = Battles.backPinOffset(
   { w = 80, center = 40, padBottom = 18 }, 1)
-T.eq(pinX, -22, "an 80px supplied back is centred on the classic OG UI anchor")
+T.eq(pinX, -7, "a wide supplied back keeps one opaque pixel inside the canvas")
 T.eq(pinY, 18, "transparent rows below its feet are moved beneath the anchor")
 
 local growX, growY = Battles.backPinOffset(
@@ -2066,6 +2068,11 @@ local unevenX, unevenY = Battles.backPinOffset(
 T.eq(unevenX, -19.5,
   "an asymmetric silhouette is anchored by its alpha centre, not canvas centre")
 T.eq(unevenY, 5, "asymmetric art still lands its visible foot on the UI")
+
+local paddedX = Battles.backPinOffset(
+  { w = 96, x0 = 24, center = 58, padBottom = 0 }, 1)
+T.eq(paddedX, -31,
+  "transparent left padding is spent before a wide silhouette is shifted")
 
 -- ...so the row comes off the menu with it, on the same reasoning the mod's
 -- other absent rows come off: a row that no longer decides anything is worse
