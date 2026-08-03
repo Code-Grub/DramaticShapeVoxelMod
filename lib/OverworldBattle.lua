@@ -370,7 +370,11 @@ end
 --
 -- nil when no overworld battle is running. Never more than one: battles do
 -- not nest.
-session = nil
+local session = nil
+
+local function isIOS()
+  return love.system and love.system.getOS and love.system.getOS() == "iOS"
+end
 
 local function game()
   return require("src.core.Game")
@@ -566,8 +570,9 @@ function OverworldBattle.update(dt)
     -- touches the finished arena. The HUDs go directly ON that backdrop,
     -- snapped out to the window's own
     -- edges (snapHUDs). Here rather than in the battle's draw for the same
-    -- reason the scene is: it binds a canvas of its own. Their only contrast
-    -- treatment is pure white ink plus a dark one-pixel shadow.
+    -- reason the scene is: it binds a canvas of its own. After the frost, so
+    -- the glass is frosted from the world alone and never from the glyphs
+    -- about to sit on it.
     local okHud, up = pcall(OverworldBattle.snapHUDs, session.battle, shot)
     session.snapped = (okHud and up) and true or false
     -- once per battle, not once per frame: a driver that cannot do this cannot
