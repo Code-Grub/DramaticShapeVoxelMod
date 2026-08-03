@@ -749,7 +749,7 @@ end
 -- known row. That known point is what the quad is then hung from.
 local TEX_AX, TEX_AY = 80, 96          -- forced pic centre and baseline
 local TRAINER_AX, TRAINER_AY = 124, 56 -- the intro trainer pic's own slot
-local OPPONENT_TRAINER_SCALE = 2       -- trainer cards only; Pokemon stay 1x
+local OPPONENT_TRAINER_SCALE = 1       -- trainer cards only; Pokemon stay 1x
 
 OverworldBattle.TEX_AX, OverworldBattle.TEX_AY = TEX_AX, TEX_AY
 
