@@ -27,6 +27,7 @@ below read five-pose strips from this folder:
 | GEN 5 | `gen5player.png` |
 | ASH | `ashplayer.png` |
 | GARY | `garyplayer.png` |
+| RED | `redplayer.png` |
 | ROM | no file; use the engine portrait |
 
 Each named strip is one horizontal row of exactly five equal-width frames.

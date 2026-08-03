@@ -18,4 +18,5 @@ return {
   gen5 = five("gen5player.png"),
   ash  = five("ashplayer.png"),
   gary = five("garyplayer.png"),
+  red  = five("redplayer.png"),
 }
