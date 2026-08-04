@@ -724,6 +724,27 @@ local function withoutBoxFill(battle, fn)
   if not ok then error(err, 0) end
 end
 
+-- WHITE arena fill: paint the box background (and anything else the engine
+-- fills inside the text-area draw) opaque white, so the engine's coloured BG
+-- palette -- orange on the intro flash, grey once the mons appear -- cannot
+-- show through. The text, border and cursor are drawn as glyphs, not fills,
+-- so they survive untouched. (Forcing the palette itself crashed PaletteFX,
+-- so we whiten at draw time instead.)
+local function whiteBoxFill(battle, fn)
+  local g = love.graphics
+  local rectangle = g.rectangle
+  g.rectangle = function(mode, ...)
+    if mode == "fill" then
+      g.setColor(1, 1, 1, 1)
+    end
+    return rectangle(mode, ...)
+  end
+  local ok, err = pcall(fn, battle)
+  g.rectangle = rectangle
+  g.setColor(1, 1, 1, 1)
+  if not ok then error(err, 0) end
+end
+
 -- ------- the hour's light, on a pic that is not geometry
 --
 -- Everything standing in the arena goes through the voxel shader, and that
@@ -1212,8 +1233,12 @@ function OverworldBattle.install()
     if not self.dramaticShapeDark and not inverted then
       return withoutBoxFill(battle, innerText)
     end
+    -- In WHITE mode the engine's box fill is a coloured palette colour (orange
+    -- on the intro flash, grey after) -- whiten it opaque so it reads as a
+    -- clean white panel under the inverted black ink.
+    local boxFn = inverted and whiteBoxFill or withoutBoxFill
     BattleHud.flipGlyphs(BattleScene.GB_W, BattleScene.GB_H,
-                         function() withoutBoxFill(battle, innerText) end,
+                         function() boxFn(battle, innerText) end,
                          inverted)
   end
 
