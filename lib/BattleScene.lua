@@ -507,14 +507,24 @@ function BattleScene.render(state, arena, textures, token)
       -- of being dimmed or colour-cast by the clock. Only the hour tint is
       -- neutral here; depth and alpha-shaped lighting/shadows stay active.
       if card.noDayTint then Voxel3D.dayTint({ 1, 1, 1 }) end
-      -- SPRITE LIGHT: UNLIT draws the card flat and full bright -- no day
-      -- tint and no shadow lookup -- so it stays readable on the white arena
-      -- fill (B) and matches the OG battle's unshaded sprites. SHADED (the
-      -- default) keeps the world's hour tint and its own cast shadow.
+      -- SPRITE LIGHT: UNLIT draws the card flat and full bright -- no cast
+      -- shadow (nil snug) AND no hour/day tint, so a cave or night tint does
+      -- not dim it. Most visible on the white arena fill, where a darkened
+      -- card would read wrong; but it is flat/full-bright everywhere. SHADED
+      -- (the default) keeps the tints and its own shadow, as intended.
       local unlit = UiBackplates.spritesUnlit()
+      local savedTint = Voxel3D.tint
+      if unlit then
+        Voxel3D.tint = { 1, 1, 1 }
+        Voxel3D.dayTint({ 1, 1, 1 })
+      end
       Voxel3D.draw(BattleBillboard.mesh(), card.tex, card.model,
                    BattleBillboard.PULL,
                    unlit and nil or ShadowMap.snug(card.model))
+      if unlit then
+        Voxel3D.tint = savedTint
+        Voxel3D.dayTint()
+      end
       if card.noDayTint then Voxel3D.dayTint() end
     end
     Voxel3D.glass(true)
