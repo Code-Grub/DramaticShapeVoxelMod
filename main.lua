@@ -878,6 +878,12 @@ OverworldBattle.install()
 FirstPerson.install()
 FreeMove.install()
 
+-- CamControl.install wires the battle-camera zoom (wheel / pinch) and the
+-- right-stick orbit: the inputs that steer the staged battle's rig. It is
+-- pcall-guarded inside OverworldBattle.update, so calling it here only
+-- matters when a battle is actually on screen.
+V.require("CamControl").install()
+
 -- The overworld's own pushBattle is the choke point for a wild encounter or
 -- a trainer, and it is wrapped. A battle that arrives some other way -- a
 -- link battle, a script pushing a BattleState directly -- reaches this
