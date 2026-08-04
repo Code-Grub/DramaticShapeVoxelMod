@@ -63,14 +63,20 @@ UiBackplates.textboxFill = ModSetting.new("textboxFill", "TEXTBOX FILL",
 -- -- NOT the player/opponent HUD blocks, which are separate rects.
 UiBackplates.TEXTBOX_KEYS = { box = true, moves = true, mimic = true }
 
--- The backplate alpha for the dialogue/menu boxes, or nil when the backplate
--- is off. HALF is a fixed semi-transparent BLACK slab (matching upstream's
--- default), not the frosted HUD panel -- a clean, bounded rectangle the text
--- sits on. Suppressed under ARENA FILL: WHITE, where the boxes are plain black
--- ink on the white field with a white drop-shadow.
-function UiBackplates.textboxAlpha()
-  if UiBackplates.arenaWhite() then return nil end
-  return UiBackplates.textboxFill:get() == "HALF" and 0.5 or nil
+-- The backplate colour/alpha for the dialogue/menu boxes, or nil when there
+-- is none. Two cases:
+--   * ARENA FILL: WHITE -- an OPAQUE WHITE slab, so no sprite (e.g. the mon
+--     standing behind the box) shows through; the box reads as a solid white
+--     Game Boy panel with the inverted black ink on top.
+--   * TEXTBOX FILL: HALF -- a translucent BLACK slab (upstream's default), so
+--     the words read over any ground.
+-- The player/opponent HUD blocks are never covered (see isTextboxKey).
+function UiBackplates.textboxFillStyle()
+  if UiBackplates.arenaWhite() then return { 1, 1, 1, 1 } end
+  if UiBackplates.textboxFill:get() == "HALF" then
+    return { 0, 0, 0, 0.5 }
+  end
+  return nil
 end
 
 -- Whether `key` is one of the dialogue/menu boxes that the HALF backplate
