@@ -395,7 +395,7 @@ function BattleScene.render(state, arena, textures, token)
   local cx, cy = arena.mid[1], arena.mid[2]
   -- the world extents the sun frustum is fitted to; the camera itself is
   -- framed by cam.fov, so these only have to describe the ground in shot
-  local vh = BattleCam.rigFor(arena).frameH * ph / (BattleScene.GB_H * s)
+  local vh = BattleCam.frameH(arena) * ph / (BattleScene.GB_H * s)
   local vw = vh * pw / ph
 
   -- the cards need the camera's eye to face it, so the rig has to be live

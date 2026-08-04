@@ -242,7 +242,7 @@ end
 -- Whether both mons would be in plain view from the battle camera.
 function BattleArena.clearance(map, arena)
   local BattleCam = V.require("BattleCam")
-  local ok, rig = pcall(BattleCam.rig, arena, 0)
+  local ok, rig = pcall(BattleCam.rig, arena, 0, true)
   if not (ok and rig and rig.eye) then return true end
   local eye = rig.eye
   local H = BattleArena.MON_H

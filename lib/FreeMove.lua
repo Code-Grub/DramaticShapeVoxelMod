@@ -1,11 +1,16 @@
--- Voxel world mode: free movement for the first-person rung.
+-- Voxel world mode: free movement for the free-roam rungs.
 --
 -- The engine walks a grid: sixteen frames per cell, four directions,
--- input locked mid-step. Inside a first-person camera that gait reads as
--- riding a rail, so while 1ST drives, this module replaces the WALK and
--- nothing else: the player's position becomes continuous, steered by the
--- camera's own yaw -- push forward and you go where you look, at any
--- angle, sliding along whatever you graze.
+-- input locked mid-step. Inside a camera that stands with the player that
+-- gait reads as riding a rail, so while 1ST or 3RD drives, this module
+-- replaces the WALK and nothing else: the player's position becomes
+-- continuous, steered by the camera's own yaw -- push forward and you go
+-- where you look, at any angle, sliding along whatever you graze.
+--
+-- Both rungs walk identically: the boom behind the shoulder (3RD) changes
+-- where the eye stands, not which way it points, and the walk was always
+-- rotated by the YAW. The one thing it does change is which way the body
+-- POINTS while it moves -- see bodyFacing in the tick.
 --
 -- THE GRID IS STILL THE GAME. Every fact the world cares about is a fact
 -- about cells -- what blocks, what warps, what rustles, what bites -- and
@@ -73,6 +78,11 @@ end
 
 function FreeMove.drop()
   pos = nil
+  -- and the body with it: while something else is walking the player --
+  -- a scripted move, a ledge hop, the grid walk off the rung -- the
+  -- engine's own four-direction facing is the whole truth about which way
+  -- they point, so the card must stop reading our finer one
+  FirstPerson.releaseBody()
 end
 
 -- named for the suite: the module's live position, nil while dropped
@@ -177,12 +187,21 @@ end
 -- ------- the blocked push
 --
 -- The grid game's blocked step is where half its verbs live: the map-edge
--- crossing, the ledge hop, the boulder shove, the route-gate warp fired
--- by collision, and the honest bonk. Hand the engine the quantised
--- direction and let its own handlers decide -- each one validates itself
--- (checkLedgeHop matches the tile pair, checkEdgeExit checks the bounds),
--- so calling them on every firm push is safe. Returns true when one of
--- them took the frame over.
+-- crossing, the ledge hop, the boulder shove, and the route-gate warp
+-- fired by collision. Hand the engine the quantised direction and let its
+-- own handlers decide -- each one validates itself (checkLedgeHop matches
+-- the tile pair, checkEdgeExit checks the bounds), so calling them on
+-- every firm push is safe. Returns true when one of them took the frame
+-- over.
+--
+-- The one verb NOT restated here is the bonk. On the grid a blocked step
+-- is a discrete event -- you pressed a direction, the game refused, and
+-- the bump answers you once. A free walk has no such moment: the body
+-- SLIDES along whatever it grazes, so a player walking a fence line or
+-- rounding a doorframe is blocked on one axis continuously, and the same
+-- sound comes out as a rattle for as long as they keep walking. It is
+-- feedback for a refusal that is not happening. The grid walk keeps its
+-- own bump (the engine's, in OverworldController) untouched.
 local function pushSpecials(state, dir, why)
   local p = state.player
   p.facing = dir      -- the handlers read the push off the facing
@@ -199,13 +218,14 @@ local function pushSpecials(state, dir, why)
       return true
     end
   end
-  if why ~= "entity" then
-    if (state.bumpCooldown or 0) <= 0 then
-      local Game = require("src.core.Game")
-      require("src.core.Sound").play(Game.data, "Collision")
-      state.bumpCooldown = 16
-    end
-  end
+  -- and NO bonk. The grid walk's collision sound marks a discrete event:
+  -- you pressed a direction, the step was refused, nothing happened. A
+  -- free walk has no such moment -- the body slides along every wall it
+  -- grazes, continuously, and a corridor taken at a slight angle is a
+  -- steady graze from end to end. Rate-limited or not, that came out as a
+  -- machine-gun of bonks for walking normally down a hallway. The wall
+  -- stopping you is the feedback; the sound only ever said so twice a
+  -- second whether or not anything had changed.
   return false
 end
 
@@ -231,14 +251,26 @@ function FreeMove.tick(state)
   local input = Game.input
 
   -- the head is the facing: what A talks to, what the sun's card shows,
-  -- which way a bonk points
-  p.facing = FirstPerson.compassFacing()
+  -- which way a bonk points. (A body that is WALKING may turn along its
+  -- travel instead -- see below, once there is a travel to turn along; a
+  -- standing one always faces where the camera looks, which is what makes
+  -- A predictable.) pointBody rather than compassFacing, so the card also
+  -- gets the CONTINUOUS bearing behind that compass point.
+  p.facing = FirstPerson.pointBody(0, 0)
 
-  if input:wasPressed("a") then
+  -- HORDE MODE takes both of these away for as long as it runs: there is
+  -- no pausing (START), and nobody stops to read a sign with the horde
+  -- coming (A, which is also the button the mode's own GAME OVER card
+  -- wants left unspent). Everything below -- the walk, the wall slide and
+  -- the blocked-push verbs, warps included -- keeps working, because the
+  -- crowd has to be able to follow the player through a door.
+  local suppressed = V.require("Horde").suppressWorldInput()
+
+  if not suppressed and input:wasPressed("a") then
     state:interact()
     return
   end
-  if input:wasPressed("start") then
+  if not suppressed and input:wasPressed("start") then
     require("src.core.Sound").play(Game.data, "Start_Menu")
     require("src.ui.Screens").push(Game, "StartMenu")
     return
@@ -266,6 +298,16 @@ function FreeMove.tick(state)
 
   if not moving then return end
 
+  -- and once there IS a direction of travel, the body may point along it
+  -- rather than along the head: on the boom (3RD) you can see yourself, so
+  -- a strafe has to look like walking sideways. In the head it is the head
+  -- either way -- bodyBearing says so.
+  p.facing = FirstPerson.pointBody(wx, wz)
+
+  -- the engine's own bonk clock, kept draining while the free walk has the
+  -- wheel: nothing here rings it (see pushSpecials), but stepping back onto
+  -- the grid must not inherit a cooldown frozen at whatever it held when
+  -- the rung was picked
   state.bumpCooldown = math.max(0, (state.bumpCooldown or 0) - 1)
 
   local speed = (Game.save and Game.save.onBike) and FreeMove.BIKE
@@ -307,8 +349,8 @@ function FreeMove.tick(state)
       FreeMove.drop()
       return
     end
-    -- the push handlers may have turned the facing; the head still rules
-    p.facing = FirstPerson.compassFacing()
+    -- the push handlers may have turned the facing; the walk still rules
+    p.facing = FirstPerson.pointBody(wx, wz)
   end
 end
 
