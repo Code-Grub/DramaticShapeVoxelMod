@@ -1288,7 +1288,15 @@ function OverworldBattle.install()
     -- field back to whatever it was (normally nil) lets the class method be
     -- found again
     local had = rawget(self, "activeBgp")
-    self.activeBgp = function() return nil end
+    -- ARENA FILL: WHITE -- the box/move-menu fills come from the BG palette's
+    -- colour 0 (orange on the intro flash, grey once the mons are up in this
+    -- hack). Force it to white so every battle box is a clean white panel
+    -- instead of inheriting the palette's tint.
+    if UiBackplates.arenaWhite() then
+      self.activeBgp = function() return { 0x1f, 0x1f, 0x1f } end
+    else
+      self.activeBgp = function() return nil end
+    end
     local g = love.graphics
     local rectangle = g.rectangle
     g.rectangle = function(mode, ...)
