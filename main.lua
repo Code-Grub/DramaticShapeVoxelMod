@@ -442,15 +442,14 @@ local SETTINGS = {
   { UiBackplates.arenaFill,
     "WHITE draws a solid white layer in front of the whole voxel world, "
     .. "with only the mons, their attack animations and the menus above it "
-    .. "-- the step between the OG battle and the full 3D one. Needs SPRITE "
-    .. "LIGHT: UNLIT to render the cards readable on white.",
-    when = function()
-      return stagedBattles() and UiBackplates.spritesUnlit()
-    end, full = true },
+    .. "-- the step between the OG battle and the full 3D one. Works with "
+    .. "SHADED or UNLIT sprites (UNLIT keeps the cards brighter on white).",
+    when = function() return stagedBattles() end, full = true },
   { UiBackplates.textboxFill,
-    "HALF lays a semi-transparent backplate behind the dialogue text box "
-    .. "only -- not the player or opponent HUD blocks -- so the words read "
-    .. "over any ground. OFF leaves the text box as the engine draws it.",
+    "HALF lays a semi-transparent BLACK backplate behind the dialogue box "
+    .. "and its move/mimic menus -- not the player or opponent HUD blocks -- "
+    .. "so the words read over any ground, like the upstream default. OFF "
+    .. "leaves the text box as the engine draws it.",
     full = true },
   -- Marked `full` for the opposite reason the battle rows are: this is not a
   -- knob on the look at all, it is what the look COSTS. FULL is a preset for

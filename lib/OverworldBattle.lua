@@ -1421,13 +1421,13 @@ function OverworldBattle.snapHUDs(battle, shot)
     g.setBlendMode("alpha")
     for key, rect in pairs(live) do
       BattleHud.panel(rect, shot, whiteInk, true)
-      -- TEXTBOX FILL: a semi-transparent backplate behind the dialogue box
-      -- only -- not the player/opponent HUD blocks, which are separate rects.
-      -- Bounded to the box's own GB-frame rectangle so it cannot venture
-      -- outside it. Drawn into the world image alongside the frosted panel.
+      -- TEXTBOX FILL: a semi-transparent BLACK backplate behind the dialogue
+      -- box and its move/mimic menus -- NOT the player/opponent HUD blocks,
+      -- which are separate rects. Bounded to the box's own GB-frame rect so it
+      -- cannot venture outside it. (Upstream's default is a black slab.)
       local a = UiBackplates.textboxAlpha()
-      if a and key == "box" then
-        g.setColor(1, 1, 1, a)
+      if a and UiBackplates.isTextboxKey(key) then
+        g.setColor(0, 0, 0, a)
         g.rectangle("fill", rect[1], rect[2], rect[3], rect[4])
         g.setColor(1, 1, 1, 1)
       end
@@ -1475,9 +1475,9 @@ function OverworldBattle.drawHudPanels(battle)
   for key, r in pairs(live) do
     BattleHud.panel(r, shot, true)
     local a = UiBackplates.textboxAlpha()
-    if a and key == "box" then
+    if a and UiBackplates.isTextboxKey(key) then
       local g = love.graphics
-      g.setColor(1, 1, 1, a)
+      g.setColor(0, 0, 0, a)
       g.rectangle("fill", r[1], r[2], r[3], r[4])
       g.setColor(1, 1, 1, 1)
     end

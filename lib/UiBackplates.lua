@@ -2,14 +2,15 @@
 --
 --   C) SPRITE LIGHT  UNLIT / SHADED   -- whether the mon cards receive the
 --      world's day tint and cast shadows (SHADED) or draw flat and full
---      bright (UNLIT). UNLIT is what the white arena fill (B) needs, so the
---      cards stay readable on a solid white field.
---
+--      bright (UNLIT). UNLIT keeps them readable on the white arena fill (B);
+--      SHADED is the default OG look and is also supported on white.
+
 --   B) ARENA FILL    WHITE / OFF       -- a solid white rendering layer in
 --      front of the whole voxel world, with only the mons, their attack
 --      animations and the menus above it. Hides the 3D terrain while keeping
 --      the animated sprites -- the middle step between the OG battle and the
---      full voxel one. Requires sprite light UNLIT.
+--      full voxel one. Works with SHADED or UNLIT sprites (UNLIT just keeps
+--      the cards brighter on white).
 --
 --   A) TEXTBOX FILL   HALF / OFF       -- a semi-transparent backplate behind
 --      the dialogue text box ONLY (the bottom 48px of the 160x144 battle
@@ -45,13 +46,11 @@ end
 UiBackplates.arenaFill = ModSetting.new("arenaFill", "ARENA FILL",
   { "OFF", "WHITE" }, { "OFF", "WHITE" })
 
--- Whether to draw the solid white layer over the voxel world. The white
--- layer only makes sense with sprites unlit, so this also reports false when
--- the player has left sprite light on SHADED -- a white field under shaded
--- (dimmed) cards would just be a dimmer white field for no reason.
+-- Whether to draw the solid white layer over the voxel world. Decoupled from
+-- sprite light: it works with SHADED cards too (they just read a little
+-- dimmer on white), so WHITE is offered independently of UNLIT.
 function UiBackplates.arenaWhite()
   return UiBackplates.arenaFill:get() == "WHITE"
-         and UiBackplates.spritesUnlit()
 end
 
 -- ------- A) TEXTBOX FILL -------
@@ -59,15 +58,25 @@ end
 UiBackplates.textboxFill = ModSetting.new("textboxFill", "TEXTBOX FILL",
   { "OFF", "HALF" }, { "OFF", "HALF" })
 
--- The backplate alpha for the dialogue text box, or nil when the backplate is
--- off. HALF is a fixed semi-transparent slab, not the frosted HUD panel -- the
--- point is a clean, bounded rectangle the text sits on, not a blurred window
--- into the world behind it. Suppressed under ARENA FILL: WHITE, where the
--- dialogue box is plain black ink on the white field with a white drop-shadow
--- (see BattleHud.shadowGlyphs) -- a half-white slab there would just wash out.
+-- The rect keys whose dialogue/menu boxes get the HALF backplate. The bottom
+-- text box ("box") and the move-select / mimic-select menus that open over it
+-- -- NOT the player/opponent HUD blocks, which are separate rects.
+UiBackplates.TEXTBOX_KEYS = { box = true, moves = true, mimic = true }
+
+-- The backplate alpha for the dialogue/menu boxes, or nil when the backplate
+-- is off. HALF is a fixed semi-transparent BLACK slab (matching upstream's
+-- default), not the frosted HUD panel -- a clean, bounded rectangle the text
+-- sits on. Suppressed under ARENA FILL: WHITE, where the boxes are plain black
+-- ink on the white field with a white drop-shadow.
 function UiBackplates.textboxAlpha()
   if UiBackplates.arenaWhite() then return nil end
   return UiBackplates.textboxFill:get() == "HALF" and 0.5 or nil
+end
+
+-- Whether `key` is one of the dialogue/menu boxes that the HALF backplate
+-- covers (as opposed to the HUD blocks).
+function UiBackplates.isTextboxKey(key)
+  return UiBackplates.TEXTBOX_KEYS[key] == true
 end
 
 return UiBackplates
