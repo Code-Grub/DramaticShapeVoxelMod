@@ -62,8 +62,11 @@ UiBackplates.textboxFill = ModSetting.new("textboxFill", "TEXTBOX FILL",
 -- The backplate alpha for the dialogue text box, or nil when the backplate is
 -- off. HALF is a fixed semi-transparent slab, not the frosted HUD panel -- the
 -- point is a clean, bounded rectangle the text sits on, not a blurred window
--- into the world behind it.
+-- into the world behind it. Suppressed under ARENA FILL: WHITE, where the
+-- dialogue box is plain black ink on the white field with a white drop-shadow
+-- (see BattleHud.shadowGlyphs) -- a half-white slab there would just wash out.
 function UiBackplates.textboxAlpha()
+  if UiBackplates.arenaWhite() then return nil end
   return UiBackplates.textboxFill:get() == "HALF" and 0.5 or nil
 end
 

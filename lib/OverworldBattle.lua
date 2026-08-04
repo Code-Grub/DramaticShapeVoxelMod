@@ -1206,10 +1206,15 @@ function OverworldBattle.install()
   function BattleState:drawTextArea()
     if not self.dramaticShapeShot then return innerText(self) end
     local battle = self
-    if not self.dramaticShapeDark then return withoutBoxFill(battle, innerText) end
-    BattleHud.flipGlyphs(BattleScene.GB_W, BattleScene.GB_H, function()
-      withoutBoxFill(battle, innerText)
-    end)
+    -- The WHITE arena fill inverts the box ink: black text with a white
+    -- drop-shadow on the white field, rather than the usual white-flip.
+    local inverted = UiBackplates.arenaWhite()
+    if not self.dramaticShapeDark and not inverted then
+      return withoutBoxFill(battle, innerText)
+    end
+    BattleHud.flipGlyphs(BattleScene.GB_W, BattleScene.GB_H,
+                         function() withoutBoxFill(battle, innerText) end,
+                         inverted)
   end
 
   local innerAnim = BattleState.drawAnimLayer
@@ -1312,13 +1317,17 @@ function OverworldBattle.install()
     -- window's edges and composited into the world image (snapHUDs). Drawing
     -- them here as well would show each block twice, once in each place.
     if self.dramaticShapeShot and snapped() then return end
-    if not (self.dramaticShapeShot and self.dramaticShapeDark) then
+    -- The WHITE arena fill inverts the HUD ink too: black glyphs with a white
+    -- drop-shadow. Force the flip pass (inverted) even though the verdict would
+    -- otherwise skip it over the now-white field.
+    local inverted = UiBackplates.arenaWhite()
+    if not (self.dramaticShapeShot and (self.dramaticShapeDark or inverted)) then
       return innerHUDs(self, slide)
     end
     local battle = self
     BattleHud.flipGlyphs(BattleScene.GB_W, BattleScene.GB_H, function()
       innerHUDs(battle, slide)
-    end)
+    end, inverted)
   end
 
   BattleState.dramaticShapeBattleHook = true
@@ -1356,13 +1365,14 @@ end
 -- Shadowed on the instance for this call only, the way drawZonePass shadows
 -- activeBgp: putting the field back to whatever it was (normally nil) lets the
 -- class method be found again.
-function OverworldBattle.hudTexture(battle, slide, dark)
+function OverworldBattle.hudTexture(battle, slide, dark, inverted)
   if not (innerHUDs and battle) then return nil end
   local had = rawget(battle, "colorMode")
   battle.colorMode = function() return false end
   local ok, layer = pcall(BattleHud.layerTexture,
                           BattleScene.GB_W, BattleScene.GB_H, dark,
-                          function() innerHUDs(battle, slide) end)
+                          function() innerHUDs(battle, slide) end,
+                          inverted)
   battle.colorMode = had
   return ok and layer or nil
 end
@@ -1395,11 +1405,12 @@ function OverworldBattle.snapHUDs(battle, shot)
   end
   -- Transparent backplates need one stable ink treatment through every phase
   -- of battle. Always whiten engine ink and add BattleHud's dark one-pixel
-  -- shadow; luminance-driven switching made trainer/send-out frames gray and
-  -- changed colour as the same fight moved between phases.
-  local whiteInk = true
+  -- shadow, UNLESS the WHITE arena fill is on -- then the box is plain black
+  -- ink with a WHITE drop-shadow (inverted), so it reads on the white field.
+  local whiteInk = not UiBackplates.arenaWhite()
   if session then session.dark = whiteInk end
-  local layer = OverworldBattle.hudTexture(battle, slide, whiteInk)
+  local layer = OverworldBattle.hudTexture(battle, slide, whiteInk,
+                                           UiBackplates.arenaWhite())
   if not layer then return false end
 
   local g = love.graphics

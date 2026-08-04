@@ -319,9 +319,24 @@ local SHADOW = [[
     return vec4(0.0, 0.0, 0.0, a) * color;
   }
 ]]
+-- The same recognition, but for the WHITE arena fill: the drop-shadow that
+-- keeps black ink from disappearing into a black tile becomes WHITE, because
+-- the field under it is now white. The glyphs themselves stay black (no flip),
+-- so the box reads as plain black text on white with a white halo.
+local WHITE_SHADOW = [[
+  uniform float ink;
+  uniform float opacity;
+  vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
+    vec4 p = Texel(tex, tc);
+    float luma = dot(p.rgb, vec3(0.299, 0.587, 0.114));
+    float a = (p.a > 0.0 && luma <= ink * p.a) ? p.a * opacity : 0.0;
+    return vec4(1.0, 1.0, 1.0, a) * color;
+  }
+]]
 
 local flipShader = nil
 local shadowShader = nil
+local whiteShadowShader = nil
 local layer = nil
 
 local function getFlip()
@@ -340,6 +355,14 @@ local function getShadow()
   return shadowShader or nil
 end
 
+local function getWhiteShadow()
+  if whiteShadowShader == nil then
+    local ok, sh = pcall(love.graphics.newShader, WHITE_SHADOW)
+    whiteShadowShader = (ok and sh) or false
+  end
+  return whiteShadowShader or nil
+end
+
 -- Whether the flip pass can run at all, for the shot driver's log.
 function BattleHud.flipReady()
   return getFlip() ~= nil
@@ -347,8 +370,12 @@ end
 
 -- Run `fn` with its ink whitened. Falls back to running it plainly when the
 -- scratch layer or the shader is unavailable, so a driver that cannot do
--- either gets the vanilla black HUD rather than no HUD.
-function BattleHud.flipGlyphs(w, h, fn)
+-- Run `fn` with its ink rendered. `inverted` (the WHITE arena fill) keeps the
+-- engine's own black glyphs and adds a WHITE drop-shadow instead of flipping
+-- them to white with a black shadow: on a solid white field black text reads
+-- and the white halo keeps it legible over any sprite behind it. Falls back to
+-- running fn plainly when the scratch layer or shader is unavailable.
+function BattleHud.flipGlyphs(w, h, fn, inverted)
   local sh = getFlip()
   if not sh then return fn() end
   if not layer or layer:getWidth() ~= w or layer:getHeight() ~= h then
@@ -371,6 +398,22 @@ function BattleHud.flipGlyphs(w, h, fn)
   end
   love.graphics.setBlendMode(prevBlend or "alpha", prevAlpha)
   if not ok then error(err, 0) end
+
+  if inverted then
+    -- WHITE arena fill: black ink (the fn above) with a white drop-shadow.
+    local white = getWhiteShadow()
+    if white then
+      love.graphics.setShader(white)
+      pcall(white.send, white, "ink", INK)
+      pcall(white.send, white, "opacity", SHADOW_ALPHA)
+      love.graphics.setColor(1, 1, 1, 1)
+      love.graphics.draw(layer, 1, 1)
+    end
+    love.graphics.setShader()
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.draw(layer, 0, 0)
+    return
+  end
 
   local shadow = getShadow()
   if shadow then
@@ -401,7 +444,7 @@ end
 -- whiten the terrain behind the glyphs along with them.
 local hudLayer = nil
 
-function BattleHud.layerTexture(w, h, dark, fn)
+function BattleHud.layerTexture(w, h, dark, fn, inverted)
   if not hudLayer or hudLayer:getWidth() ~= w or hudLayer:getHeight() ~= h then
     hudLayer = canvasOf(w, h, "nearest")
     if not hudLayer then return nil end
@@ -415,8 +458,9 @@ function BattleHud.layerTexture(w, h, dark, fn)
     g.setBlendMode("alpha")
     g.setColor(1, 1, 1, 1)
     -- flipGlyphs renders fn into its own scratch layer and composites the
-    -- whitened result into whatever is bound, which is this canvas
-    if dark then BattleHud.flipGlyphs(w, h, fn) else fn() end
+    -- whitened result into whatever is bound, which is this canvas. `inverted`
+    -- (the WHITE arena fill) keeps the glyphs black with a white drop-shadow.
+    if dark then BattleHud.flipGlyphs(w, h, fn, inverted) else fn() end
   end)
   if prevCanvas then g.setCanvas(prevCanvas) else g.setCanvas() end
   g.setBlendMode(prevBlend or "alpha", prevAlpha)
