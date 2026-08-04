@@ -760,13 +760,21 @@ function FirstPerson.install()
   local mouseHeld = {}
   local MOUSE_BTN = { [1] = "a", [2] = "b" }
   local function hordeMouse(button, down)
-    local Horde = V.require("Horde")
-    if not Horde.playing() then return false end
+    -- Horde mode is not part of this fork: skip it cleanly rather than
+    -- requiring a module that is not shipped.
+    local ok, Horde = pcall(V.require, "Horde")
+    if not (ok and Horde and Horde.playing) or not Horde.playing() then
+      return false
+    end
     if button == 1 then
-      if down then V.require("HordeGun").fire() end
+      if down then
+        local okG, Gun = pcall(V.require, "HordeGun")
+        if okG and Gun then Gun.fire() end
+      end
       return true
     elseif button == 2 then
-      V.require("HordeGun").setAds(down)
+      local okG, Gun = pcall(V.require, "HordeGun")
+      if okG and Gun then Gun.setAds(down) end
       return true
     end
     return false
@@ -829,13 +837,12 @@ function FirstPerson.install()
         local onControl = nil
         pcall(function() onControl = TouchControls:hitTest(x, y) end)
         if not onControl and not lookTouch then
-          -- HORDE MODE: a tap on open screen is a SHOT, fired on the press
-          -- rather than on a release that turned out not to be a drag --
-          -- a shooter that waits to find out whether you meant it is a
-          -- shooter that misses. The same finger still becomes the look
-          -- drag below, so aiming and firing are one gesture.
-          if V.require("Horde").playing() then
-            V.require("HordeGun").fire()
+          -- HORDE MODE: a tap on open screen is a SHOT ... (not shipped in
+          -- this fork, so the shot never fires here).
+          local okH, Horde = pcall(V.require, "Horde")
+          if okH and Horde and Horde.playing and Horde.playing() then
+            local okG, Gun = pcall(V.require, "HordeGun")
+            if okG and Gun then Gun.fire() end
           end
           lookTouch = { id = id, x = x, y = y }
           return
