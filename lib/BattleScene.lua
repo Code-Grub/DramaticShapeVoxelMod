@@ -446,9 +446,18 @@ function BattleScene.render(state, arena, textures, token)
     -- pw and ph, and why the HUDs and the depth of field, drawn onto the
     -- folded canvas afterwards, stay the chunky GB art they are.
     local rw, rh = AntiAlias.expand(pw, ph)
-    if not Voxel3D.beginScene(rw, rh, cx, cy, vw, vh, sky, "battle") then
+    -- ARENA FILL: WHITE covers the whole voxel world with a solid field and
+    -- keeps only the mons (drawn below) above it -- the step between the OG
+    -- battle and the full 3D one. Implemented by clearing the scene to white
+    -- and skipping the terrain/water/grass/flower draws; the 2D attack
+    -- animations and the menus composite on top afterwards, so they stay
+    -- above the white too. Requires sprite light UNLIT (see UiBackplates).
+    local whiteFill = UiBackplates.arenaWhite()
+    local skyFill = whiteFill and { 1, 1, 1 } or sky
+    if not Voxel3D.beginScene(rw, rh, cx, cy, vw, vh, skyFill, "battle") then
       return
     end
+    if not whiteFill then
     Voxel3D.draw(terrain, atlasFor(host), nil)
     for i, nb in ipairs(neighbors) do
       Voxel3D.draw(nbMesh[i], atlasFor(nb.map),
@@ -469,6 +478,7 @@ function BattleScene.render(state, arena, textures, token)
         Voxel3D.draw(nbWater[i], atlasFor(nb.map),
                      Mat4.translate(nb.ox, 0, nb.oy))
       end
+    end
     end
     -- The mons, standing on their tiles. Depth-tested like everything else,
     -- so a ledge or a tree between the camera and a Pokemon really is in
@@ -514,6 +524,7 @@ function BattleScene.render(state, arena, textures, token)
     -- gives them, measured against THIS camera's pitch rather than the
     -- orbit's -- there is no character here for them to overdraw, but the
     -- pull is also what keeps a tuft from z-fighting the floor it stands on
+    if not whiteFill then
     local pull = VoxelScene.pull(math.max(pitch, 0.05))
     Voxel3D.draw(ChunkMesher.grass(host), atlasFor(host), nil, pull)
     for _, nb in ipairs(neighbors) do
@@ -527,6 +538,7 @@ function BattleScene.render(state, arena, textures, token)
       Voxel3D.draw(ChunkMesher.flowers(nb.map), atlasFor(nb.map),
                    Mat4.translate(nb.ox, 0, nb.oy), fpull,
                    ShadowMap.snug(Mat4.translate(nb.ox, 0, nb.oy)))
+    end
     end
     local canvas = AntiAlias.resolve(Voxel3D.endScene(), pw, ph, "battle")
     if not canvas then return end
