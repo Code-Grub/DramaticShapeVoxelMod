@@ -42,6 +42,7 @@ local BattleCam = V.require("BattleCam")
 local BattleBillboard = V.require("BattleBillboard")
 local VoxelGrid = V.require("VoxelGrid")
 local DayNight = V.require("DayNight")
+local UiBackplates = V.require("UiBackplates")
 local AntiAlias = V.require("AntiAlias")
 local PaletteFX = require("src.render.PaletteFX")
 local Map = require("src.world.Map")
@@ -496,10 +497,14 @@ function BattleScene.render(state, arena, textures, token)
       -- of being dimmed or colour-cast by the clock. Only the hour tint is
       -- neutral here; depth and alpha-shaped lighting/shadows stay active.
       if card.noDayTint then Voxel3D.dayTint({ 1, 1, 1 }) end
-      -- the sun stored this card snugged (castShadows), so its own shadow
-      -- lookup must read the same snugged transform -- see ShadowMap.snug
+      -- SPRITE LIGHT: UNLIT draws the card flat and full bright -- no day
+      -- tint and no shadow lookup -- so it stays readable on the white arena
+      -- fill (B) and matches the OG battle's unshaded sprites. SHADED (the
+      -- default) keeps the world's hour tint and its own cast shadow.
+      local unlit = UiBackplates.spritesUnlit()
       Voxel3D.draw(BattleBillboard.mesh(), card.tex, card.model,
-                   BattleBillboard.PULL, ShadowMap.snug(card.model))
+                   BattleBillboard.PULL,
+                   unlit and nil or ShadowMap.snug(card.model))
       if card.noDayTint then Voxel3D.dayTint() end
     end
     Voxel3D.glass(true)

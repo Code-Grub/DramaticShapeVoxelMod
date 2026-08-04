@@ -86,6 +86,7 @@ local VoxelGrid = V.require("VoxelGrid")
 local WorldCurve = V.require("WorldCurve")
 local OverworldBattle = V.require("OverworldBattle")
 local BattleArt = V.require("BattleArt")
+local UiBackplates = V.require("UiBackplates")
 local BattleExit = V.require("BattleExit")
 local DayNight = V.require("DayNight")
 local DayTint = V.require("DayTint")
@@ -432,6 +433,25 @@ local SETTINGS = {
     .. "let CYCLE run it -- ten minutes of sun, ten of moon, with the "
     .. "shadows, the sky and the light following -- or SYNC it to the "
     .. "clock on the wall, so Kanto's evening falls when yours does." },
+  -- ------- 1.66 UI backplates (see lib/UiBackplates.lua) -------
+  { UiBackplates.spriteLight,
+    "SHADED lets the mons receive the world's day tint and cast shadows; "
+    .. "UNLIT draws them flat and full bright. UNLIT is what the white "
+    .. "arena fill needs, and what the OG battle's sprites look like.",
+    when = function() return stagedBattles() end, full = true },
+  { UiBackplates.arenaFill,
+    "WHITE draws a solid white layer in front of the whole voxel world, "
+    .. "with only the mons, their attack animations and the menus above it "
+    .. "-- the step between the OG battle and the full 3D one. Needs SPRITE "
+    .. "LIGHT: UNLIT to render the cards readable on white.",
+    when = function()
+      return stagedBattles() and UiBackplates.spritesUnlit()
+    end, full = true },
+  { UiBackplates.textboxFill,
+    "HALF lays a semi-transparent backplate behind the dialogue text box "
+    .. "only -- not the player or opponent HUD blocks -- so the words read "
+    .. "over any ground. OFF leaves the text box as the engine draws it.",
+    full = true },
   -- Marked `full` for the opposite reason the battle rows are: this is not a
   -- knob on the look at all, it is what the look COSTS. FULL is a preset for
   -- the diorama, not a licence to spend four times the fill rate on the
