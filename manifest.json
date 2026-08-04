@@ -1,7 +1,7 @@
 {
   "id": "DRAMATIC_SHAPE",
   "name": "DRAMATIC SHAPE VOXEL MOD BATTLE ART",
-  "version": "1.65",
+  "version": "1.66",
   "api": 2,
   "entry": "main.lua",
   "profile": "content",
