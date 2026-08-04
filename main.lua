@@ -442,8 +442,9 @@ local SETTINGS = {
   { UiBackplates.arenaFill,
     "WHITE draws a solid white layer in front of the whole voxel world, "
     .. "with only the mons, their attack animations and the menus above it "
-    .. "-- the step between the OG battle and the full 3D one. Works with "
-    .. "SHADED or UNLIT sprites (UNLIT keeps the cards brighter on white).",
+    .. "-- the step between the OG battle and the full 3D one. Forces SPRITE "
+    .. "LIGHT: UNLIT so the sprites stay flat and true-colour with no night "
+    .. "tint (as in the traditional games).",
     when = function() return stagedBattles() end, full = true },
   { UiBackplates.textboxFill,
     "HALF lays a semi-transparent BLACK backplate behind the dialogue box "

@@ -35,9 +35,12 @@ UiBackplates.spriteLight = ModSetting.new("spriteLight", "SPRITE LIGHT",
   { "SHADED", "UNLIT" }, { "SHADED", "UNLIT" })
 
 -- Whether the mon cards should be drawn flat and full bright (UNLIT) rather
--- than receiving the world's day tint and shadows (SHADED). The card-draw
--- path in BattleScene calls this to decide whether to skip dayTint/shadow.
+-- than receiving the world's day tint and shadows (SHADED). ARENA FILL: WHITE
+-- forces this on: a solid white battle field carries no night tint -- as in
+-- the traditional games -- so the sprites draw flat and true-colour
+-- regardless of the SPRITE LIGHT setting.
 function UiBackplates.spritesUnlit()
+  if UiBackplates.arenaWhite() then return true end
   return UiBackplates.spriteLight:get() == "UNLIT"
 end
 
