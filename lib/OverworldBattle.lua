@@ -1201,7 +1201,11 @@ function OverworldBattle.install()
       -- red channel, and a night tint pulls red down -- it would not darken
       -- the mon, it would remap it to the wrong shade. SE_WAVY_SCREEN lasts a
       -- second and the hour survives it fine.
-      local tint = not self.grayPics and shot.tint or nil
+      -- SPRITE LIGHT: UNLIT draws the player back pic flat and true-colour,
+      -- with no night tint -- same as the 3D cards in BattleScene. Neutralise
+      -- the shot's hour tint (and the wavy-path exception below) when unlit.
+      local tint = not self.grayPics and (UiBackplates.spritesUnlit()
+                    and { 1, 1, 1 } or shot.tint) or nil
       local metric = pinnedSpeciesMetric()
       if metric then
         local grow = self.player and self:growInScale(self.player) or nil
