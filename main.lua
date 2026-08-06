@@ -474,12 +474,8 @@ local SETTINGS = {
     .. "LIGHT: UNLIT so the sprites stay flat and true-colour with no night "
     .. "tint (as in the traditional games).",
     when = function() return stagedBattles() end, full = true },
-  { UiBackplates.textboxFill,
-    "HALF lays a semi-transparent BLACK backplate behind the dialogue box "
-    .. "and its move/mimic menus -- not the player or opponent HUD blocks -- "
-    .. "so the words read over any ground, like the upstream default. OFF "
-    .. "leaves the text box as the engine draws it.",
-    full = true },
+  -- The battle box is ALWAYS an opaque white panel with black ink (see
+  -- BattleState:drawTextArea), so TEXTBOX FILL was dropped -- no option row.
   -- Marked `full` for the opposite reason the battle rows are: this is not a
   -- knob on the look at all, it is what the look COSTS. FULL is a preset for
   -- the diorama, not a licence to spend four times the fill rate on the

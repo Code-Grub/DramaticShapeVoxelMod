@@ -739,21 +739,6 @@ end
 -- The same shim shape as withoutBackgroundFill above, and scoped as tightly:
 -- installed around a single call, removed on the way out including on error,
 -- never live outside a battle frame this mode is drawing.
-local function withoutBoxFill(battle, fn)
-  local g = love.graphics
-  local rectangle = g.rectangle
-  g.rectangle = function(mode, ...)
-    if mode == "fill" then
-      local r, gr, b, a = g.getColor()
-      if r > 0.99 and gr > 0.99 and b > 0.99 and a > 0.99 then return end
-    end
-    return rectangle(mode, ...)
-  end
-  local ok, err = pcall(fn, battle)
-  g.rectangle = rectangle
-  if not ok then error(err, 0) end
-end
-
 -- WHITE arena fill: paint the box background (and anything else the engine
 -- fills inside the text-area draw) opaque white, so the engine's coloured BG
 -- palette -- orange on the intro flash, grey once the mons appear -- cannot
@@ -768,32 +753,6 @@ local function whiteBoxFill(battle, fn)
       g.setColor(1, 1, 1, 1)
     end
     return rectangle(mode, ...)
-  end
-  local ok, err = pcall(fn, battle)
-  g.rectangle = rectangle
-  g.setColor(1, 1, 1, 1)
-  if not ok then error(err, 0) end
-end
-
--- HALF backplate: the engine's white dialogue-box fill is recoloured to a
--- translucent BLACK slab, so the dialogue reads over any ground. Scoped to the
--- dialogue box's own GB rect {0,96,160,48} -- the move-select / type / action
--- boxes are separate white fills and must keep their own colours, so only the
--- dialogue paper is recoloured. Glyphs and borders are drawn as ink and pass
--- through. Lives in the same g.rectangle path the engine uses, so it tracks the
--- box at every window aspect.
-local function halfBoxFill(battle, fn)
-  local g = love.graphics
-  local rectangle = g.rectangle
-  g.rectangle = function(mode, x, y, w, h, ...)
-    if mode == "fill" then
-      local r, gr, b, a = g.getColor()
-      if r > 0.99 and gr > 0.99 and b > 0.99 and a > 0.99
-         and x == 0 and y == 96 and w == 160 and h == 48 then
-        g.setColor(0, 0, 0, 0.55)
-      end
-    end
-    return rectangle(mode, x, y, w, h, ...)
   end
   local ok, err = pcall(fn, battle)
   g.rectangle = rectangle
@@ -1287,31 +1246,14 @@ function OverworldBattle.install()
   function BattleState:drawTextArea()
     if not self.dramaticShapeShot then return innerText(self) end
     if isIOS() then return innerText(self) end
-    local battle = self
-    local style = UiBackplates.textboxFillStyle()
-    -- HALF applies ONLY to the dialogue box (phase "messages"): a translucent
-    -- black slab with white-flipped ink. The move-select / type / mimic menus
-    -- are separate phases and must keep their own black-on-diorama drawing --
-    -- flipping their ink to white would leave black text on white paper
-    -- (white-on-white). So the flip is scoped to the messages phase only.
-    if style and style[1] < 0.5 and self.phase == "messages" then
-      BattleHud.flipGlyphs(BattleScene.GB_W, BattleScene.GB_H,
-                           function() halfBoxFill(battle, innerText) end, false)
-      return
-    end
-    -- The WHITE arena fill inverts the box ink: black text with a white
-    -- drop-shadow on the white field, rather than the usual white-flip.
-    local inverted = UiBackplates.arenaWhite()
-    if not self.dramaticShapeDark and not inverted then
-      return withoutBoxFill(battle, innerText)
-    end
-    -- In WHITE mode the engine's box fill is a coloured palette colour (orange
-    -- on the intro flash, grey after) -- whiten it opaque so it reads as a
-    -- clean white panel under the inverted black ink.
-    local boxFn = inverted and whiteBoxFill or withoutBoxFill
+    -- Every battle box -- the dialogue, the FIGHT/ITEM/RUN menu and the
+    -- move-select / type panels -- is drawn as an OPAQUE WHITE panel with
+    -- BLACK ink, the same as the overworld / trainer-intro textbox. Black ink
+    -- sits on white (never white-on-white), so the words always read. This is
+    -- the one predictable backplate, so TEXTBOX FILL was dropped: the box is
+    -- simply always white.
     BattleHud.flipGlyphs(BattleScene.GB_W, BattleScene.GB_H,
-                         function() boxFn(battle, innerText) end,
-                         inverted)
+                         function() whiteBoxFill(battle, innerText) end, true)
   end
 
   local innerAnim = BattleState.drawAnimLayer
@@ -1579,13 +1521,6 @@ function OverworldBattle.drawHudPanels(battle)
   battle.dramaticShapeDark = true
   for key, r in pairs(live) do
     BattleHud.panel(r, shot, true)
-    local style = UiBackplates.textboxFillStyle()
-    if style and UiBackplates.isTextboxKey(key) then
-      local g = love.graphics
-      g.setColor(style[1], style[2], style[3], style[4])
-      g.rectangle("fill", r[1], r[2], r[3], r[4])
-      g.setColor(1, 1, 1, 1)
-    end
   end
 end
 
