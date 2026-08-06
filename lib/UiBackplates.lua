@@ -59,7 +59,7 @@ end
 -- ------- A) TEXTBOX FILL -------
 
 UiBackplates.textboxFill = ModSetting.new("textboxFill", "TEXTBOX FILL",
-  { "OFF", "HALF" }, { "OFF", "HALF" })
+  { "OFF", "HALF" }, { "OFF", "HALF" }, 2)
 
 -- The rect keys whose dialogue/menu boxes get the HALF backplate. The bottom
 -- text box ("box") and the move-select / mimic-select menus that open over it

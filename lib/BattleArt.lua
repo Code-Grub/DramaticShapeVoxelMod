@@ -6,10 +6,10 @@ local ModSetting = V.require("ModSetting")
 local BattleArt = {}
 
 BattleArt.setting = ModSetting.new("battleArt", "BATTLE ART",
-  { "static", "animated", "rom" }, { "STATIC", "ANIMATED", "ROM" })
+  { "static", "animated", "rom" }, { "STATIC", "ANIMATED", "ROM" }, 2)
 BattleArt.frontAnimationSetting = ModSetting.new("frontAnimatedSet", "ANIM FRONT GEN",
   { "gen1", "gen2", "gen3", "gen4", "gen5" },
-  { "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5" }, 2)
+  { "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5" }, 5)
 -- The selected generation names the static back folder in STATIC mode. In
 -- ANIMATED mode uses atlases for Gen 3 and Gen 5; Gen 1, 2 and 4 use their
 -- single images. The mode, not just the generation, decides the decoder.
@@ -31,7 +31,7 @@ BattleArt.playerArtSetting = ModSetting.new(
 BattleArt.playerAnimationSetting = ModSetting.new(
   "playerAnimatedSet", "PLAYER ANIM",
   { "png", "gen1", "gen2", "gen3", "gen4", "gen5", "ash", "gary", "red", "rom" },
-  { "PNG", "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5", "ASH", "GARY", "RED", "ROM" }, 2)
+  { "PNG", "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5", "ASH", "GARY", "RED", "ROM" }, 9)
 
 -- BATTLE ART: ROM owns the normal player portrait as completely as it owns
 -- species art. Keep the visible PLAYER ART row honest instead of leaving a
