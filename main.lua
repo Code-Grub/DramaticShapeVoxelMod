@@ -400,8 +400,9 @@ local SETTINGS = {
   -- XP-bar mod -- which this mod does NOT provide -- lines up at 1X.
   { OverworldBattle.hudScaleSetting,
     "Size of the player and opponent HUD. SCALED grows with the battle "
-    .. "zoom (the mod default); 1X pins it to native size for use with an "
-    .. "external XP-bar mod, which this mod does not include.",
+    .. "zoom (the mod default); WINDOW pins it to the window-fit scale like "
+    .. "upstream DynamicShapes' player HUD, so an external XP-bar mod -- which "
+    .. "this mod does not include -- lines up with a window-scaling HUD.",
     full = true },
   -- Only offered while a fight can actually be staged on the map.
   { BattleArt.setting,
