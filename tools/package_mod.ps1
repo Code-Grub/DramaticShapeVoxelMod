@@ -7,8 +7,22 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 function Relative-Path([string]$FullName) {
   return $FullName.Substring($repo.Length + 1).Replace('\', '/')
 }
+
+# Derive the package name from the mod's own manifest (id + version) so the
+# produced .zip matches what the in-game mod manager expects for auto-update:
+# ModUpdate.pickZipAsset prefers exactly "<id>-<version>.zip". A hardcoded
+# "DramaticShapeVoxelMod-battle-art" name stopped matching once the manifest
+# id was renamed, which is why post-rename updates failed to resolve.
+$manifest = Get-Content -Raw -LiteralPath (Join-Path $repo 'manifest.json') |
+  ConvertFrom-Json
+$modId = $manifest.id
+$modVersion = ($manifest.version -replace '^[vV]', '')
+if (-not $modId -or -not $modVersion) {
+  throw "manifest.json is missing id or version"
+}
+
 if (-not $Output) {
-  $Output = Join-Path (Split-Path $repo -Parent) "DramaticShapeVoxelMod-battle-art.zip"
+  $Output = Join-Path (Split-Path $repo -Parent) ($modId + '-' + $modVersion + '.zip')
 }
 $Output = [System.IO.Path]::GetFullPath($Output)
 
