@@ -36,7 +36,7 @@ ExpBar.enabled = ModSetting.new("BattleArtXpBar", "BATTLE ART XP BAR",
 
 -- ------- constants (from the QoL source) -------
 
-local EXP_X, EXP_Y, EXP_WIDTH = 80, 84, 67
+local EXP_X, EXP_Y, EXP_WIDTH = 80, 74, 67
 local EXP_LEVEL_HOLD_FRAMES = 30
 local EXP_BURST_DIAGONALS = { 0, 1, 2, 4, 5, 7, 8, 9 }
 local EXP_BLUE = { 50 / 255, 150 / 255, 250 / 255, 1 }

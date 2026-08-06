@@ -168,26 +168,23 @@ mod.content.render_pipelines:register("voxel", {
   -- pump slice -- so stepping out of a door lands on terrain that is
   -- already there instead of a flat flash.
   update = function(dt, level)
+    -- BATTLE BG must be WHITE whenever this mode is on: WORLD is only valid
+    -- for the engine's flat 2D battle and composites as broken dark bars with
+    -- the 3D diorama (there is no "old system" to show through). Force it at
+    -- the top of every update tick -- not gated on FULL -- so a boot that
+    -- starts already at FULL, and the first battle before any transition, are
+    -- both covered. Persists on change only, never every frame.
+    local Game = require("src.core.Game")
+    local o = Game.save and Game.save.options
+    if o and o.battleBg ~= "white" then
+      o.battleBg = "white"
+      if Game.writeOptions then pcall(Game.writeOptions, Game) end
+    end
     -- FULL is a preset, so it is applied ON THE PRESS rather than held every
     -- frame: it SETS the other rows and then leaves them alone. Holding them
     -- would make the zoom keys and the wheel dead while the mode was on, and
     -- would fight anyone who changed one deliberately.
     applyFull(level)
-    -- BATTLE BG must be WHITE whenever the diorama is on: WORLD is only valid
-    -- for the engine's flat 2D battle and composites as broken dark bars with
-    -- the 3D diorama (there is no "old system" to show through). applyFull
-    -- only runs on the transition into FULL, so enforce it every frame here
-    -- too -- including a boot that starts already at FULL -- persisting on
-    -- change only, never every frame.
-    if Voxel.isFull(level) then
-      local Game = require("src.core.Game")
-      local o = Game.save and Game.save.options
-      if o and o.battleBg ~= "white" then
-        o.battleBg = "white"
-        if Game.writeOptions then pcall(Game.writeOptions, Game) end
-      end
-    end
-    Voxel.update(dt, level)
     -- the first-person head, on the same tick: its blend in and out of the
     -- orbit, the mouse capture lifecycle, and the frame's stick-rate look.
     -- Unconditional like Voxel.update, because the blend has to keep easing
