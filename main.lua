@@ -447,6 +447,20 @@ local SETTINGS = {
     when = function()
       return stagedBattles() and BattleArt.setting:get() ~= "rom"
     end, full = true },
+  { BattleArt.frontShinySetting,
+    "When ON, front sprites are read from assets/battle/front-static/shiny "
+    .. "or front-animated/shiny first. A missing shiny file falls back to the "
+    .. "selected generation's normal front, then to ROM. Keep the shiny "
+    .. "folders empty for a shiny mod to populate.",
+    when = function() return stagedBattles() end, full = true },
+  { BattleArt.backShinySetting,
+    "When ON, back sprites are read from assets/battle/back-static/shiny or "
+    .. "back-animated/shiny first. A missing shiny file falls back to the "
+    .. "selected generation's normal back, then to ROM. Players can never be "
+    .. "shiny, so this never touches the player's own portrait.",
+    when = function()
+      return stagedBattles() and BattleArt.setting:get() ~= "rom"
+    end, full = true },
   { BattleArt.viewSetting,
     "Show the player's Pokemon from the front or back. Supplied art stays "
     .. "world-placed; a missing selected back falls back to the ROM UI pic.",
@@ -1031,7 +1045,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.7.5"
+mod.exports.version = "1.7.6"
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout
 mod.exports.lib = V

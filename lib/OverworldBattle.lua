@@ -1136,6 +1136,10 @@ function OverworldBattle.install()
     local out = innerPic(self, img)
     if not OverworldBattle.shot() then return out end
     if BattleArt.isExternal(out) then return out end
+    -- ROM-fallback sprites (no authored PNG) are already transparent; the
+    -- diorama behind them must show through, so do not white-fill their gaps.
+    -- Mirrors upstream DramaticShapeVoxelMod PR #96 (crystal-sprite skip).
+    if not BattleArt.isExternal(img) then return out end
     return BattlePics.filled(out, OverworldBattle.pinnedPic(self, img))
   end
 

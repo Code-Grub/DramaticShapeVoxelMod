@@ -32,6 +32,15 @@ BattleArt.playerAnimationSetting = ModSetting.new(
   "playerAnimatedSet", "PLAYER ANIM",
   { "png", "gen1", "gen2", "gen3", "gen4", "gen5", "ash", "gary", "red", "rom" },
   { "PNG", "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5", "ASH", "GARY", "RED", "ROM" }, 9)
+-- SHINY compatibility for species art only (players can never be shiny).
+-- When ON, front/back resolvers check the matching assets/battle/<side>-<kind>/
+-- shiny/ folder first; a missing shiny file falls back to the selected
+-- generation's normal art, then to ROM. The folders ship empty so a shiny mod
+-- can populate them.
+BattleArt.frontShinySetting = ModSetting.new("frontShiny", "FRONT SHINY FIX",
+  { "off", "on" }, { "OFF", "ON" })
+BattleArt.backShinySetting = ModSetting.new("backShiny", "BACK SHINY FIX",
+  { "off", "on" }, { "OFF", "ON" })
 
 -- BATTLE ART: ROM owns the normal player portrait as completely as it owns
 -- species art. Keep the visible PLAYER ART row honest instead of leaving a
@@ -67,6 +76,15 @@ function BattleArt.playerSide()
   return BattleArt.viewSetting:get() == "back" and "back" or "front"
 end
 
+local function shinyPrefix(side)
+  -- species-only: front uses FRONT SHINY, back uses BACK SHINY. Players can
+  -- never be shiny, so this never consults player art.
+  local on = side == "back"
+    and BattleArt.backShinySetting:get() == "on"
+    or BattleArt.frontShinySetting:get() == "on"
+  return on and "shiny/" or ""
+end
+
 local function pathFor(species, side)
   local mode = BattleArt.setting:get()
   if mode == "rom" then return nil end
@@ -79,10 +97,11 @@ local function pathFor(species, side)
     -- STATIC never consults an atlas. In particular, GEN 5 means the ordinary
     -- PNG at back-static/gen5 here; only AnimatedBattleArt may resolve the
     -- similarly named animated generation.
-    rel = ("assets/battle/back-static/%s/%s.png"):format(
-      BattleArt.backAnimationSetting:get(), slug(species))
+    rel = ("assets/battle/back-static/%s%s/%s.png"):format(
+      shinyPrefix(side), BattleArt.backAnimationSetting:get(), slug(species))
   else
-    rel = ("assets/battle/front-static/%s.png"):format(slug(species))
+    rel = ("assets/battle/front-static/%s%s.png"):format(
+      shinyPrefix(side), slug(species))
   end
   local path = V.mod.assets:path(rel)
   local fs = love and love.filesystem
@@ -244,8 +263,8 @@ end
 -- switching the selector does not require renaming or replacing files.
 function BattleArt.generationBackImage(species, generation)
   if not tostring(generation or ""):match("^gen[1-5]$") then return nil end
-  local rel = ("assets/battle/back-static/%s/%s.png"):format(
-    generation, slug(species))
+  local rel = ("assets/battle/back-static/%s%s/%s.png"):format(
+    shinyPrefix("back"), generation, slug(species))
   local path = V.mod.assets:path(rel)
   local fs = love and love.filesystem
   if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
@@ -257,9 +276,14 @@ end
 -- independently animated player-trainer intro. Each species is one ordinary
 -- image; no metadata or timing sidecar is involved.
 function BattleArt.generationFrontImage(species, generation)
-  if generation ~= "gen1" then return nil end
-  local rel = ("assets/battle/front-animated/gen1/%s.png"):format(
-    slug(species))
+  if not tostring(generation or ""):match("^gen[1-5]$") then return nil end
+  -- Shiny-compatible: when FRONT SHINY is on, the shinyPrefix prepends
+  -- "shiny/", pointing at assets/battle/front-animated/shiny/<gen>/<slug>.png
+  -- (sibling of the generation folders, matching the animated shiny layout).
+  -- A missing shiny file falls through to ROM -- the normal generation's
+  -- animated atlas is intentionally NOT used here so SHINY ON suppresses it.
+  local rel = ("assets/battle/front-animated/%s%s/%s.png"):format(
+    shinyPrefix("front"), generation, slug(species))
   local path = V.mod.assets:path(rel)
   local fs = love and love.filesystem
   if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end

@@ -1,35 +1,31 @@
 # Generation 1 front compatibility set
 
-This folder supplies single-frame Gen 1, Super Game Boy, and ROM-hack front
-sprites for `BATTLE ART: ANIMATED` with `ANIM FRONT GEN: GEN 1`. Unlike
-the Gen 2–5 collections, these are ordinary PNGs rather than animation
-atlases: no Lua sidecar, frame grid, or timing metadata is required.
+These 151 front sprites are the **International Yellow (Game Boy Color) front
+sprites** ripped from Pokémon Yellow (international release, GBC).
 
-Name one PNG per species using the same lowercase names as the other
-battle-art folders, for example `pikachu.png`, `farfetchd.png`,
-`mr-mime.png`, `nidoran-f.png`, and `nidoran-m.png`. Author opponent art
-facing left. Missing or malformed species should fall back directly to the
-ROM front sprite rather than borrow from another generation.
+Source: [International Yellow sprites (Game Boy Color) — Bulbagarden
+Archives](https://archives.bulbagarden.net/wiki/Category:International_Yellow_sprites_(Game_Boy_Color))
 
-The Pokémon images are independent of the player-trainer introduction. A
-five-frame player strip selected by `PLAYER ANIM` can therefore continue to
-play while Pokémon fronts from this folder remain single-frame.
+The files were fetched from the Bulbagarden archive file path for each species
+in National Dex order (001 Bulbasaur … 151 Mew), e.g.
+`Spr_1y_001.png` … `Spr_1y_151.png`, and renamed to the lowercase species
+slugs used across the battle-art folders (`bulbasaur.png`, `mr-mime.png`,
+`farfetchd.png`, etc.).
 
-## Placement
-
-The intended `FRONT PLACEMENT` choices are:
-
-- `AUTO` — world placement during staged battles.
-- `WORLD` — a world card with depth occlusion, alpha-shaped shadow, battle
-  effects, and display filtering.
-- `OG UI` — the original fixed battle slot and its UI-layer movement/effects.
-
-Large or unusually padded art may crop when forced into `OG UI`; native
-Game Boy and Super Game Boy dimensions are the natural fit there.
+Unlike the Gen 2–5 collections, these are ordinary single-frame PNGs rather
+than animation atlases: no Lua sidecar, frame grid, or timing metadata is
+required. They are used as the default `ANIM FRONT GEN: GEN 1` front set, and
+as the front fallback when `FRONT SHINY FIX` is enabled and no shiny override
+is present. Author opponent art facing left. Missing or malformed species fall
+back directly to the ROM front sprite rather than borrowing from another
+generation.
 
 Front Pokémon remain world-placed in the current renderer. A separate
-`FRONT PLACEMENT` selector is not implemented yet; the placement list above
-documents the intended follow-up behavior rather than a current menu row.
+`FRONT PLACEMENT` selector is not implemented yet.
 
-Local artwork in this folder is ignored by Git and is not covered by the
-mod's MIT license. Verify that you have the right to use and distribute it.
+## Licensing / provenance
+
+The Pokémon sprite artwork is third-party and is **not** covered by this mod's
+MIT license. It is ignored by Git (see the repo `.gitignore`) and must be
+supplied locally; verify that you have the right to use and redistribute it
+before shipping a build that includes these files.
