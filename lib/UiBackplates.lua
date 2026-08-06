@@ -67,17 +67,18 @@ UiBackplates.textboxFill = ModSetting.new("textboxFill", "TEXTBOX FILL",
 UiBackplates.TEXTBOX_KEYS = { box = true, moves = true, mimic = true }
 
 -- The backplate colour/alpha for the dialogue/menu boxes, or nil when there
--- is none. Two cases:
---   * ARENA FILL: WHITE -- an OPAQUE WHITE slab, so no sprite (e.g. the mon
---     standing behind the box) shows through; the box reads as a solid white
---     Game Boy panel with the inverted black ink on top.
---   * TEXTBOX FILL: HALF -- a translucent BLACK slab (upstream's default), so
---     the words read over any ground.
--- The player/opponent HUD blocks are never covered (see isTextboxKey).
+-- is none:
+--   * OFF   -- no backplate: the engine's white box fill is skipped, so the
+--     diorama shows through behind the text (the box border + ink still draw).
+--   * HALF  -- a translucent BLACK slab (upstream's default) over the diorama,
+--     so the words read over any ground.
+-- The fill is applied by wrapping the engine's Font.drawBox (see
+-- installBoxHook): that draws into the SAME 160x144 UI canvas the engine's
+-- box lives in, so it tracks the box at every window aspect -- a slab in the
+-- world canvas could never follow a box the engine letterboxes.
 function UiBackplates.textboxFillStyle()
-  if UiBackplates.arenaWhite() then return { 1, 1, 1, 1 } end
   if UiBackplates.textboxFill:get() == "HALF" then
-    return { 0, 0, 0, 0.5 }
+    return { 0, 0, 0, 0.55 }
   end
   return nil
 end
@@ -86,6 +87,62 @@ end
 -- covers (as opposed to the HUD blocks).
 function UiBackplates.isTextboxKey(key)
   return UiBackplates.TEXTBOX_KEYS[key] == true
+end
+
+-- ------- the engine box hook
+--
+-- The engine draws the dialogue box with Font.drawBox: a white interior fill
+-- in the 160x144 UI canvas (tile coords) plus a black border. We wrap it so
+-- the dialogue box during a battle uses TEXTBOX FILL instead:
+--   OFF  -- skip the white fill (backplate invisible; border + ink remain)
+--   HALF -- draw our translucent-black fill, then the border
+-- Every other box (menus, summary, overworld) is passed through untouched.
+-- Gated on a live battle session so only the battle dialogue box is affected.
+--
+-- The battle dialogue box is the unique tile rect {0, 12, 20, 6}
+-- (160x48px at the foot of the 160x144 screen).
+local BOX_TX, BOX_TY, BOX_TW, BOX_TH = 0, 12, 20, 6
+
+function UiBackplates.installBoxHook()
+  local okF, Font = pcall(require, "src.render.Font")
+  if not okF or not Font or not Font.drawBox then return end
+  if Font.__dramaticShapeBoxHook then return end
+  local inner = Font.drawBox
+  local OverworldBattle = V.require("OverworldBattle")
+
+  Font.drawBox = function(tx, ty, tw, th)
+    if OverworldBattle.session
+       and tx == BOX_TX and ty == BOX_TY
+       and tw == BOX_TW and th == BOX_TH then
+      local style = UiBackplates.textboxFillStyle()
+      -- border only (in the caller's colour, as the engine does after the
+      -- fill) -- copied from Font.drawBox so we can skip/replace the fill
+      local r, g, b, a = love.graphics.getColor()
+      if style then
+        love.graphics.setColor(style[1], style[2], style[3], style[4])
+        love.graphics.rectangle("fill", tx * 8, ty * 8, tw * 8, th * 8)
+      end
+      -- border in black (the dialogue box border colour)
+      love.graphics.setColor(0, 0, 0, 1)
+      local B = Font.BORDER
+      Font.drawCode(B.tl, tx * 8, ty * 8)
+      Font.drawCode(B.tr, (tx + tw - 1) * 8, ty * 8)
+      Font.drawCode(B.bl, tx * 8, (ty + th - 1) * 8)
+      Font.drawCode(B.br, (tx + tw - 1) * 8, (ty + th - 1) * 8)
+      for i = 1, tw - 2 do
+        Font.drawCode(B.h, (tx + i) * 8, ty * 8)
+        Font.drawCode(B.h, (tx + i) * 8, (ty + th - 1) * 8)
+      end
+      for j = 1, th - 2 do
+        Font.drawCode(B.v, tx * 8, (ty + j) * 8)
+        Font.drawCode(B.v, (tx + tw - 1) * 8, (ty + j) * 8)
+      end
+      love.graphics.setColor(r, g, b, a)
+      return
+    end
+    return inner(tx, ty, tw, th)
+  end
+  Font.__dramaticShapeBoxHook = true
 end
 
 return UiBackplates
