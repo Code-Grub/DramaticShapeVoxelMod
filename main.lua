@@ -900,11 +900,6 @@ end
 -- so this file keeps naming every engine seam the mod touches.
 OverworldBattle.install()
 
--- Wrap the engine's dialogue-box draw so TEXTBOX FILL (HALF/OFF) controls the
--- box's own backplate -- it lives in the 160x144 UI canvas, so it tracks the
--- box at every window aspect. Installed once, here.
-UiBackplates.installBoxHook()
-
 -- ------- the first-person rung's inputs and its walk
 --
 -- 1ST needs two things no other rung does, and each is a named seam:

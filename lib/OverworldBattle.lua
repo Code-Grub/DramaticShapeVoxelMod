@@ -775,6 +775,29 @@ local function whiteBoxFill(battle, fn)
   if not ok then error(err, 0) end
 end
 
+-- HALF backplate: the engine's white box fill is recoloured to a translucent
+-- BLACK slab, so the dialogue reads over any ground. Only the opaque-white
+-- fills (the box paper) are recoloured; glyphs and borders are drawn as ink
+-- and pass through. Lives in the same g.rectangle path the engine uses, so it
+-- tracks the box at every window aspect.
+local function halfBoxFill(battle, fn)
+  local g = love.graphics
+  local rectangle = g.rectangle
+  g.rectangle = function(mode, ...)
+    if mode == "fill" then
+      local r, gr, b, a = g.getColor()
+      if r > 0.99 and gr > 0.99 and b > 0.99 and a > 0.99 then
+        g.setColor(0, 0, 0, 0.55)
+      end
+    end
+    return rectangle(mode, ...)
+  end
+  local ok, err = pcall(fn, battle)
+  g.rectangle = rectangle
+  g.setColor(1, 1, 1, 1)
+  if not ok then error(err, 0) end
+end
+
 -- ------- the hour's light, on a pic that is not geometry
 --
 -- Everything standing in the arena goes through the voxel shader, and that
@@ -1262,6 +1285,15 @@ function OverworldBattle.install()
     if not self.dramaticShapeShot then return innerText(self) end
     if isIOS() then return innerText(self) end
     local battle = self
+    local style = UiBackplates.textboxFillStyle()
+    -- HALF: a translucent-black backplate with white-flipped ink (text on a
+    -- dark slab reads white). Goes through the same g.rectangle shim path as
+    -- the WHITE arena fill, so it tracks the box at every window aspect.
+    if style and style[1] < 0.5 then
+      BattleHud.flipGlyphs(BattleScene.GB_W, BattleScene.GB_H,
+                           function() halfBoxFill(battle, innerText) end, false)
+      return
+    end
     -- The WHITE arena fill inverts the box ink: black text with a white
     -- drop-shadow on the white field, rather than the usual white-flip.
     local inverted = UiBackplates.arenaWhite()
