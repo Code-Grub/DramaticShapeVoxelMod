@@ -45,7 +45,6 @@ local BattleScene = V.require("BattleScene")
 local BattleDOF = V.require("BattleDOF")
 local BattleHud = V.require("BattleHud")
 local UiBackplates = V.require("UiBackplates")
-local ExpBar = V.require("ExpBar")
 local BattlePics = V.require("BattlePics")
 local BattleArt = V.require("BattleArt")
 local AnimatedBattleArt = V.require("AnimatedBattleArt")
@@ -1502,9 +1501,6 @@ function OverworldBattle.drawHudPanels(battle)
   local shot = battle.dramaticShapeShot
   battle.dramaticShapeDark = nil
   if not shot then return end
-  -- XP bar follows the player HUD's exact position/scale (snapRects transform),
-  -- drawn into the world canvas so it works on every platform including iOS.
-  ExpBar.draw(battle, shot)
   if isIOS() then
     -- iOS cannot run the snapped HUD path (it draws upside-down + opaque);
     -- fall back to the engine's own opaque HUD panels. Mirrors upstream PR #48.

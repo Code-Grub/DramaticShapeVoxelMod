@@ -87,7 +87,6 @@ local WorldCurve = V.require("WorldCurve")
 local OverworldBattle = V.require("OverworldBattle")
 local BattleArt = V.require("BattleArt")
 local UiBackplates = V.require("UiBackplates")
-local ExpBar = V.require("ExpBar")
 local BattleExit = V.require("BattleExit")
 local DayNight = V.require("DayNight")
 local DayTint = V.require("DayTint")
@@ -470,12 +469,6 @@ local SETTINGS = {
     .. "and its move/mimic menus -- not the player or opponent HUD blocks -- "
     .. "so the words read over any ground, like the upstream default. OFF "
     .. "leaves the text box as the engine draws it.",
-    full = true },
-  { ExpBar.enabled,
-    "ON draws an experience bar under the player's HP in battle, scaled to "
-    .. "match the (smaller) HUD and pinned to the player HUD's exact "
-    .. "position. Drawing/animation adapted from unxpected-uxp's "
-    .. "pokemon-gen1-recomp-mod-qol, used with permission. OFF hides it.",
     full = true },
   -- Marked `full` for the opposite reason the battle rows are: this is not a
   -- knob on the look at all, it is what the look COSTS. FULL is a preset for
