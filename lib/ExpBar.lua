@@ -32,7 +32,7 @@ local ExpBar = {}
 -- ------- enable toggle (OPTIONS row + persisted, like the other backplates) -------
 
 ExpBar.enabled = ModSetting.new("BattleArtXpBar", "BATTLE ART XP BAR",
-  { "OFF", "ON" }, { "OFF", "ON" })
+  { "OFF", "ON" }, { "OFF", "ON" }, 2)
 
 -- ------- constants (from the QoL source) -------
 
@@ -216,11 +216,15 @@ function ExpBar.draw(battle, shot)
   local rects, bands = OverworldBattle.snapRects(shot)
   local pr = rects.player
   local hs = bands.player.scale
+  -- Anchor to the HUD band's ACTUAL content origin (bands.player.y), which
+  -- preserves the top row the way snapHUDs draws it -- NOT rects.player,
+  -- whose y omits the (p[2]-band[2])*hs top-row preservation. Using rects
+  -- here dropped the bar by (56-48)*hs world pixels, so it drifted below the
+  -- arrow and the gap grew with window scale.
   local HUD = OverworldBattle.HUD_RECT.player   -- { 72, 56, 88, 40 }
-  -- EXP_X/EXP_Y are GB-frame coords inside the player HUD block; offset from
-  -- the HUD's origin by the same hs the HUD used.
+  local bandY = bands.player.y                  -- = shot.ly + p[2]*s - (p[2]-band[2])*hs
   local barX = pr[1] + (EXP_X - HUD[1]) * hs
-  local barY = pr[2] + (EXP_Y - HUD[2]) * hs
+  local barY = bandY + (EXP_Y - HUD[2]) * hs
   local w = px * hs
   local h = 2 * hs
 
