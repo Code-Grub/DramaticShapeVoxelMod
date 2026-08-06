@@ -1486,12 +1486,11 @@ function OverworldBattle.snapHUDs(battle, shot)
                              BattleScene.GB_W, BattleScene.GB_H)
       if ios then
         -- iOS presents this Canvas-to-Canvas HUD texture upside down, so flip
-        -- it vertically. The player HUD stays on the right; only the enemy
-        -- band's mirrored destination is corrected.
-        local y = placement.y
-        if side == "enemy" then
-          y = shot.ph - placement.y - band[4] * placement.scale
-        end
+        -- it vertically IN PLACE (about the band's own center) to keep the
+        -- band in its correct screen rectangle with upright glyphs. The earlier
+        -- mirror (shot.ph - placement.y - ...) moved each band to the opposite
+        -- vertical half, dropping the HUD into the diorama / under the text box.
+        local y = placement.y + band[4] * placement.scale
         g.draw(layer, quad, placement.x + band[1] * placement.scale, y, 0,
                placement.scale, -placement.scale)
       else
