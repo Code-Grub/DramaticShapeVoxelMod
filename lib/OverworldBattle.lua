@@ -1246,6 +1246,7 @@ function OverworldBattle.install()
   function BattleState:drawTextArea()
     if not self.dramaticShapeShot then return innerText(self) end
     if isIOS() then return innerText(self) end
+    local battle = self
     -- Every battle box -- the dialogue, the FIGHT/ITEM/RUN menu and the
     -- move-select / type panels -- is drawn as an OPAQUE WHITE panel with
     -- BLACK ink, the same as the overworld / trainer-intro textbox. Black ink
