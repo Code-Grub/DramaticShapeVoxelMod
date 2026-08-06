@@ -27,7 +27,7 @@ local ExpBar = {}
 
 -- ------- enable toggle (OPTIONS row + persisted, like the other backplates) -------
 
-ExpBar.enabled = ModSetting.new("xpBar", "XP BAR",
+ExpBar.enabled = ModSetting.new("BattleArtXpBar", "BATTLE ART XP BAR",
   { "OFF", "ON" }, { "OFF", "ON" })
 
 -- ------- constants (from the QoL source) -------
