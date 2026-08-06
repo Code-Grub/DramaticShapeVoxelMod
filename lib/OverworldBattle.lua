@@ -512,17 +512,6 @@ function OverworldBattle.begin(state, battle)
               armed = false, token = 0 }
   cullCast(state)
   BattleCam.reset()
-  -- TEXTBOX FILL (the dialogue-box backplate) is drawn into the GB canvas, so
-  -- it only lines up with the engine's box when the box stays inside the
-  -- 160x144 frame. DYNAMIC uiLayout docks the box to the window's bottom edge
-  -- (window space, full width) where an in-canvas backplate cannot reach -- it
-  -- then aligns only at ~1:1 aspect. Force CENTERED for the battle so the box,
-  -- and its backplate, stay in-frame at every window aspect.
-  local g = game()
-  if g and g.save and g.save.options then
-    g.save.options.uiLayout = "centered"
-    if g.writeOptions then pcall(g.writeOptions, g) end
-  end
   return true
 end
 
