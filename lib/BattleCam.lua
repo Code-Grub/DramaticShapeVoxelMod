@@ -226,7 +226,7 @@ BattleCam.t = 0
 function BattleCam.seedFromFreeCamera()
   local okT, ThirdPerson = pcall(require, "ThirdPerson")
   local okF, FirstPerson = pcall(require, "FirstPerson")
-  if not (okT and okF) then return end
+  if not (okT and okF) then return false end
 
   -- Read the LAST-KNOWN free-roam attitude, captured into FirstPerson.last*
   -- / ThirdPerson.lastZoom WHILE the freecam was engaged. The live values are
@@ -238,6 +238,16 @@ function BattleCam.seedFromFreeCamera()
   local yaw   = FirstPerson.lastYaw   or FirstPerson.yaw   or 0
   local pitch = FirstPerson.lastPitch or FirstPerson.pitch or 0
   local zoom  = ThirdPerson.lastZoom  or ThirdPerson.zoom  or 1
+
+  -- If there is no freecam history AND the battle camera was never steered,
+  -- leave it at the solved default -- nothing to seed from. When there IS
+  -- history, always open where the freecam was last left (the saved drift).
+  if FirstPerson.lastYaw == nil
+     and BattleCam.orbitGoal == 0
+     and BattleCam.pitchGoal == 0
+     and BattleCam.zoomGoal == 1 then
+    return false
+  end
 
   -- zoom: the free camera's eased zoom, clamped to the battle's own range
   local z = math.max(BattleCam.ZOOM_MIN, math.min(BattleCam.ZOOM_MAX, zoom))
@@ -253,6 +263,7 @@ function BattleCam.seedFromFreeCamera()
   BattleCam.orbit,     BattleCam.orbitGoal     = o, o
   BattleCam.pitch,     BattleCam.pitchGoal     = p, p
   BattleCam.zoom,      BattleCam.zoomGoal      = z, z
+  return true
 end
 
 function BattleCam.reset()
@@ -260,17 +271,14 @@ function BattleCam.reset()
   -- drift is a slow parallax breath that should continue from wherever the
   -- previous battle left it, so the camera opens on the same motion rather
   -- than snapping back to phase 0 every encounter.
-  -- If the player never steered a BATTLE camera (it is still at the solved
-  -- defaults), open where the FREE-ROAM camera was last left instead -- that
-  -- is the "saved coordinate" they actually move, and it fixes battles
-  -- opening at the zoomed-in solved shot. Once they steer a battle, keep the
-  -- battle camera's own last position across battles (so in-battle steering
-  -- persists too). Either way the live values start where the goals are, so
-  -- frame 1 already renders at the saved position -- no ease-in jump.
-  local atDefault = BattleCam.orbitGoal == 0
-                 and BattleCam.pitchGoal == 0
-                 and BattleCam.zoomGoal == 1
-  if atDefault then BattleCam.seedFromFreeCamera() end
+  -- Open where the FREE-ROAM camera was last left (the "saved drift" the
+  -- player actually moves) whenever we have a freecam history -- this is the
+  -- position battles should open at, and it fixes them opening on the
+  -- zoomed-in solved shot. Only with no freecam history AND a battle camera
+  -- that was explicitly steered do we keep that steered position instead.
+  -- Either way the live values start where the goals are, so frame 1 already
+  -- renders at the saved position -- no ease-in jump.
+  BattleCam.seedFromFreeCamera()
   BattleCam.orbit = BattleCam.orbitGoal
   BattleCam.pitch = BattleCam.pitchGoal
   BattleCam.zoom  = BattleCam.zoomGoal

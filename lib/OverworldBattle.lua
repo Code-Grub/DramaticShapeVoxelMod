@@ -775,22 +775,25 @@ local function whiteBoxFill(battle, fn)
   if not ok then error(err, 0) end
 end
 
--- HALF backplate: the engine's white box fill is recoloured to a translucent
--- BLACK slab, so the dialogue reads over any ground. Only the opaque-white
--- fills (the box paper) are recoloured; glyphs and borders are drawn as ink
--- and pass through. Lives in the same g.rectangle path the engine uses, so it
--- tracks the box at every window aspect.
+-- HALF backplate: the engine's white dialogue-box fill is recoloured to a
+-- translucent BLACK slab, so the dialogue reads over any ground. Scoped to the
+-- dialogue box's own GB rect {0,96,160,48} -- the move-select / type / action
+-- boxes are separate white fills and must keep their own colours, so only the
+-- dialogue paper is recoloured. Glyphs and borders are drawn as ink and pass
+-- through. Lives in the same g.rectangle path the engine uses, so it tracks the
+-- box at every window aspect.
 local function halfBoxFill(battle, fn)
   local g = love.graphics
   local rectangle = g.rectangle
-  g.rectangle = function(mode, ...)
+  g.rectangle = function(mode, x, y, w, h, ...)
     if mode == "fill" then
       local r, gr, b, a = g.getColor()
-      if r > 0.99 and gr > 0.99 and b > 0.99 and a > 0.99 then
+      if r > 0.99 and gr > 0.99 and b > 0.99 and a > 0.99
+         and x == 0 and y == 96 and w == 160 and h == 48 then
         g.setColor(0, 0, 0, 0.55)
       end
     end
-    return rectangle(mode, ...)
+    return rectangle(mode, x, y, w, h, ...)
   end
   local ok, err = pcall(fn, battle)
   g.rectangle = rectangle
