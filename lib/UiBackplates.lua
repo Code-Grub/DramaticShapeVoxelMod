@@ -66,16 +66,16 @@ UiBackplates.textboxFill = ModSetting.new("textboxFill", "TEXTBOX FILL",
 -- -- NOT the player/opponent HUD blocks, which are separate rects.
 UiBackplates.TEXTBOX_KEYS = { box = true, moves = true, mimic = true }
 
--- The backplate colour/alpha for the dialogue/menu boxes, or nil when there
--- is none:
+-- The backplate colour/alpha for the dialogue box, or nil when there is none:
 --   * OFF   -- no backplate: the engine's white box fill is skipped, so the
 --     diorama shows through behind the text (the box border + ink still draw).
 --   * HALF  -- a translucent BLACK slab (upstream's default) over the diorama,
---     so the words read over any ground.
--- The fill is applied by wrapping the engine's Font.drawBox (see
--- installBoxHook): that draws into the SAME 160x144 UI canvas the engine's
--- box lives in, so it tracks the box at every window aspect -- a slab in the
--- world canvas could never follow a box the engine letterboxes.
+--     so the words read over any ground. Applied only to the dialogue box
+--     (phase "messages"); the move-select / type / mimic menus keep their own
+--     black-on-diorama drawing so their glyphs never become white-on-white.
+-- The fill is applied by a g.rectangle shim in OverworldBattle.drawTextArea
+-- (see halfBoxFill): that draws into the SAME 160x144 UI canvas the engine's
+-- box lives in, so it tracks the box at every window aspect.
 function UiBackplates.textboxFillStyle()
   -- ARENA FILL: WHITE paints a solid white field; a dark box backplate would
   -- read as a grey slab on white, so HALF is overridden to an OPAQUE WHITE

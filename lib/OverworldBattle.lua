@@ -1289,10 +1289,12 @@ function OverworldBattle.install()
     if isIOS() then return innerText(self) end
     local battle = self
     local style = UiBackplates.textboxFillStyle()
-    -- HALF: a translucent-black backplate with white-flipped ink (text on a
-    -- dark slab reads white). Goes through the same g.rectangle shim path as
-    -- the WHITE arena fill, so it tracks the box at every window aspect.
-    if style and style[1] < 0.5 then
+    -- HALF applies ONLY to the dialogue box (phase "messages"): a translucent
+    -- black slab with white-flipped ink. The move-select / type / mimic menus
+    -- are separate phases and must keep their own black-on-diorama drawing --
+    -- flipping their ink to white would leave black text on white paper
+    -- (white-on-white). So the flip is scoped to the messages phase only.
+    if style and style[1] < 0.5 and self.phase == "messages" then
       BattleHud.flipGlyphs(BattleScene.GB_W, BattleScene.GB_H,
                            function() halfBoxFill(battle, innerText) end, false)
       return
