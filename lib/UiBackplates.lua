@@ -77,6 +77,11 @@ UiBackplates.TEXTBOX_KEYS = { box = true, moves = true, mimic = true }
 -- box lives in, so it tracks the box at every window aspect -- a slab in the
 -- world canvas could never follow a box the engine letterboxes.
 function UiBackplates.textboxFillStyle()
+  -- ARENA FILL: WHITE paints a solid white field; a dark box backplate would
+  -- read as a grey slab on white, so HALF is overridden to an OPAQUE WHITE
+  -- fill -- the box becomes a plain white Game Boy panel, no sprite shows
+  -- through, and the inverted black ink sits on top of it.
+  if UiBackplates.arenaWhite() then return { 1, 1, 1, 1 } end
   if UiBackplates.textboxFill:get() == "HALF" then
     return { 0, 0, 0, 0.55 }
   end
