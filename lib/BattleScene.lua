@@ -398,6 +398,13 @@ function BattleScene.render(state, arena, textures, token)
   -- framed by cam.fov, so these only have to describe the ground in shot
   local vh = BattleCam.frameH(arena) * ph / (BattleScene.GB_H * s)
   local vw = vh * pw / ph
+  -- Fit the sun frustum wider than the frame: terrain outside the GB frame
+  -- would otherwise fall outside the shadow map and read as fully shadowed
+  -- even at noon (daytime periphery going dark). The camera framing is set
+  -- by cam.fov above and is unaffected by this extent.
+  local SUN_MARGIN = 1.6
+  vh = vh * SUN_MARGIN
+  vw = vw * SUN_MARGIN
 
   -- the cards need the camera's eye to face it, so the rig has to be live
   -- before they are built; Voxel3D.eye is set by viewProjection, which

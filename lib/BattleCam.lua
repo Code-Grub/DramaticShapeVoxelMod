@@ -219,6 +219,14 @@ BattleCam.t = 0
 -- rig's own shot, which is the one the composition is solved for.
 function BattleCam.reset()
   BattleCam.t = 0
+  -- Start the live camera where it was last left, not at the solved shot:
+  -- seeding the live values from the goals means frame 1 already renders at
+  -- the saved position, so there is no ease-in "jump" from the rig's own
+  -- composition to wherever the player steered the previous battle. The
+  -- saved position persists across battles (these are the only fields kept).
+  BattleCam.orbit = BattleCam.orbitGoal
+  BattleCam.pitch = BattleCam.pitchGoal
+  BattleCam.zoom  = BattleCam.zoomGoal
 end
 
 -- Back to the solved shot, for anything that wants the composition as
