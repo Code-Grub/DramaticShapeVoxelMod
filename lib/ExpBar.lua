@@ -36,7 +36,7 @@ ExpBar.enabled = ModSetting.new("BattleArtXpBar", "BATTLE ART XP BAR",
 
 -- ------- constants (from the QoL source) -------
 
-local EXP_X, EXP_Y, EXP_WIDTH = 80, 89, 67
+local EXP_X, EXP_Y, EXP_WIDTH = 80, 84, 67
 local EXP_LEVEL_HOLD_FRAMES = 30
 local EXP_BURST_DIAGONALS = { 0, 1, 2, 4, 5, 7, 8, 9 }
 local EXP_BLUE = { 50 / 255, 150 / 255, 250 / 255, 1 }
@@ -222,9 +222,16 @@ function ExpBar.draw(battle, shot)
   -- here dropped the bar by (56-48)*hs world pixels, so it drifted below the
   -- arrow and the gap grew with window scale.
   local HUD = OverworldBattle.HUD_RECT.player   -- { 72, 56, 88, 40 }
+  local band = OverworldBattle.HUD_BAND.player   -- { 0, 48, 160, 48 }
+  -- Anchor to the HUD band's actual content origin (bands.player.y), the same
+  -- top row snapHUDs draws the band at. The EXP bar's GB-frame Y (EXP_Y) is
+  -- measured from the BAND origin (row 48), not the HUD block top (row 56),
+  -- so offset by (EXP_Y - band[2]) -- NOT (EXP_Y - HUD[2]). Using HUD[2]
+  -- here put the bar 8*hs world pixels too HIGH; it must sit lower, just
+  -- above the input arrow.
   local bandY = bands.player.y                  -- = shot.ly + p[2]*s - (p[2]-band[2])*hs
   local barX = pr[1] + (EXP_X - HUD[1]) * hs
-  local barY = bandY + (EXP_Y - HUD[2]) * hs
+  local barY = bandY + (EXP_Y - band[2]) * hs
   local w = px * hs
   local h = 2 * hs
 
