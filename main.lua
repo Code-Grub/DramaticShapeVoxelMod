@@ -173,6 +173,20 @@ mod.content.render_pipelines:register("voxel", {
     -- would make the zoom keys and the wheel dead while the mode was on, and
     -- would fight anyone who changed one deliberately.
     applyFull(level)
+    -- BATTLE BG must be WHITE whenever the diorama is on: WORLD is only valid
+    -- for the engine's flat 2D battle and composites as broken dark bars with
+    -- the 3D diorama (there is no "old system" to show through). applyFull
+    -- only runs on the transition into FULL, so enforce it every frame here
+    -- too -- including a boot that starts already at FULL -- persisting on
+    -- change only, never every frame.
+    if Voxel.isFull(level) then
+      local Game = require("src.core.Game")
+      local o = Game.save and Game.save.options
+      if o and o.battleBg ~= "white" then
+        o.battleBg = "white"
+        if Game.writeOptions then pcall(Game.writeOptions, Game) end
+      end
+    end
     Voxel.update(dt, level)
     -- the first-person head, on the same tick: its blend in and out of the
     -- orbit, the mouse capture lifecycle, and the frame's stick-rate look.
@@ -334,6 +348,12 @@ applyFull = function(level)
   -- is solved against (OverworldBattle.forceOG); FULL has just switched staged
   -- fights on, so the layout follows them.
   OverworldBattle.forceOG(Game)
+  -- BATTLE BG: WORLD leaves the frozen overworld showing through a battle and
+  -- is only valid for the engine's flat 2D battle; with the 3D diorama there
+  -- is no "old system" to show through, so WORLD composites as broken dark
+  -- bars. Force WHITE (the opaque paper field) for every user, since the mode
+  -- cannot render the world-behind-battle path at all.
+  opts.battleBg = "white"
   -- and the sky on the clock on the wall: FULL pins DAYTIME to SYNC. Unlike
   -- the rest of the preset this one IS held, not just set -- the row is off
   -- the menu while FULL owns it (the rows hook below), so a value changed
