@@ -185,6 +185,7 @@ mod.content.render_pipelines:register("voxel", {
     -- would make the zoom keys and the wheel dead while the mode was on, and
     -- would fight anyone who changed one deliberately.
     applyFull(level)
+    Voxel.update(dt, level)
     -- the first-person head, on the same tick: its blend in and out of the
     -- orbit, the mouse capture lifecycle, and the frame's stick-rate look.
     -- Unconditional like Voxel.update, because the blend has to keep easing
