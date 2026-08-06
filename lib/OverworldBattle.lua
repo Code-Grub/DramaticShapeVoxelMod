@@ -635,15 +635,23 @@ function OverworldBattle.update(dt)
     -- treatment is pure white ink plus a dark one-pixel shadow.
     local ios = isIOS()
     local okHud, up = false, false
-    -- iOS now runs the snapped HUD path too (opaque-white backplates + the
-    -- vertical-flip blit that corrects the upside-down Canvas-to-Canvas
-    -- presentation). It was previously skipped because the old frosted path
-    -- drew upside-down and opaque; the corrected path is fine.
-    okHud, up = pcall(OverworldBattle.snapHUDs, session.battle, shot)
+    -- iOS cannot run the snapped HUD path: the HUD texture is rendered into a
+    -- scratch canvas and blitted back, and on iOS that Canvas-to-Canvas blit is
+    -- presented upside-down. Every flip formula tried (center-mirror in 1.7.3,
+    -- in-place in 1.7.4) mis-places one of the two bands, because the enemy
+    -- band [0,48] and player band [48,96] are not symmetric about the 144px
+    -- canvas center, so a single flip expression cannot land both correctly.
+    -- Fall back to the engine's own in-frame HUD on iOS, which the engine
+    -- positions correctly; drawHudPanels already elides the backplate there, so
+    -- the HUD stays transparent. The text boxes are the engine's Font.drawBox
+    -- (opaque white) and unaffected.
+    if not ios then
+      okHud, up = pcall(OverworldBattle.snapHUDs, session.battle, shot)
+    end
     session.snapped = (okHud and up) and true or false
     -- once per battle, not once per frame: a driver that cannot do this cannot
     -- do it sixty times a second either, and the fallback is silent and fine
-    if not okHud and not session.hudWarned then
+    if not ios and not okHud and not session.hudWarned then
       session.hudWarned = true
       V.mod.log:warn("overworld battle HUD snap failed: %s -- the HUDs draw "
                      .. "in the battle frame this battle", tostring(up))
@@ -1451,11 +1459,10 @@ function OverworldBattle.snapHUDs(battle, shot)
       live[key] = toWorld(rect, shot)
     end
   end
-  -- Ink treatment: the desktop path whitens engine ink over the frosted/dark
-  -- panel; on iOS the HUDs are now TRANSPARENT (PR #119), so the glyphs keep
-  -- the engine's native white ink (dark = true) to read over the diorama. The
-  -- WHITE arena fill still inverts to black ink + white drop-shadow on both.
-  local dark = (not ios) and (not UiBackplates.arenaWhite()) or true
+  -- Ink treatment: whiten engine ink over the frosted/dark panel unless the
+  -- WHITE arena fill is on (then plain black ink + white drop-shadow). iOS does
+  -- not reach this function (it uses the engine's own in-frame HUD); see update().
+  local dark = not UiBackplates.arenaWhite()
   if session then session.dark = dark end
   local layer = OverworldBattle.hudTexture(battle, slide, dark,
                                            UiBackplates.arenaWhite())
@@ -1467,36 +1474,16 @@ function OverworldBattle.snapHUDs(battle, shot)
   local ok, err = pcall(function()
     g.setCanvas(shot.canvas)
     g.setBlendMode("alpha")
-    if ios then
-      -- Transparent HUDs on iOS (matches upstream PR #119): the player /
-      -- opponent HUD glyphs are blitted straight onto the diorama with no
-      -- backplate, so no white card bleeds to the window edges. The text box /
-      -- action-select / move-list / type / yes-no / move-learn boxes are the
-      -- engine's own Font.drawBox (opaque white), which drawTextArea keeps on
-      -- iOS, so those stay white per the spec.
-    else
-      for key, rect in pairs(live) do
-        BattleHud.panel(rect, shot, dark, true)
-      end
+    for key, rect in pairs(live) do
+      BattleHud.panel(rect, shot, dark, true)
     end
     g.setColor(1, 1, 1, 1)
     for side, band in pairs(OverworldBattle.HUD_BAND) do
       local placement = bandPlacement[side]
       local quad = g.newQuad(band[1], band[2], band[3], band[4],
                              BattleScene.GB_W, BattleScene.GB_H)
-      if ios then
-        -- iOS presents this Canvas-to-Canvas HUD texture upside down, so flip
-        -- it vertically IN PLACE (about the band's own center) to keep the
-        -- band in its correct screen rectangle with upright glyphs. The earlier
-        -- mirror (shot.ph - placement.y - ...) moved each band to the opposite
-        -- vertical half, dropping the HUD into the diorama / under the text box.
-        local y = placement.y + band[4] * placement.scale
-        g.draw(layer, quad, placement.x + band[1] * placement.scale, y, 0,
-               placement.scale, -placement.scale)
-      else
-        g.draw(layer, quad, placement.x + band[1] * placement.scale,
-               placement.y, 0, placement.scale, placement.scale)
-      end
+      g.draw(layer, quad, placement.x + band[1] * placement.scale,
+             placement.y, 0, placement.scale, placement.scale)
     end
   end)
   if prevCanvas then g.setCanvas(prevCanvas) else g.setCanvas() end
