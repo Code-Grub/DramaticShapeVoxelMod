@@ -54,6 +54,13 @@ local ChunkMesher = V.require("ChunkMesher")
 local OverworldBattle = {}
 local session = nil
 
+-- iOS cannot run the HUD-snap (snapHUDs) path: it renders the HUDs
+-- upside-down and opaque, so on that platform we skip it and fall back to
+-- the engine's own (opaque) HUD/textbox draw. Mirrors upstream PR #48.
+local function isIOS()
+  return love.system and love.system.getOS and love.system.getOS() == "iOS"
+end
+
 -- DS_BATTLE_DEBUG=1 logs what the HUD's brightness probe is reading, once a
 -- second, which is how the glyph flip is checked from a shot run. Read
 -- through pcall: the loader's sandbox does not hand a mod `os`, and a
@@ -607,11 +614,15 @@ function OverworldBattle.update(dt)
     -- edges (snapHUDs). Here rather than in the battle's draw for the same
     -- reason the scene is: it binds a canvas of its own. Their only contrast
     -- treatment is pure white ink plus a dark one-pixel shadow.
-    local okHud, up = pcall(OverworldBattle.snapHUDs, session.battle, shot)
+    local ios = isIOS()
+    local okHud, up = false, false
+    if not ios then
+      okHud, up = pcall(OverworldBattle.snapHUDs, session.battle, shot)
+    end
     session.snapped = (okHud and up) and true or false
     -- once per battle, not once per frame: a driver that cannot do this cannot
     -- do it sixty times a second either, and the fallback is silent and fine
-    if not okHud and not session.hudWarned then
+    if not ios and not okHud and not session.hudWarned then
       session.hudWarned = true
       V.mod.log:warn("overworld battle HUD snap failed: %s -- the HUDs draw "
                      .. "in the battle frame this battle", tostring(up))
@@ -1230,6 +1241,7 @@ function OverworldBattle.install()
   local innerText = BattleState.drawTextArea
   function BattleState:drawTextArea()
     if not self.dramaticShapeShot then return innerText(self) end
+    if isIOS() then return innerText(self) end
     local battle = self
     -- The WHITE arena fill inverts the box ink: black text with a white
     -- drop-shadow on the white field, rather than the usual white-flip.
@@ -1489,6 +1501,18 @@ function OverworldBattle.drawHudPanels(battle)
   local shot = battle.dramaticShapeShot
   battle.dramaticShapeDark = nil
   if not shot then return end
+  if isIOS() then
+    -- iOS cannot run the snapped HUD path (it draws upside-down + opaque);
+    -- fall back to the engine's own opaque HUD panels. Mirrors upstream PR #48.
+    local slide = (battle.introSlide or 0) * 4
+    local enemy, player = OverworldBattle.hudLive(battle, slide)
+    local rect = OverworldBattle.HUD_RECT
+    love.graphics.setColor(1, 1, 1, 0.84)
+    if enemy then love.graphics.rectangle("fill", rect.enemy[1], rect.enemy[2], rect.enemy[3], rect.enemy[4]) end
+    if player then love.graphics.rectangle("fill", rect.player[1], rect.player[2], rect.player[3], rect.player[4]) end
+    love.graphics.setColor(1, 1, 1, 1)
+    return
+  end
   if snapped() then
     battle.dramaticShapeDark = true
     return
