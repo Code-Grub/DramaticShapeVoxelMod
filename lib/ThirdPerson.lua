@@ -86,6 +86,13 @@ ThirdPerson.ZOOM_TIME = 0.18          -- how fast the eye eases to a new one
 ThirdPerson.zoom = 1                  -- eased, what place() actually uses
 ThirdPerson.zoomGoal = 1              -- what the input asked for
 
+-- The last-known free-roam zoom, captured while the 3RD rung is engaged (see
+-- update) and held after it is dropped. The staged battle seeds from this so
+-- it opens at the player's last zoom -- not from the live ThirdPerson.zoom,
+-- which is stale during a battle (the freecam is not driving) and would
+-- otherwise reset to 1 on a fresh run. Nil until the rung has actually run.
+ThirdPerson.lastZoom = nil
+
 -- Step the zoom by `notches` (positive pulls the camera OUT). Returns true
 -- when the goal actually moved, so a caller can tell "zoomed" from "already
 -- at the stop" and let the input fall through.
@@ -312,6 +319,7 @@ function ThirdPerson.update(dt, blend)
   end
 
   local target = ThirdPerson.selected() and 1 or 0
+  if target > 0 then ThirdPerson.lastZoom = ThirdPerson.zoom end
   if (blend or 0) <= 0 then
     ThirdPerson.out = target
     ThirdPerson.len = ThirdPerson.reachFor() * target
