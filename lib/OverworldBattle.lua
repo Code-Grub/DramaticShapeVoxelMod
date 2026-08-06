@@ -1452,10 +1452,10 @@ function OverworldBattle.snapHUDs(battle, shot)
     end
   end
   -- Ink treatment: the desktop path whitens engine ink over the frosted/dark
-  -- panel; on iOS the HUDs sit on OPAQUE WHITE backplates, so the glyphs stay
-  -- BLACK (dark = false) to read on white. The WHITE arena fill still inverts
-  -- to black ink + white drop-shadow on both.
-  local dark = ios and false or (not UiBackplates.arenaWhite())
+  -- panel; on iOS the HUDs are now TRANSPARENT (PR #119), so the glyphs keep
+  -- the engine's native white ink (dark = true) to read over the diorama. The
+  -- WHITE arena fill still inverts to black ink + white drop-shadow on both.
+  local dark = (not ios) and (not UiBackplates.arenaWhite()) or true
   if session then session.dark = dark end
   local layer = OverworldBattle.hudTexture(battle, slide, dark,
                                            UiBackplates.arenaWhite())
@@ -1468,14 +1468,12 @@ function OverworldBattle.snapHUDs(battle, shot)
     g.setCanvas(shot.canvas)
     g.setBlendMode("alpha")
     if ios then
-      -- OPAQUE WHITE backplates for the player / opponent HUDs (BattleHud.panel
-      -- is frosted-only and returns early when FROST/TINT are 0, so a plain
-      -- white fill is the right primitive here). The text box is not in `live`
-      -- on iOS -- its backing is the engine's own white panel.
-      g.setColor(1, 1, 1, 1)
-      for _, rect in pairs(live) do
-        g.rectangle("fill", rect[1], rect[2], rect[3], rect[4])
-      end
+      -- Transparent HUDs on iOS (matches upstream PR #119): the player /
+      -- opponent HUD glyphs are blitted straight onto the diorama with no
+      -- backplate, so no white card bleeds to the window edges. The text box /
+      -- action-select / move-list / type / yes-no / move-learn boxes are the
+      -- engine's own Font.drawBox (opaque white), which drawTextArea keeps on
+      -- iOS, so those stay white per the spec.
     else
       for key, rect in pairs(live) do
         BattleHud.panel(rect, shot, dark, true)
@@ -1521,18 +1519,13 @@ function OverworldBattle.drawHudPanels(battle)
   battle.dramaticShapeDark = nil
   if not shot then return end
   if isIOS() then
-    -- iOS runs the snapped HUD path (snapHUDs) for the window-edge panels with
-    -- opaque-white backplates and the vertical-flip blit. This in-frame branch
-    -- is the fallback when that composite could not be made; draw OPAQUE WHITE
-    -- HUD backplates here too so the player/opponent panels still read over the
-    -- diorama. Mirrors the corrected iOS HUD from upstream PR #119.
-    local slide = (battle.introSlide or 0) * 4
-    local enemy, player = OverworldBattle.hudLive(battle, slide)
-    local rect = OverworldBattle.HUD_RECT
-    love.graphics.setColor(1, 1, 1, 1)
-    if enemy then love.graphics.rectangle("fill", rect.enemy[1], rect.enemy[2], rect.enemy[3], rect.enemy[4]) end
-    if player then love.graphics.rectangle("fill", rect.player[1], rect.player[2], rect.player[3], rect.player[4]) end
-    love.graphics.setColor(1, 1, 1, 1)
+    -- iOS HUDs are transparent: the snapped path (snapHUDs) blits the
+    -- player/opponent glyphs straight onto the diorama with no backplate
+    -- (matching upstream PR #119), so there is nothing to lay down here. The
+    -- text box / action-select / move-list / type / yes-no / move-learn boxes
+    -- remain opaque white because they are the engine's own Font.drawBox, which
+    -- drawTextArea preserves on iOS. This in-frame branch is only the fallback
+    -- when the snapped composite could not be made.
     return
   end
   if snapped() then
