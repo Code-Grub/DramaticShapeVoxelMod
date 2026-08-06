@@ -13,9 +13,9 @@ return function(game)
   local BattleState = require("src.battle.BattleState")
 
   local exports = game.mods and game.mods.exports
-  local lib = exports and exports.DRAMATIC_SHAPE and exports.DRAMATIC_SHAPE.lib
+  local lib = exports and exports.BATTLE_ART_VOXEL_FORK and exports.BATTLE_ART_VOXEL_FORK.lib
   if not lib then
-    U.log("DRAMATIC_SHAPE is not loaded -- enable it and run again")
+    U.log("BATTLE_ART_VOXEL_FORK is not loaded -- enable it and run again")
     return
   end
   local DayNight = lib.require("DayNight")

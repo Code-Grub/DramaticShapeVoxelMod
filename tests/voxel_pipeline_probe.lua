@@ -1,7 +1,7 @@
 -- Driver: prove the render-pipeline seam end to end.
 --
 -- Teleports to Pallet Town, screenshots the flat world, engages the
--- DRAMATIC_SHAPE mod's pipeline exactly the way the player does (hotkey 6),
+-- BATTLE_ART_VOXEL_FORK mod's pipeline exactly the way the player does (hotkey 6),
 -- screenshots the diorama, then walks the T-SHIFT ladder with hotkey 9.
 -- Every gate on the path is printed, so a run that comes back flat says
 -- which check refused rather than just looking wrong.

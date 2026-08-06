@@ -1119,7 +1119,7 @@
 
   **The clock rides the save slot.** On the engine's `save.writing` event the
   cycle's time is written into the mod's own save-file bucket
-  (`save.modData.DRAMATIC_SHAPE`), and read back when a save is opened. A
+  (`save.modData.BATTLE_ART_VOXEL_FORK`), and read back when a save is opened. A
   save with no clock in it starts at day.
 
 - **Window glass.** The panes in the overworld art -- the framed squares on
@@ -1843,7 +1843,7 @@ First release, ported from the engine-internal voxel branch onto the
 `render_pipelines` mod API.
 
 Interior furniture gets the shapes it depicts
-(mods/DRAMATIC_SHAPE/tools/voxel-survey.md is the procedure that found and
+(mods/BATTLE_ART_VOXEL_FORK/tools/voxel-survey.md is the procedure that found and
 verified these).
 
 Buildings stop being boxes wearing their own elevation. A profiled
@@ -1904,10 +1904,10 @@ long as the thing throwing them is tall.
   standing monitor, bookcases, TV standing on the floor behind the game
   console's relief, potted plant, flower pot, both staircases, and the
   wall/window band.
-- `mods/DRAMATIC_SHAPE/tests/voxel_survey.lua`: screenshot-survey driver
+- `mods/BATTLE_ART_VOXEL_FORK/tests/voxel_survey.lua`: screenshot-survey driver
   behind the repeatable inspection procedure (SURVEY_MAP / SURVEY_SPOTS /
   SURVEY_LEVELS / SHOT_DIR), documented in
-  mods/DRAMATIC_SHAPE/tools/voxel-survey.md.
+  mods/BATTLE_ART_VOXEL_FORK/tools/voxel-survey.md.
 
 - `lib/Buildings.lua`: a building archetype. Where the volume path folds a
   whole drawing upright (roof, facade and sloped ends alike) into one box,
@@ -2135,7 +2135,7 @@ long as the thing throwing them is tall.
   branch inside it, because it needs shader derivatives (`fwidth`) -- the
   one part of the mode a driver can refuse. A refusal costs the grid and
   nothing else.
-- `mods/DRAMATIC_SHAPE/tests/voxel_shadow_probe.lua`: reports the fitted
+- `mods/BATTLE_ART_VOXEL_FORK/tests/voxel_shadow_probe.lua`: reports the fitted
   frustum and the resolution rung, dumps the map itself, and shoots a
   stand point at every pitch. `SHADOW_SUN="kx,kz"` retunes the bearing for
   one run, `SHADOW_GRID=1` forces the wireframe on, and `SHADOW_ZOOM` pins
@@ -2439,7 +2439,7 @@ one pin set covers all eleven Centers and the Celadon Hotel.
   announces it, and checked ahead of the active() gate so switching it
   while voxel mode is off still drops what is cached.
 
-  `mods/DRAMATIC_SHAPE/tests/voxel_void_probe.lua` walks the three modes
+  `mods/BATTLE_ART_VOXEL_FORK/tests/voxel_void_probe.lua` walks the three modes
   and reports the border block, whether the mesh built and whether the
   scene took the 3D path. It deliberately does NOT invalidate the cache
   itself, since doing so would hide the second half of this.

@@ -6,7 +6,7 @@
 -- This walks the three modes on an outdoor map, reports whether the mesh
 -- built and whether the scene actually took the 3D path, and shoots each.
 --
---   POKEPORT_DRIVER=mods/DRAMATIC_SHAPE/tests/voxel_void_probe.lua lovec .
+--   POKEPORT_DRIVER=mods/BATTLE_ART_VOXEL_FORK/tests/voxel_void_probe.lua lovec .
 --
 -- knobs (env):
 --   VOID_MAP    map id                        (default PALLET_TOWN)
@@ -29,9 +29,9 @@ return function(game)
     :match("^%s*(%d+)%s*,%s*(%d+)%s*,?%s*(%a*)")
   facing = (facing ~= "" and facing) or "down"
 
-  local V = game.mods.exports["DRAMATIC_SHAPE"]
+  local V = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
   V = V and V.lib
-  assert(V, "DRAMATIC_SHAPE exports not reachable")
+  assert(V, "BATTLE_ART_VOXEL_FORK exports not reachable")
   local Voxel = V.require("VoxelState")
   local ChunkMesher = V.require("ChunkMesher")
 

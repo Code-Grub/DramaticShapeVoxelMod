@@ -10,9 +10,9 @@ return function(game)
 
   local ROOT = (os.getenv("SHOT_DIR") or "shots/cam")
 
-  local handle = game.mods.exports["DRAMATIC_SHAPE"]
+  local handle = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
   if not (handle and handle.lib) then
-    print("[cam] DRAMATIC_SHAPE mod not loaded")
+    print("[cam] BATTLE_ART_VOXEL_FORK mod not loaded")
     return love.event.quit()
   end
   local V = handle.lib

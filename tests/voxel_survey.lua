@@ -6,7 +6,7 @@
 -- find sprites whose 3D shape does not match what the object is -- a bed
 -- extruded into a wall, a flat stool, stairs drawn as a box.
 --
---   POKEPORT_DRIVER=mods/DRAMATIC_SHAPE/tests/voxel_survey.lua love .
+--   POKEPORT_DRIVER=mods/BATTLE_ART_VOXEL_FORK/tests/voxel_survey.lua love .
 --
 -- knobs (env):
 --   SURVEY_MAP     map id                          (default REDS_HOUSE_2F)

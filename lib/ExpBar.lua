@@ -17,7 +17,11 @@
 local V = ...
 
 local ModSetting = V.require("ModSetting")
-local OverworldBattle = V.require("OverworldBattle")
+-- Resolved lazily inside ExpBar.draw: requiring OverworldBattle here would
+-- recurse, because OverworldBattle.lua requires this module at its own top
+-- level (lib/ExpBar.lua), and V.require only caches a module after it has
+-- finished loading -- an infinite loop at mod init (stack overflow).
+local OverworldBattle
 
 -- engine modules (same as the QoL source)
 local Growth = require("src.pokemon.Growth")
@@ -193,6 +197,7 @@ end
 -- surface). Uses the same snapRects transform as the player HUD so the bar
 -- lands at the HUD's exact location and the same hs scale.
 function ExpBar.draw(battle, shot)
+  OverworldBattle = OverworldBattle or V.require("OverworldBattle")
   if ExpBar.enabled:get() ~= "ON" then return end
   if not battle.player or battle.safari or battle.demo
      or battle.showPlayerBack then return end

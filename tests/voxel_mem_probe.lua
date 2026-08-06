@@ -7,9 +7,9 @@ return function(game)
   local U = dofile("tests/drivers/util.lua")
   local clock = (love.timer and love.timer.getTime) or os.clock
 
-  local handle = game.mods.exports["DRAMATIC_SHAPE"]
+  local handle = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
   if not (handle and handle.lib) then
-    print("[mem] DRAMATIC_SHAPE mod not loaded")
+    print("[mem] BATTLE_ART_VOXEL_FORK mod not loaded")
     return
   end
   local V = handle.lib

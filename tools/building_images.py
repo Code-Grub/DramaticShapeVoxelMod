@@ -14,7 +14,7 @@ per row. Emits, per building:
   - B##_atlas.png  a strip of the building's distinct tiles, first-appearance
                     order (matches the doc's legend lettering)
 
-    python mods/DRAMATIC_SHAPE/tools/building_images.py [outdir]
+    python mods/BATTLE_ART_VOXEL_FORK/tools/building_images.py [outdir]
 
 outdir defaults to .scratchpad/img at the repo root.
 """

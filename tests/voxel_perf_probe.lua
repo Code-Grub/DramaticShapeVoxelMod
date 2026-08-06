@@ -17,9 +17,9 @@ return function(game)
   U.teleport(game, "ROUTE_1", 10, 30, "down")
   U.wait(10)
 
-  local handle = game.mods.exports["DRAMATIC_SHAPE"]
+  local handle = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
   if not (handle and handle.lib) then
-    print("[perf] DRAMATIC_SHAPE mod not loaded")
+    print("[perf] BATTLE_ART_VOXEL_FORK mod not loaded")
     return
   end
   local V = handle.lib

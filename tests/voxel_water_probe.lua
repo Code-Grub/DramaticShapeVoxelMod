@@ -6,7 +6,7 @@
 -- This walks the chain in the LIVE game and prints where it stops, for the
 -- palette mode currently active.
 --
---   POKEPORT_DRIVER=mods/DRAMATIC_SHAPE/tests/voxel_water_probe.lua lovec .
+--   POKEPORT_DRIVER=mods/BATTLE_ART_VOXEL_FORK/tests/voxel_water_probe.lua lovec .
 --
 -- knobs (env):
 --   WATER_MAP    map id                      (default PALLET_TOWN)
@@ -34,7 +34,7 @@ return function(game)
   Pipelines.setLevel("voxel", level)
   U.wait(30)                       -- outlast the camera tween
 
-  local V = game.mods.exports["DRAMATIC_SHAPE"]
+  local V = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
   V = V and V.lib
   if not V then return say("mod exports unreachable -- is it enabled?") end
   local TerrainAtlas = V.require("TerrainAtlas")

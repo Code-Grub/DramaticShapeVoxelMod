@@ -18,7 +18,7 @@
 --      blocks are separate rects and are never covered.
 --
 -- Each is a ModSetting: it gets an OPTIONS-menu row and a mod-manager schema
--- for free, and persists under options.modOptions.DRAMATIC_SHAPE like the
+-- for free, and persists under options.modOptions.BATTLE_ART_VOXEL_FORK like the
 -- others. Defining them here -- rather than inline in main.lua -- keeps the
 -- three of them, and the render-path queries they answer, in one place.
 

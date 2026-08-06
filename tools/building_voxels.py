@@ -7,7 +7,7 @@ does, extracts palette + silhouette (light-only flood fill), builds the
 voxel model with the same rules lib/Buildings.lua ships, asserts the
 geometric intent, and renders isometric previews.
 
-    python mods/DRAMATIC_SHAPE/tools/building_voxels.py [outdir]
+    python mods/BATTLE_ART_VOXEL_FORK/tools/building_voxels.py [outdir]
 
 Keep the TEMPLATES table below in sync with the `buildings` section of
 data/voxel_heights.lua: the two implementations are meant to be

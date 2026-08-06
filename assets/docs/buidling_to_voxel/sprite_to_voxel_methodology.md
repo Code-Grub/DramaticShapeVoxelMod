@@ -172,7 +172,7 @@ Tooling: `voxel_build_verify.py` (builds, asserts, renders previews).
 Because tilesets are shared, the band table can be keyed by tile id rather
 than by sprite: each id gets a treatment record (extrude / lay-flat / slope,
 plus ledge, recess, warp flags) in the spirit of
-`mods/DRAMATIC_SHAPE/data/voxel_heights.lua`. Pinning blocks 56/57/60/61 with
+`mods/BATTLE_ART_VOXEL_FORK/data/voxel_heights.lua`. Pinning blocks 56/57/60/61 with
 the profile above voxelizes Blue's house identically for free and propagates
 to the Fuchsia City, Route 25, and Saffron City instances of the same art.
 The door's lower-left tile (27) is the warp/walkable tile — keep its recessed
@@ -181,7 +181,7 @@ front face aligned with the collision cell so the 3D doorway matches
 
 ### What shipping it settled
 
-The mod implements this as `mods/DRAMATIC_SHAPE/lib/Buildings.lua`, driven by
+The mod implements this as `mods/BATTLE_ART_VOXEL_FORK/lib/Buildings.lua`, driven by
 a `buildings` list in the profile. Three things changed from the sketch
 above, each for a reason worth keeping:
 

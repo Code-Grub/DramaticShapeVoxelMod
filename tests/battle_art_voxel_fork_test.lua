@@ -18,7 +18,7 @@ local MOD_PATH = os.getenv("DS_MOD_PATH") or "mods/DramaticShapeVoxelMod"
 local run = T.sdk.loadMod(MOD_PATH, { data = Data })
 
 T.eq(#run.errors, 0,
-  "DRAMATIC_SHAPE loads clean: " .. table.concat(run.errors, "; "))
+  "BATTLE_ART_VOXEL_FORK loads clean: " .. table.concat(run.errors, "; "))
 
 -- Game:load does this after the merge; the SDK harness merges into a
 -- fixture dataset instead, so point the dispatcher at that one.
@@ -44,7 +44,7 @@ T.check(defs.tiltshift.drawWorld == nil,
 
 -- provenance: a callback that throws at play time must be attributable to
 -- this mod, not reported as an engine fault
-T.eq(defs._owners and defs._owners.voxel, "DRAMATIC_SHAPE",
+T.eq(defs._owners and defs._owners.voxel, "BATTLE_ART_VOXEL_FORK",
   "the merge stamped the pipeline's owning mod")
 
 -- ------- the ladders the engine drives
@@ -116,7 +116,7 @@ T.eq(byLabel.VOXEL.value(), "FULL", "the row renders the current rung's label")
 -- settings page looks.
 
 local Runtime = require("src.mods.Runtime")
-local VoxelState = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelState")
+local VoxelState = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("VoxelState")
 
 -- ------- FULL is a preset that owns the rows describing the LOOK
 --
@@ -138,24 +138,24 @@ for _, row in ipairs(fullRows) do fullIds[row.id] = true end
 T.check(fullIds["pipeline:voxel"], "FULL keeps the VOXEL row it lives on")
 T.check(not fullIds["pipeline:tiltshift"],
   "FULL takes T-SHIFT off the menu -- it owns the blur")
-T.check(not fullIds["DRAMATIC_SHAPE:grid"], "and V-GRID")
-T.check(not fullIds["DRAMATIC_SHAPE:curve"], "and V-CURVE")
-T.check(not fullIds["DRAMATIC_SHAPE:daytime"], "and DAYTIME")
+T.check(not fullIds["BATTLE_ART_VOXEL_FORK:grid"], "and V-GRID")
+T.check(not fullIds["BATTLE_ART_VOXEL_FORK:curve"], "and V-CURVE")
+T.check(not fullIds["BATTLE_ART_VOXEL_FORK:daytime"], "and DAYTIME")
 
 -- but the battle rows survive it: they are not knobs on the look, and FULL
 -- sets them once rather than holding them, so a player who wants the classic
 -- back sprite (or no staged fights at all) can still say so from inside FULL
-T.check(fullIds["DRAMATIC_SHAPE:battles"], "3D-BTL is still on the menu under FULL")
-T.check(fullIds["DRAMATIC_SHAPE:battleBack"], "and BACK SPRITES with it")
+T.check(fullIds["BATTLE_ART_VOXEL_FORK:battles"], "3D-BTL is still on the menu under FULL")
+T.check(fullIds["BATTLE_ART_VOXEL_FORK:battleBack"], "and BACK SPRITES with it")
 -- and AA, for the opposite reason: it is not a knob on the look at all, it is
 -- what the look COSTS, and only the player knows what their machine can carry
-T.check(fullIds["DRAMATIC_SHAPE:aa"], "and AA, which FULL neither sets nor owns")
+T.check(fullIds["BATTLE_ART_VOXEL_FORK:aa"], "and AA, which FULL neither sets nor owns")
 
 -- DAYTIME is not only hidden under FULL, it is HELD at SYNC: the row cannot
 -- be reached while FULL owns it, so a value changed underneath (the mod
 -- manager's page, an edited options file) snaps back when the menu asks
 do
-  local DayNight = run.loader.exports.DRAMATIC_SHAPE.lib.require("DayNight")
+  local DayNight = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("DayNight")
   DayNight.setting:sync("night")
   Runtime.call("ui.options.rows", function(_, r) return r end,
                { data = Data }, { { id = "tilt" } })
@@ -176,7 +176,7 @@ end
 -- chunk and a chunk has 200 local slots, so a section that wants half a dozen
 -- borrows them rather than spending them for the rest of the run.
 do
-local Battles = run.loader.exports.DRAMATIC_SHAPE.lib.require("OverworldBattle")
+local Battles = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("OverworldBattle")
 T.eq(Battles.enabled(), true, "3D-BTL is on by default, which is what pins it")
 
 -- off FULL first: the row on its own has to be enough, and FULL is checked
@@ -301,11 +301,11 @@ local grouped = Runtime.call("ui.options.rows", function(_, r) return r end,
                                { id = "void_fill" } })
 local order = {}
 for i, row in ipairs(grouped) do order[row.id] = i end
-T.check(order["pipeline:tiltshift"] < order["DRAMATIC_SHAPE:grid"],
+T.check(order["pipeline:tiltshift"] < order["BATTLE_ART_VOXEL_FORK:grid"],
   "the mode's settings follow its pipeline rows")
-T.eq(order["DRAMATIC_SHAPE:battles"] - order["pipeline:tiltshift"], 4,
+T.eq(order["BATTLE_ART_VOXEL_FORK:battles"] - order["pipeline:tiltshift"], 4,
   "and sit in one unbroken block, not scattered to the end of the list")
-T.check(order["void_fill"] > order["DRAMATIC_SHAPE:battles"],
+T.check(order["void_fill"] > order["BATTLE_ART_VOXEL_FORK:battles"],
   "with the engine's own later rows still after them")
 
 -- ------- the open menu notices when FULL is stepped onto or off
@@ -329,7 +329,7 @@ local menu = OptionsMenu.new(menuGame)
 local function rowIndex(m, id)
   for i, row in ipairs(m.rows) do if row.id == id then return i end end
 end
-T.check(rowIndex(menu, "DRAMATIC_SHAPE:grid"),
+T.check(rowIndex(menu, "BATTLE_ART_VOXEL_FORK:grid"),
   "off FULL the menu opens with the mode's settings on it")
 
 -- step the VOXEL row from 15 down to FULL, the way the player would
@@ -338,7 +338,7 @@ pressed = { left = true }
 menu:update(0)
 pressed = {}
 T.eq(Pipelines.level("voxel"), 1, "the step landed on FULL")
-T.check(not rowIndex(menu, "DRAMATIC_SHAPE:grid"),
+T.check(not rowIndex(menu, "BATTLE_ART_VOXEL_FORK:grid"),
   "and the rows FULL owns left the OPEN menu at once")
 T.check(not rowIndex(menu, "pipeline:tiltshift"), "T-SHIFT with them")
 T.check(menu.index <= #menu.rows + 1, "the cursor stayed in range")
@@ -349,7 +349,7 @@ pressed = { right = true }
 menu:update(0)
 pressed = {}
 T.eq(Pipelines.level("voxel"), 2, "the step left FULL")
-T.check(rowIndex(menu, "DRAMATIC_SHAPE:grid"),
+T.check(rowIndex(menu, "BATTLE_ART_VOXEL_FORK:grid"),
   "and the rows came straight back without reopening the menu")
 T.check(rowIndex(menu, "pipeline:tiltshift"), "T-SHIFT too")
 
@@ -360,14 +360,14 @@ T.check(rowIndex(menu, "pipeline:tiltshift"), "T-SHIFT too")
 -- press that switched staged battles on would leave the cursor a row further
 -- down than the player left it.
 do
-local Battles = run.loader.exports.DRAMATIC_SHAPE.lib.require("OverworldBattle")
+local Battles = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("OverworldBattle")
 Battles.setting:setIndex(2, menuGame)             -- staged battles off
 menuGame.save.options.battleLayout = "wide"
 Pipelines.setLevel("voxel", 2)
 local layoutMenu = OptionsMenu.new(menuGame)
 T.check(rowIndex(layoutMenu, "battleLayout"),
   "with staged battles off, the engine's BATTLE LAYOUT row is on the menu")
-layoutMenu.index = rowIndex(layoutMenu, "DRAMATIC_SHAPE:battles")
+layoutMenu.index = rowIndex(layoutMenu, "BATTLE_ART_VOXEL_FORK:battles")
 pressed = { right = true }
 layoutMenu:update(0)
 pressed = {}
@@ -375,7 +375,7 @@ T.eq(Battles.setting:get(), true, "the step switched staged battles on")
 T.check(not rowIndex(layoutMenu, "battleLayout"),
   "and BATTLE LAYOUT left the open menu with the same keypress")
 T.eq(menuGame.save.options.battleLayout, "og", "pinned to OG on the way out")
-T.eq(layoutMenu.index, rowIndex(layoutMenu, "DRAMATIC_SHAPE:battles"),
+T.eq(layoutMenu.index, rowIndex(layoutMenu, "BATTLE_ART_VOXEL_FORK:battles"),
   "with the cursor still on the row the player just used")
 end
 
@@ -423,9 +423,9 @@ T.eq(hookedByLabel["BACK PLACEMENT"].value(), "AUTO",
 local settingGame = { save = { options = {} }, mods = { modOptions = {} } }
 grid.step(settingGame)
 T.eq(grid.value(), "ON", "stepping the row toggles the grid")
-T.eq(settingGame.save.options.modOptions.DRAMATIC_SHAPE.grid, true,
+T.eq(settingGame.save.options.modOptions.BATTLE_ART_VOXEL_FORK.grid, true,
   "the toggle lands in options.modOptions, where the mod manager reads it")
-T.eq(settingGame.mods.modOptions.DRAMATIC_SHAPE.grid, true,
+T.eq(settingGame.mods.modOptions.BATTLE_ART_VOXEL_FORK.grid, true,
   "and in the loader's live copy, which mod.options:get reads")
 grid.step(settingGame)
 T.eq(grid.value(), "OFF", "stepping again toggles it back")
@@ -433,9 +433,9 @@ T.eq(grid.value(), "OFF", "stepping again toggles it back")
 -- the curve is a four-rung ladder rather than a toggle, and wraps
 curve.step(settingGame, 1)
 T.eq(curve.value(), "1", "stepping the curve climbs its ladder")
-T.eq(settingGame.save.options.modOptions.DRAMATIC_SHAPE.curve, 1,
+T.eq(settingGame.save.options.modOptions.BATTLE_ART_VOXEL_FORK.curve, 1,
   "the curve level persists alongside the grid, not over it")
-T.eq(settingGame.save.options.modOptions.DRAMATIC_SHAPE.grid, false,
+T.eq(settingGame.save.options.modOptions.BATTLE_ART_VOXEL_FORK.grid, false,
   "and the grid it shares a bucket with is untouched")
 curve.step(settingGame, 1)
 curve.step(settingGame, 1)
@@ -448,7 +448,7 @@ curve.step(settingGame, 1)
 
 -- the strength scales with the view height, so a rung looks the same at
 -- every zoom -- and is exactly zero when the setting is off
-local WorldCurve = run.loader.exports.DRAMATIC_SHAPE.lib.require("WorldCurve")
+local WorldCurve = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("WorldCurve")
 T.eq(WorldCurve.k(154), 0, "an OFF curve bends nothing")
 curve.step(settingGame, 1)
 T.check(math.abs(WorldCurve.k(154) - WorldCurve.AMOUNTS[2] / 154) < 1e-9,
@@ -480,8 +480,8 @@ T.eq(curve.value(), "OFF", "the curve is left off for the rows below")
 -- multiplied up into the canvas the pass actually opened: the wireframe's
 -- line width and the FX overlay's sprite scale.
 do
-local AntiAlias = run.loader.exports.DRAMATIC_SHAPE.lib.require("AntiAlias")
-local VoxelGrid = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelGrid")
+local AntiAlias = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("AntiAlias")
+local VoxelGrid = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("VoxelGrid")
 local aaGame = { save = { options = {} }, mods = { modOptions = {} } }
 local aa = hookedByLabel.AA
 T.eq(aa.label, "AA", "the anti-aliasing row carries its label")
@@ -499,7 +499,7 @@ T.eq(VoxelGrid.width(), VoxelGrid.WIDTH,
 
 aa.step(aaGame, 1)
 T.eq(aa.value(), "2X", "stepping the row climbs to two samples a pixel")
-T.eq(aaGame.save.options.modOptions.DRAMATIC_SHAPE.aa, 2,
+T.eq(aaGame.save.options.modOptions.BATTLE_ART_VOXEL_FORK.aa, 2,
   "the sample count persists beside the other settings, not over them")
 w, h = AntiAlias.expand(320, 200)
 T.eq(w, 453, "two samples a pixel is a canvas root-two wider")
@@ -545,7 +545,7 @@ end
 -- The harness has no love.image at all, which is why the checks above never
 -- reached this branch. Stand up just enough of one to walk it.
 
-local TerrainAtlas = run.loader.exports.DRAMATIC_SHAPE.lib.require("TerrainAtlas")
+local TerrainAtlas = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("TerrainAtlas")
 local TileRenderer = require("src.render.TileRenderer")
 
 local realImage, realNewImage = love.image, love.graphics.newImage
@@ -787,7 +787,7 @@ TileRenderer.animFrame = nil
 -- (any frames-animated tile resolves `flower` with no profile entry),
 -- and the PATCH writes alpha where the frame is not dark.
 
-local TileShape = run.loader.exports.DRAMATIC_SHAPE.lib.require("TileShape")
+local TileShape = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("TileShape")
 
 local flowerSet = {
   id = "T_FLOWER_PIN", image = "assets/tilesets/stub.png",
@@ -887,7 +887,7 @@ love.image, love.graphics.newImage = realImage, realNewImage
 -- Every OTHER reload still has to drop it, so this pins the distinction
 -- rather than just the fix.
 
-local ChunkMesher = run.loader.exports.DRAMATIC_SHAPE.lib.require("ChunkMesher")
+local ChunkMesher = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("ChunkMesher")
 local Runtime = require("src.mods.Runtime")
 
 local realInvalidate = ChunkMesher.invalidate
@@ -975,7 +975,7 @@ ChunkMesher.refresh = realRefresh
 -- function, so this stays a claim about the picture rather than a
 -- restatement of the implementation.
 
-local VoxelScene = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelScene")
+local VoxelScene = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("VoxelScene")
 local modeColors = VoxelScene._modeColors
 T.check(type(modeColors) == "function", "the scene exposes its palette resolve")
 
@@ -1076,8 +1076,8 @@ keyGame = {
   writeOptions = function() end,
 }
 
-local VoxelGrid = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelGrid")
-local Curve = run.loader.exports.DRAMATIC_SHAPE.lib.require("WorldCurve")
+local VoxelGrid = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("VoxelGrid")
+local Curve = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("WorldCurve")
 
 -- ------- 3 walks the ANGLE rungs and steps over FULL
 --
@@ -1122,7 +1122,7 @@ local curveBefore = Curve.setting:get()
 Game.keypressed(keyGame, "7")
 T.neq(Curve.setting:get(), curveBefore, "7 cycles V-CURVE")
 
-local Battles = run.loader.exports.DRAMATIC_SHAPE.lib.require("OverworldBattle")
+local Battles = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("OverworldBattle")
 T.eq(Battles.setting:get(), true, "3D-BTL starts on")
 Game.keypressed(keyGame, "8")
 T.eq(Battles.setting:get(), false, "8 toggles overworld battles off")
@@ -1212,7 +1212,7 @@ overworld.transitioning = false
 -- cave is a room with a ceiling, and the void past its walls is the
 -- outside of a box, not open air.
 
-local Voxel = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelState")
+local Voxel = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("VoxelState")
 local skyFor = VoxelScene._skyFor
 local skyStrength = VoxelScene._skyStrength
 T.check(type(skyFor) == "function", "the scene exposes its sky resolve")
@@ -1220,7 +1220,7 @@ T.check(type(skyFor) == "function", "the scene exposes its sky resolve")
 -- pinned to DAY for every sky assertion below: the row ships defaulting to
 -- SYNC -- the machine's own clock -- which would hand these tests whatever
 -- palette the hour of the test run happened to be
-run.loader.exports.DRAMATIC_SHAPE.lib.require("DayNight").setting:sync("day")
+run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("DayNight").setting:sync("day")
 
 local outside = { def = { id = "PALLET_TOWN", tileset = "OVERWORLD" } }
 local inside = { def = { id = "REDS_HOUSE_1F", tileset = "HOUSE" } }
@@ -1298,9 +1298,9 @@ T.check(skyRGB("gbc_inv")[3] ~= blue[3],
 -- each. Nothing is baked to a fixed size and upscaled -- the bands fill the
 -- window and the dither grid is cut to the diorama's own pixel scale.
 do
-local Sky = run.loader.exports.DRAMATIC_SHAPE.lib.require("Sky")
-local Voxel3D = run.loader.exports.DRAMATIC_SHAPE.lib.require("Voxel3D")
-local DayNight = run.loader.exports.DRAMATIC_SHAPE.lib.require("DayNight")
+local Sky = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Sky")
+local Voxel3D = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Voxel3D")
+local DayNight = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("DayNight")
 
 local function luma(c) return 0.299 * c[1] + 0.587 * c[2] + 0.114 * c[3] end
 
@@ -1561,11 +1561,11 @@ end
 -- and a lake is either a hole in the world or is drawn twice -- and it is
 -- pure geometry, so it is driven here against a hand-drawn map.
 do
-local Water = run.loader.exports.DRAMATIC_SHAPE.lib.require("Water")
-local Sky = run.loader.exports.DRAMATIC_SHAPE.lib.require("Sky")
-local ChunkMesher = run.loader.exports.DRAMATIC_SHAPE.lib.require("ChunkMesher")
-local Structures = run.loader.exports.DRAMATIC_SHAPE.lib.require("Structures")
-local Shapes = run.loader.exports.DRAMATIC_SHAPE.lib.require("TileShape")
+local Water = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Water")
+local Sky = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Sky")
+local ChunkMesher = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("ChunkMesher")
+local Structures = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Structures")
+local Shapes = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("TileShape")
 local TileShapeHeights = Shapes.heights()
 
 -- ------- the ladder
@@ -1596,7 +1596,7 @@ Water.setting:sync("full")
 -- pixels that crawls smoothly between them gives away that the quantisation
 -- is only skin deep.
 do
-local TerrainAtlas = run.loader.exports.DRAMATIC_SHAPE.lib.require("TerrainAtlas")
+local TerrainAtlas = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("TerrainAtlas")
 local realClock = TerrainAtlas._animFrame
 local frame = 0
 TerrainAtlas._animFrame = function() return frame end
@@ -1712,8 +1712,8 @@ T.check(rampImg == nil or rampCount == #Sky.bands(),
 -- tips the reflection toward the way the camera looks by however far that
 -- camera is from having a horizon in frame.
 do
-local Voxel3D = run.loader.exports.DRAMATIC_SHAPE.lib.require("Voxel3D")
-local VoxelState = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelState")
+local Voxel3D = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Voxel3D")
+local VoxelState = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("VoxelState")
 local wasAngle, wasCam = VoxelState.angle, Voxel3D.camera
 Voxel3D.camera = nil
 
@@ -1769,7 +1769,7 @@ end
 -- showing the sky and the shoreline, which reads as a sticker rather than as
 -- a shadow. Everything the world casts still shades it.
 do
-local ShadowMap = run.loader.exports.DRAMATIC_SHAPE.lib.require("ShadowMap")
+local ShadowMap = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("ShadowMap")
 T.check(type(ShadowMap.sprites) == "function",
   "the sun pass can be told it is drawing the cast rather than the world")
 -- inert outside a pass, like every other toggle on it -- a caller that
@@ -2045,7 +2045,7 @@ Voxel.angle = 0
 -- strings, one per cell row, "." open and anything else solid; "w" is water
 -- (open to a surfer only) and "d" a warp tile.
 
-local BattleArena = run.loader.exports.DRAMATIC_SHAPE.lib.require("BattleArena")
+local BattleArena = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattleArena")
 
 local function stubMap(rows)
   local at = function(cx, cy)
@@ -2224,9 +2224,9 @@ T.check(BattleArena.find(roomy, 2, 3, false) ~= nil,
 -- real camera rather than asserted about the constants, so the day someone
 -- retunes the rig this either still lands or says so.
 
-local BattleCam = run.loader.exports.DRAMATIC_SHAPE.lib.require("BattleCam")
-local BattleScene = run.loader.exports.DRAMATIC_SHAPE.lib.require("BattleScene")
-local Voxel3Dcam = run.loader.exports.DRAMATIC_SHAPE.lib.require("Voxel3D")
+local BattleCam = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattleCam")
+local BattleScene = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattleScene")
+local Voxel3Dcam = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Voxel3D")
 
 -- where a world point lands in the 160x144 frame, or nil behind the camera
 local function project(cam, point, w, h, fov)
@@ -2391,8 +2391,8 @@ T.eq(rig.curve, 0, "the battle camera switches the world curve off")
 -- The engine draws it as a full-screen white rectangle, which is a flash on
 -- a white battle field and a whiteout of the map, the HUD and the text box
 -- over a world. It is dropped on the way past and put back on the two cards.
-local Battles = run.loader.exports.DRAMATIC_SHAPE.lib.require("OverworldBattle")
-local Art = run.loader.exports.DRAMATIC_SHAPE.lib.require("BattleArt")
+local Battles = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("OverworldBattle")
+local Art = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattleArt")
 T.eq(Art.frontAnimationSetting.values[1], "gen1",
   "animated fronts expose the single-frame Gen 1 compatibility collection")
 T.eq(Art.frontAnimationSetting.labels[1], "GEN 1",
@@ -2423,7 +2423,7 @@ T.eq(Battles.flashing({ fx = { flash = 16 }, frame = 5 }), true,
 -- always wears the seams. The player's own V-GRID row must not be touched by
 -- that -- an override, not a write, or switching the mode off mid-battle
 -- would quietly rewrite a setting they chose.
-local Grid = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelGrid")
+local Grid = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("VoxelGrid")
 Grid.override = nil
 local rowWas = Grid.setting:get()
 T.eq(Grid.enabled(), rowWas and true or false,
@@ -2443,7 +2443,7 @@ T.eq(Grid.enabled(), rowWas and true or false,
 -- to be derived from where they landed rather than from a constant -- and it
 -- has to hold BOTH, which a band narrower than the gap between them would
 -- not.
-local BattleDOF = run.loader.exports.DRAMATIC_SHAPE.lib.require("BattleDOF")
+local BattleDOF = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattleDOF")
 local focusY, band, range = BattleDOF.bandFor(96, 56, 144)
 T.check(math.abs(focusY - 76 / 144) < 1e-9,
   "the band centres between the two marks")
@@ -2585,9 +2585,9 @@ local backGame = { save = { options = { modOptions = {} } },
 Battles.setting:setIndex(1, backGame)              -- 3D-BTL on
 Battles.backSetting:setIndex(2, backGame)          -- BACK SPRITES on
 T.eq(Battles.backPinned(), true, "switched on, the back pic is pinned")
-T.eq(backGame.save.options.modOptions.DRAMATIC_SHAPE.battleBack, true,
+T.eq(backGame.save.options.modOptions.BATTLE_ART_VOXEL_FORK.battleBack, true,
   "and it persists on its own key, beside 3D-BTL rather than over it")
-T.eq(backGame.save.options.modOptions.DRAMATIC_SHAPE.battles, true,
+T.eq(backGame.save.options.modOptions.BATTLE_ART_VOXEL_FORK.battles, true,
   "which is still where it always was")
 
 -- and it means nothing at all with staged battles off: there is no staged
@@ -2631,8 +2631,8 @@ local offRows = Runtime.call("ui.options.rows", function(_, r) return r end,
                              backGame, { { id = "tilt" } })
 local offIds = {}
 for _, row in ipairs(offRows) do offIds[row.id] = true end
-T.check(offIds["DRAMATIC_SHAPE:battles"], "3D-BTL itself is still offered")
-T.check(not offIds["DRAMATIC_SHAPE:battleBack"],
+T.check(offIds["BATTLE_ART_VOXEL_FORK:battles"], "3D-BTL itself is still offered")
+T.check(not offIds["BATTLE_ART_VOXEL_FORK:battleBack"],
   "but BACK SPRITES is off the menu while there is no staged fight to be about")
 
 Battles.setting:setIndex(1, backGame)
@@ -2640,8 +2640,8 @@ local onRows = Runtime.call("ui.options.rows", function(_, r) return r end,
                             backGame, { { id = "tilt" } })
 local onAt = {}
 for i, row in ipairs(onRows) do onAt[row.id] = i end
-T.check(onAt["DRAMATIC_SHAPE:battleBack"], "switched back on, so is the row")
-T.eq(onAt["DRAMATIC_SHAPE:battleBack"] - onAt["DRAMATIC_SHAPE:battles"], 1,
+T.check(onAt["BATTLE_ART_VOXEL_FORK:battleBack"], "switched back on, so is the row")
+T.eq(onAt["BATTLE_ART_VOXEL_FORK:battleBack"] - onAt["BATTLE_ART_VOXEL_FORK:battles"], 1,
   "directly under the row it belongs to")
 
 -- ------- and which pic is the pinned one is asked with the other side BLANKED
@@ -2695,8 +2695,8 @@ end
 -- canvas IS the moment the world is finished and the paper has not started.
 -- That is what this drives -- the gates, and the ordering.
 do
-local DayTint = run.loader.exports.DRAMATIC_SHAPE.lib.require("DayTint")
-local DayNight = run.loader.exports.DRAMATIC_SHAPE.lib.require("DayNight")
+local DayTint = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("DayTint")
+local DayNight = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("DayNight")
 
 -- the map the hour is asked about is the one the player is standing on, read
 -- off the live game rather than passed in -- so there has to be one
@@ -2801,7 +2801,7 @@ end
 -- filled the notch between a Rattata's ears and the gap between its body and
 -- its tail, which are background and have the drawing over them.
 do
-local BattlePics = run.loader.exports.DRAMATIC_SHAPE.lib.require("BattlePics")
+local BattlePics = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattlePics")
 
 -- Run one hand-drawn figure through the real BattlePics and hand back a
 -- reader over what came out. The pic is faked at the readback seam, which is
@@ -3063,7 +3063,7 @@ end
 -- whatever is on top, which is the fade while it is up, so the fade has to be
 -- off the stack before the battle finishes and back on it afterwards.
 do
-local Exit = run.loader.exports.DRAMATIC_SHAPE.lib.require("BattleExit")
+local Exit = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattleExit")
 
 T.eq(Data.transitions and Data.transitions[Exit.ID] and
      Data.transitions[Exit.ID].frames, Exit.FRAMES,
@@ -3166,10 +3166,10 @@ end
 -- camera looks north, so the discs must actually cross the northern sky),
 -- and the clock's ride through the save file.
 do
-local DayNight = run.loader.exports.DRAMATIC_SHAPE.lib.require("DayNight")
-local ShadowMap = run.loader.exports.DRAMATIC_SHAPE.lib.require("ShadowMap")
-local Voxel3D = run.loader.exports.DRAMATIC_SHAPE.lib.require("Voxel3D")
-local Voxel = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelState")
+local DayNight = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("DayNight")
+local ShadowMap = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("ShadowMap")
+local Voxel3D = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Voxel3D")
+local Voxel = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("VoxelState")
 
 -- the dial and its pins
 T.eq(DayNight.setting.values[1], "sync",
@@ -3323,7 +3323,7 @@ T.eq(DayNight.tod(0), "MORNING", "dawn is MORNING")
 T.eq(DayNight.tod(600), "EVENING", "dusk is EVENING")
 
 -- the clock rides the save slot
-local modApi = run.loader.exports.DRAMATIC_SHAPE.lib.mod
+local modApi = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.mod
 DayNight.setting:sync("cycle")
 DayNight.clock = 777
 DayNight.store()
@@ -3421,7 +3421,7 @@ end
 -- The scenes wire it as tint(outdoor or isCanopy(map)) over the unchanged
 -- noon rig, so what is checked here is the classification itself.
 do
-local DayNight = run.loader.exports.DRAMATIC_SHAPE.lib.require("DayNight")
+local DayNight = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("DayNight")
 T.check(DayNight.isCanopy({ id = "VIRIDIAN_FOREST" }),
   "Viridian Forest stands under a canopy")
 T.check(not DayNight.isCanopy({ id = "MT_MOON_1F" }),
@@ -3440,8 +3440,8 @@ end
 -- stored depth and nothing about where their shadow falls -- taking most of
 -- the forgiveness back for the shadow they throw and for nothing else.
 do
-local ShadowMap = run.loader.exports.DRAMATIC_SHAPE.lib.require("ShadowMap")
-local Mat4 = run.loader.exports.DRAMATIC_SHAPE.lib.require("Mat4")
+local ShadowMap = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("ShadowMap")
+local Mat4 = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Mat4")
 local dir = ShadowMap.sunDir()
 local s = -ShadowMap.slack * ShadowMap.SNUG
 local m = ShadowMap.snug(nil)
@@ -3467,9 +3467,9 @@ end
 -- building's sits a row down inside its tile. The scan takes a pure reader,
 -- so the geometry is checked here without an image in sight.
 do
-local GlassMask = run.loader.exports.DRAMATIC_SHAPE.lib.require("GlassMask")
-local DayNight = run.loader.exports.DRAMATIC_SHAPE.lib.require("DayNight")
-local Voxel3D = run.loader.exports.DRAMATIC_SHAPE.lib.require("Voxel3D")
+local GlassMask = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("GlassMask")
+local DayNight = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("DayNight")
+local Voxel3D = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Voxel3D")
 
 local W, H = 32, 16
 local blackAt = {}
@@ -3540,10 +3540,10 @@ end
 
 do
 local FirstPerson =
-  run.loader.exports.DRAMATIC_SHAPE.lib.require("FirstPerson")
-local VoxelState = run.loader.exports.DRAMATIC_SHAPE.lib.require("VoxelState")
-local FreeMove = run.loader.exports.DRAMATIC_SHAPE.lib.require("FreeMove")
-local Voxel3D = run.loader.exports.DRAMATIC_SHAPE.lib.require("Voxel3D")
+  run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("FirstPerson")
+local VoxelState = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("VoxelState")
+local FreeMove = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("FreeMove")
+local Voxel3D = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Voxel3D")
 
 T.eq(VoxelState.FP_LEVEL, 6, "1ST is the seventh rung")
 T.check(VoxelState.isFirstPerson(6), "and isFirstPerson answers for it")
@@ -3710,4 +3710,4 @@ end
 Pipelines.reset()
 run.release()
 
-T.finish("DRAMATIC_SHAPE")
+T.finish("BATTLE_ART_VOXEL_FORK")

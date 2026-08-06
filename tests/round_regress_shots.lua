@@ -12,7 +12,7 @@ return function(game)
   local ROOT = (os.getenv("SHOT_DIR") or "shots/round")
     .. "/" .. (os.getenv("AB_TAG") or "after")
 
-  local handle = game.mods.exports["DRAMATIC_SHAPE"]
+  local handle = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
   if not (handle and handle.lib) then return end
   local V = handle.lib
   local DayNight = V.require("DayNight")

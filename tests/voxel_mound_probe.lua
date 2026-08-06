@@ -5,7 +5,7 @@
 -- for diagnosing cliff/mound columns that extrude to the wrong height
 -- (Diglett's Cave entrance ridge, bug of 2026-07-27). Then a shot.
 --
---   POKEPORT_DRIVER=mods/DRAMATIC_SHAPE/tests/voxel_mound_probe.lua lovec .
+--   POKEPORT_DRIVER=mods/BATTLE_ART_VOXEL_FORK/tests/voxel_mound_probe.lua lovec .
 --
 -- knobs (env):
 --   MOUND_MAP    map id                       (default ROUTE_2)
@@ -34,7 +34,7 @@ return function(game)
     math.floor(tonumber(os.getenv("MOUND_LEVEL")) or 3))
   U.wait(30)
 
-  local V = game.mods.exports["DRAMATIC_SHAPE"]
+  local V = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
   V = V and V.lib
   local Structures = V and V.require("Structures")
   local ow = game.overworld

@@ -11,9 +11,9 @@ return function(game)
   local ROOT = (os.getenv("SHOT_DIR") or "shots/bikes")
     .. "/" .. (os.getenv("AB_TAG") or "before")
 
-  local handle = game.mods.exports["DRAMATIC_SHAPE"]
+  local handle = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
   if not (handle and handle.lib) then
-    print("[bike] DRAMATIC_SHAPE mod not loaded")
+    print("[bike] BATTLE_ART_VOXEL_FORK mod not loaded")
     return
   end
   local V = handle.lib

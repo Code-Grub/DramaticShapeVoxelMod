@@ -6,7 +6,7 @@
 -- and flower tile $03 cycles three frames, so the burst should NOT be
 -- eight copies of the same picture.
 --
---   POKEPORT_DRIVER=mods/DRAMATIC_SHAPE/tests/voxel_anim_probe.lua lovec .
+--   POKEPORT_DRIVER=mods/BATTLE_ART_VOXEL_FORK/tests/voxel_anim_probe.lua lovec .
 --
 -- knobs (env):
 --   ANIM_MAP    map id                        (default PALLET_TOWN)
@@ -53,7 +53,7 @@ return function(game)
   -- the atlas the terrain mesh actually samples, dumped per step: if these
   -- differ but the frames do not, the animated tiles are not reaching the
   -- geometry (baked into prop prisms, say) rather than not animating
-  local V = game.mods.exports["DRAMATIC_SHAPE"]
+  local V = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
   V = V and V.lib
   local TerrainAtlas = V and V.require("TerrainAtlas")
   local PaletteFX = require("src.render.PaletteFX")

@@ -13,9 +13,9 @@ return function(game)
   local ROOT = (os.getenv("SHOT_DIR") or "shots/billsdesk")
     .. "/" .. (os.getenv("AB_TAG") or "after")
 
-  local handle = game.mods.exports["DRAMATIC_SHAPE"]
+  local handle = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
   if not (handle and handle.lib) then
-    print("[bills] DRAMATIC_SHAPE mod not loaded")
+    print("[bills] BATTLE_ART_VOXEL_FORK mod not loaded")
     return
   end
   local V = handle.lib

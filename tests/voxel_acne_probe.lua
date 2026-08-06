@@ -36,8 +36,8 @@ return function(game)
     :match("^%s*(%d+)%s*,%s*(%d+)%s*,?%s*(%a*)")
   facing = (facing ~= "" and facing) or "up"
 
-  local handle = game.mods.exports["DRAMATIC_SHAPE"]
-  local V = assert(handle and handle.lib, "DRAMATIC_SHAPE exports missing")
+  local handle = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
+  local V = assert(handle and handle.lib, "BATTLE_ART_VOXEL_FORK exports missing")
   local ShadowMap = V.require("ShadowMap")
   local Voxel3D = V.require("Voxel3D")
   local Mat4 = V.require("Mat4")

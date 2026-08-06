@@ -22,7 +22,7 @@
 -- roof is on ROUTE_10, its facade on LAVENDER_TOWN), in which case no
 -- single map's grid holds the whole thing and each half meshes alone.
 --
---   BUILD_MAP=LAVENDER_TOWN POKEPORT_DRIVER=mods/DRAMATIC_SHAPE/tests/voxel_building_probe.lua lovec .
+--   BUILD_MAP=LAVENDER_TOWN POKEPORT_DRIVER=mods/BATTLE_ART_VOXEL_FORK/tests/voxel_building_probe.lua lovec .
 return function(game)
   local U = dofile("tests/drivers/util.lua")
   local mapId = os.getenv("BUILD_MAP") or "LAVENDER_TOWN"
@@ -30,7 +30,7 @@ return function(game)
              tonumber(os.getenv("BUILD_Y") or "5"), "up")
   U.wait(10)
 
-  local V = game.mods.exports["DRAMATIC_SHAPE"]
+  local V = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
   V = V and V.lib
   local Structures = V and V.require("Structures")
   local Buildings = V and V.require("Buildings")

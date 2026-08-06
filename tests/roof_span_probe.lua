@@ -12,7 +12,7 @@ return function(game)
              tonumber(os.getenv("BUILD_Y") or "20"), "up")
   U.wait(30)
 
-  local V = game.mods.exports["DRAMATIC_SHAPE"]
+  local V = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
   V = V and V.lib
   local Structures = V and V.require("Structures")
   local ow = game.overworld

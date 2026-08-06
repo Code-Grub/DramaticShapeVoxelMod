@@ -16,8 +16,8 @@ return function(game)
   game.save.player.name = "RED"
 
   local exports = game.mods and game.mods.exports
-  local lib = exports and exports.DRAMATIC_SHAPE and exports.DRAMATIC_SHAPE.lib
-  U.log("DRAMATIC_SHAPE lib:", tostring(lib))
+  local lib = exports and exports.BATTLE_ART_VOXEL_FORK and exports.BATTLE_ART_VOXEL_FORK.lib
+  U.log("BATTLE_ART_VOXEL_FORK lib:", tostring(lib))
   local Battles = lib and lib.require("OverworldBattle")
   U.log("OverworldBattle:", tostring(Battles))
 

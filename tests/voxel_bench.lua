@@ -45,9 +45,9 @@ return function(game)
   -- area" the benchmark is named for never gets entered.
   local HOLD = math.floor(tonumber(os.getenv("BENCH_HOLD")) or 1300)
 
-  local handle = game.mods.exports["DRAMATIC_SHAPE"]
+  local handle = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
   if not (handle and handle.lib) then
-    print("[bench] DRAMATIC_SHAPE mod not loaded -- nothing to measure")
+    print("[bench] BATTLE_ART_VOXEL_FORK mod not loaded -- nothing to measure")
     return
   end
   local V = handle.lib

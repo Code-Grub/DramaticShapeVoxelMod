@@ -6,7 +6,7 @@
 -- every camera pitch so the cast shadows can be eyeballed against the flat
 -- ground truth.
 --
---   POKEPORT_DRIVER=mods/DRAMATIC_SHAPE/tests/voxel_shadow_probe.lua lovec .
+--   POKEPORT_DRIVER=mods/BATTLE_ART_VOXEL_FORK/tests/voxel_shadow_probe.lua lovec .
 --
 -- knobs (env):
 --   SHADOW_MAP    map id                        (default PALLET_TOWN)
@@ -27,9 +27,9 @@ return function(game)
   facing = (facing ~= "" and facing) or "down"
 
   -- reach the mod's lib namespace the way a companion mod would
-  local handle = game.mods.exports["DRAMATIC_SHAPE"]
+  local handle = game.mods.exports["BATTLE_ART_VOXEL_FORK"]
   local V = handle and handle.lib
-  assert(V, "DRAMATIC_SHAPE exports not reachable")
+  assert(V, "BATTLE_ART_VOXEL_FORK exports not reachable")
   local ShadowMap = V.require("ShadowMap")
   local Voxel3D = V.require("Voxel3D")
   local VoxelGrid = V.require("VoxelGrid")

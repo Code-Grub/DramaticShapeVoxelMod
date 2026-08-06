@@ -1,6 +1,6 @@
 {
-  "id": "VOXEL MOD BATTLE ART",
-  "name": "VOXEL MOD BATTLE ART",
+  "id": "BATTLE_ART_VOXEL_FORK",
+  "name": "BATTLE ART VOXEL FORK",
   "version": "1.70",
   "api": 2,
   "entry": "main.lua",
