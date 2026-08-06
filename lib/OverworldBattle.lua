@@ -383,7 +383,11 @@ function OverworldBattle.snapRects(shot)
   -- keep their original internal alignment instead of being clipped.
   local ex = (2 - e[1]) * hs
   -- Keep two logical pixels of breathing room at the right window edge.
-  local px = shot.pw - (p[1] + p[3] + 2) * hs
+  -- NOTE: this +2 previously shifted the whole player HUD left by 2*hs, which
+  -- desynced it from the engine's player status box (and any external EXP-bar
+  -- mod that anchors to that box). Removed so our player HUD shares the
+  -- engine's status-box origin -- the external bar then lines up with it.
+  local px = shot.pw - (p[1] + p[3]) * hs
   local rects = {
     enemy = { ex + e[1] * hs, shot.ly + e[2] * s, e[3] * hs, e[4] * hs },
     player = { px + p[1] * hs, shot.ly + p[2] * s,
@@ -1488,17 +1492,12 @@ function OverworldBattle.snapHUDs(battle, shot)
     g.setBlendMode("alpha")
     for key, rect in pairs(live) do
       BattleHud.panel(rect, shot, whiteInk, true)
-      -- TEXTBOX FILL: a backplate behind the dialogue box and its move/mimic
-      -- menus -- NOT the player/opponent HUD blocks, which are separate rects.
-      -- Under ARENA FILL: WHITE it is an OPAQUE WHITE slab (no sprite shows
-      -- through); otherwise a translucent BLACK slab (upstream default).
-      -- Bounded to the box's own GB-frame rect so it cannot venture outside.
-      local style = UiBackplates.textboxFillStyle()
-      if style and UiBackplates.isTextboxKey(key) then
-        g.setColor(style[1], style[2], style[3], style[4])
-        g.rectangle("fill", rect[1], rect[2], rect[3], rect[4])
-        g.setColor(1, 1, 1, 1)
-      end
+      -- TEXTBOX FILL: the dialogue box's backplate is the engine's own
+      -- Font.drawBox fill, drawn in SCREEN space and docked to the window
+      -- edge -- so it already tracks the box at every aspect ratio. Drawing
+      -- our own slab here, in the GB canvas at a static rect, could never
+      -- follow a window-docked box (they only coincide at ~1:1), so we use
+      -- the engine's box as the backplate and do not paint over it.
     end
     g.setColor(1, 1, 1, 1)
     for side, band in pairs(OverworldBattle.HUD_BAND) do
