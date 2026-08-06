@@ -396,12 +396,13 @@ local SETTINGS = {
     .. "shot over the shoulder with a slow parallax drift.",
     full = true },
   -- HUD SCALE lives with the battle rows: SCALED is the mod's default HUD
-  -- (it grows with the battle zoom); 1X pins it to native size so an external
-  -- XP-bar mod -- which this mod does NOT provide -- lines up at 1X.
+  -- (it grows with the battle zoom); OG pins it to the window-fit scale like
+  -- upstream gen1recomp's player HUD, so an external XP-bar mod -- which this
+  -- mod does NOT provide -- lines up with a window-scaling HUD.
   { OverworldBattle.hudScaleSetting,
     "Size of the player and opponent HUD. SCALED grows with the battle "
-    .. "zoom (the mod default); WINDOW pins it to the window-fit scale like "
-    .. "upstream DynamicShapes' player HUD, so an external XP-bar mod -- which "
+    .. "zoom (the mod default); OG pins it to the window-fit scale like "
+    .. "upstream gen1recomp's player HUD, so an external XP-bar mod -- which "
     .. "this mod does not include -- lines up with a window-scaling HUD.",
     full = true },
   -- Only offered while a fight can actually be staged on the map.

@@ -80,14 +80,14 @@ OverworldBattle.setting = ModSetting.new(OverworldBattle.KEY,
                                          { true, false }, { "ON", "OFF" })
 
 -- HUD SCALE: SCALED draws the player/opponent HUD at the battle's zoom factor
--- (hs = zoom - 1), the look this mod ships with. WINDOW pins the HUD to the
--- window-fit scale (hs = fitScale), like upstream DynamicShapes' player HUD --
+-- (hs = zoom - 1), the look this mod ships with. OG pins the HUD to the
+-- window-fit scale (hs = fitScale), like upstream gen1recomp's player HUD --
 -- the HUD grows and shrinks with the window, which is the scale external
 -- EXP-bar mods assume (they adapted to the window-scaling default). The
 -- backplates are untouched: only the HUD's on-screen size follows the window.
 OverworldBattle.hudScaleSetting = ModSetting.new("hudScale", "HUD SCALE",
-                                                  { "scaled", "window" },
-                                                  { "SCALED", "WINDOW" }, 1)
+                                                  { "scaled", "og" },
+                                                  { "SCALED", "OG" }, 1)
 
 function OverworldBattle.enabled()
   return OverworldBattle.setting:get() and true or false
@@ -372,11 +372,11 @@ OverworldBattle.HUD_BAND = {
 function OverworldBattle.snapRects(shot)
   local s = shot.scale
   local hs = math.max(1, s - 1)
-  -- HUD SCALE: WINDOW pins the HUD to the window-fit scale (hs = fitScale),
-  -- like upstream DynamicShapes' player HUD, so an external XP-bar mod (which
-  -- assumes a window-scaling HUD) lines up; SCALED is the mod's default (hs
-  -- follows the battle zoom).
-  if OverworldBattle.hudScaleSetting:get() == "window" then hs = s end
+  -- HUD SCALE: OG pins the HUD to the window-fit scale (hs = fitScale), like
+  -- upstream gen1recomp's player HUD, so an external XP-bar mod (which assumes
+  -- a window-scaling HUD) lines up; SCALED is the mod's default (hs follows
+  -- the battle zoom).
+  if OverworldBattle.hudScaleSetting:get() == "og" then hs = s end
   local e, p = OverworldBattle.HUD_RECT.enemy, OverworldBattle.HUD_RECT.player
   -- Leave two logical pixels between the foe's name and the window edge.
   -- The whole enemy band moves with the panel, so long names and HUD shakes
