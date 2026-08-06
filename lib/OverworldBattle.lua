@@ -79,6 +79,15 @@ OverworldBattle.setting = ModSetting.new(OverworldBattle.KEY,
                                          OverworldBattle.LABEL,
                                          { true, false }, { "ON", "OFF" })
 
+-- HUD SCALE: SCALED draws the player/opponent HUD at the battle's zoom factor
+-- (hs = zoom - 1), the look this mod ships with. 1X pins the HUD to native
+-- size (hs = 1) regardless of zoom. External mods that draw an XP bar assume
+-- a 1X HUD, so players who add one (the XP bar is NOT owned by this mod)
+-- switch to 1X to line the bar up; everyone else keeps SCALED.
+OverworldBattle.hudScaleSetting = ModSetting.new("hudScale", "HUD SCALE",
+                                                  { "scaled", "1x" },
+                                                  { "SCALED", "1X" }, 1)
+
 function OverworldBattle.enabled()
   return OverworldBattle.setting:get() and true or false
 end
@@ -362,6 +371,9 @@ OverworldBattle.HUD_BAND = {
 function OverworldBattle.snapRects(shot)
   local s = shot.scale
   local hs = math.max(1, s - 1)
+  -- HUD SCALE: 1X pins the HUD to native size so an external XP-bar mod (which
+  -- assumes a 1X HUD) lines up; SCALED is the mod's default (hs follows zoom).
+  if OverworldBattle.hudScaleSetting:get() == "1x" then hs = 1 end
   local e, p = OverworldBattle.HUD_RECT.enemy, OverworldBattle.HUD_RECT.player
   -- Leave two logical pixels between the foe's name and the window edge.
   -- The whole enemy band moves with the panel, so long names and HUD shakes

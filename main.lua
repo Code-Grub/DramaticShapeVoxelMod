@@ -395,6 +395,14 @@ local SETTINGS = {
     "Fight on the map: the battle draws over the nearest clear ground, "
     .. "shot over the shoulder with a slow parallax drift.",
     full = true },
+  -- HUD SCALE lives with the battle rows: SCALED is the mod's default HUD
+  -- (it grows with the battle zoom); 1X pins it to native size so an external
+  -- XP-bar mod -- which this mod does NOT provide -- lines up at 1X.
+  { OverworldBattle.hudScaleSetting,
+    "Size of the player and opponent HUD. SCALED grows with the battle "
+    .. "zoom (the mod default); 1X pins it to native size for use with an "
+    .. "external XP-bar mod, which this mod does not include.",
+    full = true },
   -- Only offered while a fight can actually be staged on the map.
   { BattleArt.setting,
     "Use optional PNGs from assets/battle in fights. Missing art falls "
