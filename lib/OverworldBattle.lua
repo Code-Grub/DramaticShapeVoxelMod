@@ -635,13 +635,15 @@ function OverworldBattle.update(dt)
     -- treatment is pure white ink plus a dark one-pixel shadow.
     local ios = isIOS()
     local okHud, up = false, false
-    if not ios then
-      okHud, up = pcall(OverworldBattle.snapHUDs, session.battle, shot)
-    end
+    -- iOS now runs the snapped HUD path too (opaque-white backplates + the
+    -- vertical-flip blit that corrects the upside-down Canvas-to-Canvas
+    -- presentation). It was previously skipped because the old frosted path
+    -- drew upside-down and opaque; the corrected path is fine.
+    okHud, up = pcall(OverworldBattle.snapHUDs, session.battle, shot)
     session.snapped = (okHud and up) and true or false
     -- once per battle, not once per frame: a driver that cannot do this cannot
     -- do it sixty times a second either, and the fallback is silent and fine
-    if not ios and not okHud and not session.hudWarned then
+    if not okHud and not session.hudWarned then
       session.hudWarned = true
       V.mod.log:warn("overworld battle HUD snap failed: %s -- the HUDs draw "
                      .. "in the battle frame this battle", tostring(up))
@@ -1431,25 +1433,31 @@ function OverworldBattle.snapHUDs(battle, shot)
   if not (battle and shot and shot.canvas and (shot.scale or 0) > 0) then
     return false
   end
+  local ios = isIOS()
   local slide = (battle.introSlide or 0) * 4
   local rects, bandPlacement = OverworldBattle.snapRects(shot)
   local enemy, player = OverworldBattle.hudLive(battle, slide)
   local live = {}
   if enemy then live.enemy = rects.enemy end
   if player then live.player = rects.player end
-  -- and the text box's own glass, on the same pass. It stays in the middle of
-  -- the frame where the engine draws it -- only the HUDs were snapped out --
-  -- so its GB rect is mapped into the letterbox rather than to an edge.
-  for key, rect in pairs(OverworldBattle.textRects(battle)) do
-    live[key] = toWorld(rect, shot)
+  -- On iOS the text box's frosted panel is mirrored upward by the
+  -- Canvas-to-Canvas path, producing a large ghost rectangle behind the
+  -- mons, so only the box's backing is skipped there -- the box itself stays
+  -- in the GB frame as the engine's own opaque-white panel (black glyphs),
+  -- which is exactly the look we want. On every other platform the box's glass
+  -- goes into this same world-canvas pass.
+  if not ios then
+    for key, rect in pairs(OverworldBattle.textRects(battle)) do
+      live[key] = toWorld(rect, shot)
+    end
   end
-  -- Transparent backplates need one stable ink treatment through every phase
-  -- of battle. Always whiten engine ink and add BattleHud's dark one-pixel
-  -- shadow, UNLESS the WHITE arena fill is on -- then the box is plain black
-  -- ink with a WHITE drop-shadow (inverted), so it reads on the white field.
-  local whiteInk = not UiBackplates.arenaWhite()
-  if session then session.dark = whiteInk end
-  local layer = OverworldBattle.hudTexture(battle, slide, whiteInk,
+  -- Ink treatment: the desktop path whitens engine ink over the frosted/dark
+  -- panel; on iOS the HUDs sit on OPAQUE WHITE backplates, so the glyphs stay
+  -- BLACK (dark = false) to read on white. The WHITE arena fill still inverts
+  -- to black ink + white drop-shadow on both.
+  local dark = ios and false or (not UiBackplates.arenaWhite())
+  if session then session.dark = dark end
+  local layer = OverworldBattle.hudTexture(battle, slide, dark,
                                            UiBackplates.arenaWhite())
   if not layer then return false end
 
@@ -1459,22 +1467,39 @@ function OverworldBattle.snapHUDs(battle, shot)
   local ok, err = pcall(function()
     g.setCanvas(shot.canvas)
     g.setBlendMode("alpha")
-    for key, rect in pairs(live) do
-      BattleHud.panel(rect, shot, whiteInk, true)
-      -- TEXTBOX FILL: the dialogue box's backplate is the engine's own
-      -- Font.drawBox fill, drawn in SCREEN space and docked to the window
-      -- edge -- so it already tracks the box at every aspect ratio. Drawing
-      -- our own slab here, in the GB canvas at a static rect, could never
-      -- follow a window-docked box (they only coincide at ~1:1), so we use
-      -- the engine's box as the backplate and do not paint over it.
+    if ios then
+      -- OPAQUE WHITE backplates for the player / opponent HUDs (BattleHud.panel
+      -- is frosted-only and returns early when FROST/TINT are 0, so a plain
+      -- white fill is the right primitive here). The text box is not in `live`
+      -- on iOS -- its backing is the engine's own white panel.
+      g.setColor(1, 1, 1, 1)
+      for _, rect in pairs(live) do
+        g.rectangle("fill", rect[1], rect[2], rect[3], rect[4])
+      end
+    else
+      for key, rect in pairs(live) do
+        BattleHud.panel(rect, shot, dark, true)
+      end
     end
     g.setColor(1, 1, 1, 1)
     for side, band in pairs(OverworldBattle.HUD_BAND) do
       local placement = bandPlacement[side]
       local quad = g.newQuad(band[1], band[2], band[3], band[4],
                              BattleScene.GB_W, BattleScene.GB_H)
-      g.draw(layer, quad, placement.x + band[1] * placement.scale,
-             placement.y, 0, placement.scale, placement.scale)
+      if ios then
+        -- iOS presents this Canvas-to-Canvas HUD texture upside down, so flip
+        -- it vertically. The player HUD stays on the right; only the enemy
+        -- band's mirrored destination is corrected.
+        local y = placement.y
+        if side == "enemy" then
+          y = shot.ph - placement.y - band[4] * placement.scale
+        end
+        g.draw(layer, quad, placement.x + band[1] * placement.scale, y, 0,
+               placement.scale, -placement.scale)
+      else
+        g.draw(layer, quad, placement.x + band[1] * placement.scale,
+               placement.y, 0, placement.scale, placement.scale)
+      end
     end
   end)
   if prevCanvas then g.setCanvas(prevCanvas) else g.setCanvas() end
@@ -1496,12 +1521,15 @@ function OverworldBattle.drawHudPanels(battle)
   battle.dramaticShapeDark = nil
   if not shot then return end
   if isIOS() then
-    -- iOS cannot run the snapped HUD path (it draws upside-down + opaque);
-    -- fall back to the engine's own opaque HUD panels. Mirrors upstream PR #48.
+    -- iOS runs the snapped HUD path (snapHUDs) for the window-edge panels with
+    -- opaque-white backplates and the vertical-flip blit. This in-frame branch
+    -- is the fallback when that composite could not be made; draw OPAQUE WHITE
+    -- HUD backplates here too so the player/opponent panels still read over the
+    -- diorama. Mirrors the corrected iOS HUD from upstream PR #119.
     local slide = (battle.introSlide or 0) * 4
     local enemy, player = OverworldBattle.hudLive(battle, slide)
     local rect = OverworldBattle.HUD_RECT
-    love.graphics.setColor(1, 1, 1, 0.84)
+    love.graphics.setColor(1, 1, 1, 1)
     if enemy then love.graphics.rectangle("fill", rect.enemy[1], rect.enemy[2], rect.enemy[3], rect.enemy[4]) end
     if player then love.graphics.rectangle("fill", rect.player[1], rect.player[2], rect.player[3], rect.player[4]) end
     love.graphics.setColor(1, 1, 1, 1)
