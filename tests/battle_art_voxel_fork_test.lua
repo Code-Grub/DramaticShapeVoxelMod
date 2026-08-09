@@ -20,6 +20,17 @@ local run = T.sdk.loadMod(MOD_PATH, { data = Data })
 T.eq(#run.errors, 0,
   "BATTLE_ART_VOXEL_FORK loads clean: " .. table.concat(run.errors, "; "))
 
+-- The mod removes only the presentation flag created by field poison. The
+-- poison routine itself remains the engine's routine (wrapped in main.lua),
+-- so damage, timing, sound and faint handling are not reimplemented here.
+local PoisonFlash = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("PoisonFlash")
+local poisonState = { poisonFlash = 12, unrelated = true }
+PoisonFlash.suppress(poisonState)
+T.eq(poisonState.poisonFlash, nil, "the legacy poison screen pulse is removed")
+T.eq(poisonState.unrelated, true, "suppressing the pulse changes no other state")
+T.check(require("src.world.OverworldController").dramaticShapePoisonFlashHook,
+  "the poison visual wrapper is installed")
+
 -- Game:load does this after the merge; the SDK harness merges into a
 -- fixture dataset instead, so point the dispatcher at that one.
 Pipelines.install(Data)
@@ -2532,8 +2543,41 @@ T.eq(Art.playerAnimationSetting.values[1], "png",
   "animated player intros expose the ordinary player.png choice")
 T.eq(Art.playerAnimationSetting.labels[1], "PNG",
   "the static animated-mode portrait has the expected menu label")
-T.eq(Art.playerAnimationSetting.defaultIndex, 2,
-  "adding PNG does not change the established Gen 1 player default")
+T.eq(Art.playerAnimationSetting.defaultIndex, 9,
+  "adding front-player choices does not change the established Red default")
+local expectedStaticPlayers = {
+  boy = "BOY", lass = "LASS", hilbert = "HILBERT",
+}
+for value, label in pairs(expectedStaticPlayers) do
+  local found
+  for i, candidate in ipairs(Art.playerArtSetting.values) do
+    if candidate == value then
+      T.eq(Art.playerArtSetting.labels[i], label,
+        value .. " has the expected PLAYER ART label")
+      found = true
+      break
+    end
+  end
+  T.eq(found, true, value .. " is exposed by PLAYER ART")
+end
+local expectedFrontPlayers = {
+  ash_front = "ASH FRONT",
+  brock_front = "BROCK FRONT",
+  bulma_front = "BULMA FRONT",
+  gary_front = "GARY FRONT",
+}
+for value, label in pairs(expectedFrontPlayers) do
+  local found
+  for i, candidate in ipairs(Art.playerAnimationSetting.values) do
+    if candidate == value then
+      T.eq(Art.playerAnimationSetting.labels[i], label,
+        value .. " has the expected PLAYER ANIM label")
+      found = true
+      break
+    end
+  end
+  T.eq(found, true, value .. " is exposed by PLAYER ANIM")
+end
 T.eq(Battles.flashing(nil), false, "no battle, no flash")
 T.eq(Battles.flashing({ fx = {}, frame = 0 }), false,
   "a battle with no flash counter is not flashing")

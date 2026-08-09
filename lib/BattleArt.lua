@@ -26,12 +26,14 @@ BattleArt.trainerSetting = ModSetting.new(
   { "gen1", "gen2", "gen3" }, { "GEN 1", "GEN 2", "GEN 3" })
 BattleArt.playerArtSetting = ModSetting.new(
   "playerArtSet", "PLAYER ART",
-  { "png", "gen1", "gen2", "gen3", "gen4", "gen5", "ash", "gary", "rom" },
-  { "PNG", "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5", "ASH", "GARY", "ROM" })
+  { "png", "gen1", "gen2", "gen3", "gen4", "gen5", "ash", "gary", "boy", "lass", "hilbert", "rom" },
+  { "PNG", "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5", "ASH", "GARY", "BOY", "LASS", "HILBERT", "ROM" })
 BattleArt.playerAnimationSetting = ModSetting.new(
   "playerAnimatedSet", "PLAYER ANIM",
-  { "png", "gen1", "gen2", "gen3", "gen4", "gen5", "ash", "gary", "red", "rom" },
-  { "PNG", "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5", "ASH", "GARY", "RED", "ROM" }, 9)
+  { "png", "gen1", "gen2", "gen3", "gen4", "gen5", "ash", "gary", "red",
+    "ash_front", "brock_front", "bulma_front", "gary_front", "rom" },
+  { "PNG", "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5", "ASH", "GARY", "RED",
+    "ASH FRONT", "BROCK FRONT", "BULMA FRONT", "GARY FRONT", "ROM" }, 9)
 -- One owner for species pictures. BATTLE ART keeps this mod's selected front
 -- and back collections in charge. MODDED is the old FRONT/BACK SHINY FIX: ON
 -- behaviour: it checks the matching shiny override folders first and, when

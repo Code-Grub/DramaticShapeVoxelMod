@@ -96,11 +96,14 @@ Man remain static and always resolve here:
 | `PLAYER ART: GEN 5` | `gen5player.png` |
 | `PLAYER ART: ASH` | `ashplayer.png` |
 | `PLAYER ART: GARY` | `garyplayer.png` |
+| `PLAYER ART: BOY` | `boyplayer.png` |
+| `PLAYER ART: LASS` | `lassplayer.png` |
+| `PLAYER ART: HILBERT` | `hilbertplayer.png` |
 | `PLAYER ART: ROM` | no file; retain the ROM portrait |
 | Professor Oak in Yellow's opening battle | `oak.png` |
 | Old Man catching tutorial | `old-man.png` |
 
-These are intro trainer cards, not Pokémon species. A missing GEN/ASH/GARY
+These are intro trainer cards, not Pokémon species. A missing named
 selection tries `player.png`, then retains the ROM trainer backsprite. PNG
 tries `player.png` directly; ROM deliberately bypasses it. `PLAYER ART` is independent of species
 `BATTLE ART`, so its ROM choice does not disable custom Pokémon or opponent

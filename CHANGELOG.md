@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.7.8 — Battle UI
+
+### Added
+
+- **Front-facing animated player trainers.** `PLAYER ANIM` now exposes ASH
+  FRONT, BROCK FRONT, BULMA FRONT, and GARY FRONT as distinct five-pose
+  introductions without replacing the existing ASH, GARY, or RED choices.
+- **Additional static player trainers.** `PLAYER ART: BOY / LASS / HILBERT`
+  loads the corresponding `back-static/*player.png` portraits, with the same
+  generic PNG and ROM fallback chain as the other named sets.
+- **Selectable battle textbox paper.** `TEXTBOX FILL: WHITE / HALF / BLACK /
+  OFF` styles the engine's own textbox fill so its border, corners and ink stay
+  aligned under both fixed and fractional battle scaling. WHITE remains the
+  default; HALF uses 0.25 opacity, and dark or transparent modes use white ink
+  with a one-pixel shadow.
+  `ARENA FILL: WHITE` keeps its guaranteed-readable white textbox.
+
+### Fixed
+
+- **Overworld poison no longer flashes the whole display.** The normal
+  four-step poison tick still deals damage, plays its sound, reports fainted
+  Pokémon and blacks out an exhausted party; only the legacy dark screen
+  pulse is suppressed.
+- **Black battle backgrounds remain a valid choice.** The staged battle path
+  now corrects only incompatible `BATTLE BG: WORLD` to WHITE instead of also
+  overwriting an explicit BLACK setting.
+- **Textbox state advances once per frame.** Dark and transparent paper modes
+  separate the paper from the glyph scratch layer without drawing the
+  stateful engine text area twice, preserving message scrolling and menu
+  wipes.
+
 ## 1.7.7 — Battle Art
 
 - **Selectable player-front orientation.** `FLIP FRONT SPRITE: BATTLE ART /

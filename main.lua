@@ -94,12 +94,25 @@ local Water = V.require("Water")
 local AntiAlias = V.require("AntiAlias")
 local FirstPerson = V.require("FirstPerson")
 local FreeMove = V.require("FreeMove")
+local PoisonFlash = V.require("PoisonFlash")
 
 -- Forward declaration: the voxel pipeline's update hook (registered below)
 -- calls this, and it is defined further down with the settings it drives.
 -- Declared rather than left global -- a mod writing to _G would leak into
 -- every other mod's namespace.
 local applyFull
+
+-- WORLD depends on the engine's flat battle compositing the frozen overworld
+-- behind its UI. A staged 3D battle owns that space instead, so WORLD cannot
+-- be represented and falls back to WHITE. BLACK is an ordinary opaque
+-- letterbox and remains a valid explicit choice.
+local function ensureBattleBgCompatible(opts)
+  if opts and opts.battleBg == "world" then
+    opts.battleBg = "white"
+    return true
+  end
+  return false
+end
 
 -- The last VOID FILL the terrain was meshed under; see the update hook.
 -- The scene canvas's size, in FRAMEBUFFER PIXELS.
@@ -167,16 +180,14 @@ mod.content.render_pipelines:register("voxel", {
   -- pump slice -- so stepping out of a door lands on terrain that is
   -- already there instead of a flat flash.
   update = function(dt, level)
-    -- BATTLE BG must be WHITE whenever this mode is on: WORLD is only valid
-    -- for the engine's flat 2D battle and composites as broken dark bars with
-    -- the 3D diorama (there is no "old system" to show through). Force it at
-    -- the top of every update tick -- not gated on FULL -- so a boot that
-    -- starts already at FULL, and the first battle before any transition, are
-    -- both covered. Persists on change only, never every frame.
+    -- WORLD is only valid for the engine's flat 2D battle and composites as
+    -- broken bars with the 3D diorama (there is no frozen overworld to show
+    -- through). Correct that incompatible mode at the top of every update
+    -- tick -- not gated on FULL -- while preserving the valid BLACK option.
+    -- Persists on change only, never every frame.
     local Game = require("src.core.Game")
     local o = Game.save and Game.save.options
-    if o and o.battleBg ~= "white" then
-      o.battleBg = "white"
+    if ensureBattleBgCompatible(o) then
       if Game.writeOptions then pcall(Game.writeOptions, Game) end
     end
     -- FULL is a preset, so it is applied ON THE PRESS rather than held every
@@ -349,9 +360,9 @@ applyFull = function(level)
   -- BATTLE BG: WORLD leaves the frozen overworld showing through a battle and
   -- is only valid for the engine's flat 2D battle; with the 3D diorama there
   -- is no "old system" to show through, so WORLD composites as broken dark
-  -- bars. Force WHITE (the opaque paper field) for every user, since the mode
-  -- cannot render the world-behind-battle path at all.
-  opts.battleBg = "white"
+  -- bars. Correct WORLD to WHITE while preserving BLACK, which is already an
+  -- opaque field and needs no world-behind-battle path.
+  ensureBattleBgCompatible(opts)
   -- and the sky on the clock on the wall: FULL pins DAYTIME to SYNC. Unlike
   -- the rest of the preset this one IS held, not just set -- the row is off
   -- the menu while FULL owns it (the rows hook below), so a value changed
@@ -488,9 +499,14 @@ local SETTINGS = {
     .. "LIGHT: UNLIT so the sprites stay flat and true-colour with no night "
     .. "tint (as in the traditional games).",
     when = function() return stagedBattles() end, full = true },
-  -- The battle box is ALWAYS an opaque white panel with black ink (see
-  -- BattleState:drawTextArea), so TEXTBOX FILL was dropped -- no option row.
-  -- Marked `full` for the opposite reason the battle rows are: this is not a
+  { UiBackplates.textboxFill,
+    "WHITE keeps the latest build's opaque paper. HALF draws translucent "
+    .. "black, BLACK draws opaque black, and OFF removes only the paper. "
+    .. "Dark and transparent modes use white ink with a one-pixel shadow. "
+    .. "The fill is drawn with the engine textbox so BATTLE SIZE FIXED and "
+    .. "FILL stay aligned. ARENA FILL: WHITE overrides this row to WHITE.",
+    when = function() return stagedBattles() end, full = true },
+  -- AA is marked `full` for the opposite reason the battle rows are: this is not a
   -- knob on the look at all, it is what the look COSTS. FULL is a preset for
   -- the diorama, not a licence to spend four times the fill rate on the
   -- machine it happens to be running on, so it neither sets this nor takes
@@ -941,6 +957,12 @@ OverworldBattle.install()
 FirstPerson.install()
 FreeMove.install()
 
+-- Field poison still ticks every fourth step and retains its sound, damage,
+-- faint messages and blackout.  Only the engine's full-screen dark pulse is
+-- suppressed; on a 3D scene that legacy palette flicker reads as an intrusive
+-- display flash rather than feedback on the poisoned party member.
+PoisonFlash.install()
+
 -- CamControl.install wires the battle-camera zoom (wheel / pinch) and the
 -- right-stick orbit: the inputs that steer the staged battle's rig. It is
 -- pcall-guarded inside OverworldBattle.update, so calling it here only
@@ -1062,7 +1084,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.7.7"
+mod.exports.version = "1.7.8"
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout
 mod.exports.lib = V
