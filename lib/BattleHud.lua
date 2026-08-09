@@ -295,13 +295,42 @@ local INK = 0.35   -- luminance at or under which a pixel counts as ink
 
 local FLIP = [[
   uniform float ink;
+  bool hpGaugeColor(vec4 p, vec2 tc) {
+    // Only the six coloured fill cells -- not the "HP" glyph, the left
+    // bracket, cap or outline. These are fixed BattleState HUD coordinates.
+    vec2 px = tc * vec2(160.0, 144.0);
+    bool gauge = (px.x >= 32.0 && px.x < 80.0
+                  && px.y >= 16.0 && px.y < 24.0)
+              || (px.x >= 96.0 && px.x < 144.0
+                  && px.y >= 72.0 && px.y < 80.0);
+    float chroma = max(p.r, max(p.g, p.b)) - min(p.r, min(p.g, p.b));
+    return gauge && chroma > 0.04 * p.a;
+  }
   vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
     vec4 p = Texel(tex, tc);
     float luma = dot(p.rgb, vec3(0.299, 0.587, 0.114));
-    if (p.a > 0.0 && luma <= ink * p.a) p.rgb = vec3(p.a);
+    if (p.a > 0.0 && luma <= ink * p.a && !hpGaugeColor(p, tc))
+      p.rgb = vec3(p.a);
     return p * color;
   }
 ]]
+BattleHud._flipSource = FLIP
+
+-- Textbox paper is split from its ink before it reaches this shader. Border
+-- glyph pages can still carry opaque light matte pixels of their own (most
+-- visibly the special bottom-right tile beside the PP readout). The general
+-- HUD flip above must preserve non-ink pixels because it also carries HP-bar
+-- colours; the textbox variant deliberately outputs ink and nothing else.
+local INK_ONLY = [[
+  uniform float ink;
+  vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
+    vec4 p = Texel(tex, tc);
+    float luma = dot(p.rgb, vec3(0.299, 0.587, 0.114));
+    float a = (p.a > 0.0 && luma <= ink * p.a) ? p.a : 0.0;
+    return vec4(a, a, a, a) * color;
+  }
+]]
+BattleHud._inkOnlySource = INK_ONLY
 
 -- A one-logical-pixel shadow belongs to the flipped (white) ink, not to the
 -- transparent panel behind it. Build it from the same black source pixels the
@@ -309,16 +338,32 @@ local FLIP = [[
 -- done before the HUD texture is enlarged, the offset remains aligned to the
 -- Game Boy pixel grid at every window scale.
 local SHADOW_ALPHA = 0.72
+-- COLOR keeps a clean white shadow. A covered gray duplicate made the HUD
+-- look muddy and heavier than the source glyphs; the lighter alpha keeps the
+-- original black/coloured HUD visually primary.
+BattleHud.COLOR_SHADOW_SHADE = 1.0
+BattleHud.COLOR_SHADOW_ALPHA = 0.38
 local SHADOW = [[
   uniform float ink;
   uniform float opacity;
+  bool hpGaugeColor(vec4 p, vec2 tc) {
+    vec2 px = tc * vec2(160.0, 144.0);
+    bool gauge = (px.x >= 32.0 && px.x < 80.0
+                  && px.y >= 16.0 && px.y < 24.0)
+              || (px.x >= 96.0 && px.x < 144.0
+                  && px.y >= 72.0 && px.y < 80.0);
+    float chroma = max(p.r, max(p.g, p.b)) - min(p.r, min(p.g, p.b));
+    return gauge && chroma > 0.04 * p.a;
+  }
   vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
     vec4 p = Texel(tex, tc);
     float luma = dot(p.rgb, vec3(0.299, 0.587, 0.114));
-    float a = (p.a > 0.0 && luma <= ink * p.a) ? p.a * opacity : 0.0;
+    float a = (p.a > 0.0 && luma <= ink * p.a
+               && !hpGaugeColor(p, tc)) ? p.a * opacity : 0.0;
     return vec4(0.0, 0.0, 0.0, a) * color;
   }
 ]]
+BattleHud._shadowSource = SHADOW
 -- The same recognition, but for the WHITE arena fill: the drop-shadow that
 -- keeps black ink from disappearing into a black tile becomes WHITE, because
 -- the field under it is now white. The glyphs themselves stay black (no flip),
@@ -333,10 +378,23 @@ local WHITE_SHADOW = [[
     return vec4(1.0, 1.0, 1.0, a) * color;
   }
 ]]
+local COLOR_SHADOW = [[
+  uniform float ink;
+  uniform float opacity;
+  uniform float shade;
+  vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
+    vec4 p = Texel(tex, tc);
+    float luma = dot(p.rgb, vec3(0.299, 0.587, 0.114));
+    float a = (p.a > 0.0 && luma <= ink * p.a) ? p.a * opacity : 0.0;
+    return vec4(vec3(shade), a) * color;
+  }
+]]
 
 local flipShader = nil
+local inkOnlyShader = nil
 local shadowShader = nil
 local whiteShadowShader = nil
+local colorShadowShader = nil
 local layer = nil
 
 local function getFlip()
@@ -345,6 +403,14 @@ local function getFlip()
     flipShader = (ok and sh) or false
   end
   return flipShader or nil
+end
+
+local function getInkOnly()
+  if inkOnlyShader == nil then
+    local ok, sh = pcall(love.graphics.newShader, INK_ONLY)
+    inkOnlyShader = (ok and sh) or false
+  end
+  return inkOnlyShader or nil
 end
 
 local function getShadow()
@@ -363,6 +429,14 @@ local function getWhiteShadow()
   return whiteShadowShader or nil
 end
 
+local function getColorShadow()
+  if colorShadowShader == nil then
+    local ok, sh = pcall(love.graphics.newShader, COLOR_SHADOW)
+    colorShadowShader = (ok and sh) or false
+  end
+  return colorShadowShader or nil
+end
+
 -- Whether the flip pass can run at all, for the shot driver's log.
 function BattleHud.flipReady()
   return getFlip() ~= nil
@@ -375,8 +449,8 @@ end
 -- them to white with a black shadow: on a solid white field black text reads
 -- and the white halo keeps it legible over any sprite behind it. Falls back to
 -- running fn plainly when the scratch layer or shader is unavailable.
-function BattleHud.flipGlyphs(w, h, fn, inverted)
-  local sh = getFlip()
+function BattleHud.flipGlyphs(w, h, fn, inverted, inkOnly, colorShadow)
+  local sh = inkOnly and getInkOnly() or getFlip()
   if not sh then return fn() end
   if not layer or layer:getWidth() ~= w or layer:getHeight() ~= h then
     layer = canvasOf(w, h, "nearest")
@@ -401,11 +475,15 @@ function BattleHud.flipGlyphs(w, h, fn, inverted)
 
   if inverted then
     -- WHITE arena fill: black ink (the fn above) with a white drop-shadow.
-    local white = getWhiteShadow()
-    if white then
-      love.graphics.setShader(white)
-      pcall(white.send, white, "ink", INK)
-      pcall(white.send, white, "opacity", SHADOW_ALPHA)
+    local light = colorShadow and getColorShadow() or getWhiteShadow()
+    if light then
+      love.graphics.setShader(light)
+      pcall(light.send, light, "ink", INK)
+      pcall(light.send, light, "opacity",
+            colorShadow and BattleHud.COLOR_SHADOW_ALPHA or SHADOW_ALPHA)
+      if colorShadow then
+        pcall(light.send, light, "shade", BattleHud.COLOR_SHADOW_SHADE)
+      end
       love.graphics.setColor(1, 1, 1, 1)
       love.graphics.draw(layer, 1, 1)
     end
@@ -444,7 +522,7 @@ end
 -- whiten the terrain behind the glyphs along with them.
 local hudLayer = nil
 
-function BattleHud.layerTexture(w, h, dark, fn, inverted)
+function BattleHud.layerTexture(w, h, dark, fn, inverted, colorShadow)
   if not hudLayer or hudLayer:getWidth() ~= w or hudLayer:getHeight() ~= h then
     hudLayer = canvasOf(w, h, "nearest")
     if not hudLayer then return nil end
@@ -460,7 +538,11 @@ function BattleHud.layerTexture(w, h, dark, fn, inverted)
     -- flipGlyphs renders fn into its own scratch layer and composites the
     -- whitened result into whatever is bound, which is this canvas. `inverted`
     -- (the WHITE arena fill) keeps the glyphs black with a white drop-shadow.
-    if dark then BattleHud.flipGlyphs(w, h, fn, inverted) else fn() end
+    if dark then
+      BattleHud.flipGlyphs(w, h, fn, inverted, nil, colorShadow)
+    else
+      fn()
+    end
   end)
   if prevCanvas then g.setCanvas(prevCanvas) else g.setCanvas() end
   g.setBlendMode(prevBlend or "alpha", prevAlpha)

@@ -91,6 +91,48 @@ function TextboxStyle.withWhiteInk(graphics, style, draw, flipInk)
   local initialColor = pack(graphics.getColor())
   local initialBlend = pack(graphics.getBlendMode())
   local initialCanvas = destination
+  local coveredPaper = {}
+
+  -- Return the pieces of a rectangle not already covered by earlier paper in
+  -- this same engine draw. BattleState deliberately stacks several boxes and
+  -- two 8x8 tile wipes; on a translucent canvas those layers can accumulate
+  -- even when the draw blend is nominally replace. Building their union as
+  -- disjoint rectangles guarantees every destination pixel receives HALF
+  -- exactly once. The ink canvas still receives every original full-size
+  -- clear below, because those overlaps erase borders by design.
+  local function uncoveredPaper(x, y, w, h)
+    local pieces = { { x, y, w, h } }
+    for _, cover in ipairs(coveredPaper) do
+      local nextPieces = {}
+      local cx1, cy1 = cover[1], cover[2]
+      local cx2, cy2 = cx1 + cover[3], cy1 + cover[4]
+      for _, p in ipairs(pieces) do
+        local px1, py1 = p[1], p[2]
+        local px2, py2 = px1 + p[3], py1 + p[4]
+        local ix1, iy1 = math.max(px1, cx1), math.max(py1, cy1)
+        local ix2, iy2 = math.min(px2, cx2), math.min(py2, cy2)
+        if ix1 >= ix2 or iy1 >= iy2 then
+          nextPieces[#nextPieces + 1] = p
+        else
+          if py1 < iy1 then
+            nextPieces[#nextPieces + 1] = { px1, py1, p[3], iy1 - py1 }
+          end
+          if iy2 < py2 then
+            nextPieces[#nextPieces + 1] = { px1, iy2, p[3], py2 - iy2 }
+          end
+          if px1 < ix1 then
+            nextPieces[#nextPieces + 1] = { px1, iy1, ix1 - px1, iy2 - iy1 }
+          end
+          if ix2 < px2 then
+            nextPieces[#nextPieces + 1] = { ix2, iy1, px2 - ix2, iy2 - iy1 }
+          end
+        end
+      end
+      pieces = nextPieces
+    end
+    coveredPaper[#coveredPaper + 1] = { x, y, w, h }
+    return pieces
+  end
 
   local function drawInk()
     graphics.rectangle = function(mode, x, y, w, h, ...)
@@ -114,8 +156,9 @@ function TextboxStyle.withWhiteInk(graphics, style, draw, flipInk)
               setCanvas(graphics, destination)
               setBlend(graphics, "replace")
               graphics.setColor(style[1], style[2], style[3], style[4])
-              rectangle(mode, x, y, w, h,
-                        unpackValues(rectangleArgs, 1, rectangleArgs.n))
+              for _, piece in ipairs(uncoveredPaper(x, y, w, h)) do
+                rectangle(mode, piece[1], piece[2], piece[3], piece[4])
+              end
             end
 
             setCanvas(graphics, inkCanvas)

@@ -53,8 +53,8 @@ drawStyled(messages)
 eq(messages.scrollPx, 6, "real BattleState scroll advances once")
 
 -- The real move menu has three overlapping boxes plus two 8x8 white tile
--- wipes. Every white fill must both paint the UI paper and clear the same
--- rectangle from the ink layer so old border fragments cannot survive.
+-- wipes. Destination paper is their disjoint union, while every original
+-- rectangle still clears the ink layer so old border fragments cannot survive.
 local moveSelect = {
   phase = "moveSelect", moveIndex = 1,
   player = { curMoves = {} }, data = { moves = {} },
@@ -79,7 +79,7 @@ for _, call in ipairs(calls) do
   end
 end
 
-eq(paper, 5, "all real move-menu paper fills reach the UI canvas")
+eq(paper, 2, "real overlapping move-menu paper is composited exactly once")
 eq(clears, 5, "all real move-menu paper fills clear the ink canvas")
 eq(wipedLeft, true, "real left 8x8 move-menu wipe is preserved")
 eq(wipedRight, true, "real right 8x8 move-menu wipe is preserved")

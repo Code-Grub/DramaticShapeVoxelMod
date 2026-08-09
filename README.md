@@ -196,3 +196,7 @@ default), translucent HALF, opaque BLACK, or OFF. Dark and transparent modes
 use white ink with a one-pixel shadow, while `ARENA FILL: WHITE` forces the
 guaranteed-readable white box. The engine still owns the box geometry, so its
 border, corners and ink remain aligned under both fixed and fill scaling.
+`HUD COLOR: COLOR` (the default) keeps black names, levels and HP text with
+the original green/yellow/red bars and a bright one-pixel shadow. INVERTED
+uses white HUD ink with a dark shadow. The setting affects only the opponent
+and player status blocks, never textbox ink; `ARENA FILL: WHITE` forces COLOR.

@@ -492,6 +492,12 @@ local SETTINGS = {
     .. "UNLIT draws them flat and full bright. UNLIT is what the white "
     .. "arena fill needs, and what the OG battle's sprites look like.",
     when = function() return stagedBattles() end, full = true },
+  { UiBackplates.hudColor,
+    "COLOR keeps the engine's black names, levels and HP text plus its "
+    .. "green/yellow/red HP bars, with a bright one-pixel shadow for the "
+    .. "world behind them. INVERTED uses white HUD ink with a dark shadow. "
+    .. "ARENA FILL: WHITE always uses COLOR so the HUD remains visible.",
+    when = function() return stagedBattles() end, full = true },
   { UiBackplates.arenaFill,
     "WHITE draws a solid white layer in front of the whole voxel world, "
     .. "with only the mons, their attack animations and the menus above it "

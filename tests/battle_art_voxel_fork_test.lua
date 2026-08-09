@@ -410,7 +410,7 @@ end
 Pipelines.setLevel("voxel", 2)
 local hookedRows = Runtime.call("ui.options.rows", function(_, r) return r end,
                                { data = Data }, { { id = "text_speed" } })
-T.eq(#hookedRows, 14,
+T.eq(#hookedRows, 15,
   "the options hook added the upstream and visible Battle Art settings")
 local hookedByLabel = {}
 for _, row in ipairs(hookedRows) do hookedByLabel[row.label] = row end
@@ -452,6 +452,8 @@ T.check(frontFlipRow,
   "the regular OPTIONS menu always exposes front orientation under 3D-BTL")
 T.eq(frontFlipRow.value(), "BATTLE ART",
   "existing saves retain Battle Art's player-front mirror by default")
+T.eq(hookedByLabel["HUD COLOR"].value(), "COLOR",
+  "fresh installs retain the forks' original black and coloured HUD")
 
 -- stepping writes through to the one place both rows read
 local settingGame = { save = { options = {} }, mods = { modOptions = {} } }
@@ -2297,6 +2299,21 @@ T.check(BattleArena.find(roomy, 2, 3, false) ~= nil,
 
 local BattleCam = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattleCam")
 local BattleScene = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattleScene")
+local BattleHud = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattleHud")
+local flipSource = BattleHud._flipSource or ""
+local shadowSource = BattleHud._shadowSource or ""
+T.eq(BattleHud.COLOR_SHADOW_SHADE, 1.0,
+  "COLOR uses a clean white shadow rather than a muddy gray duplicate")
+T.check(BattleHud.COLOR_SHADOW_ALPHA >= 0.35
+        and BattleHud.COLOR_SHADOW_ALPHA <= 0.45,
+  "COLOR's white shadow stays subordinate to the original black glyph")
+T.check(flipSource:find("px.x >= 32.0", 1, true) ~= nil
+        and flipSource:find("px.x >= 96.0", 1, true) ~= nil,
+  "INVERTED exempts only the enemy and player HP gauge spans")
+T.check(flipSource:find("!hpGaugeColor(p, tc)", 1, true) ~= nil,
+  "INVERTED preserves coloured gauge pixels while still flipping HUD ink")
+T.check(shadowSource:find("!hpGaugeColor(p, tc)", 1, true) ~= nil,
+  "INVERTED does not stamp a black duplicate over coloured gauge pixels")
 local Voxel3Dcam = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Voxel3D")
 
 -- where a world point lands in the 160x144 frame, or nil behind the camera
@@ -2729,6 +2746,26 @@ for _, phase in ipairs({ "moveSelect", "mimicSelect" }) do
   T.check(extra[1] >= 0 and extra[1] + extra[3] <= 160 and extra[2] >= 0,
     "and stays inside the frame the battle is drawn in")
 end
+
+-- HALF cuts the complete 88x40 TYPE/PP paper rectangle out, including the
+-- bottom tile row that normally overlaps the always-present box. The two
+-- remaining pieces still cover every other pixel of that bottom box once.
+local halfPaper = Battles.textPaperRects({ phase = "moveSelect" }, "HALF")
+T.eq(halfPaper.moves, nil, "HALF gives the raised TYPE/PP box no paper")
+T.eq(halfPaper.boxRightTop[1], 88,
+  "HALF paper resumes immediately to the right of TYPE/PP")
+T.eq(halfPaper.boxRightTop[2], 96,
+  "the overlapping TYPE/PP tile row is cut out of the lower box")
+T.eq(halfPaper.boxRightTop[4], 8,
+  "only the shared top tile row needs the right-hand paper strip")
+T.eq(halfPaper.boxBottom[2], 104,
+  "full-width HALF paper resumes below the complete TYPE/PP box")
+T.eq(next(Battles.textPaperRects({ phase = "moveSelect" }, "OFF")), nil,
+  "OFF gives every textbox region no paper")
+T.check(Battles.textPaperRects({ phase = "moveSelect" }, "BLACK").moves ~= nil,
+  "BLACK keeps solid paper under the TYPE/PP box")
+T.check(Battles.textPaperRects({ phase = "moveSelect" }, "WHITE").moves ~= nil,
+  "WHITE keeps solid paper under the TYPE/PP box")
 
 -- AskName blanks the field on purpose -- the nickname prompt is meant to sit
 -- on nothing -- so there is no box and no glass under one

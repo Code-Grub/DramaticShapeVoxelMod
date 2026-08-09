@@ -33,13 +33,23 @@ local function eq(actual, expected, label)
 end
 
 eq(settings.textboxFill ~= nil, true, "TEXTBOX FILL setting exists")
+eq(settings.hudColor ~= nil, true, "HUD COLOR setting exists")
+eq(settings.hudColor:get(), "COLOR", "HUD COLOR defaults to original colours")
+eq(UiBackplates.hudUsesColor(), true, "fresh installs preserve coloured HUDs")
+eq(UiBackplates.hudUsesColorShadow(), true,
+  "COLOR uses its terrain contrast shadow")
+settings.hudColor:sync("INVERTED")
+eq(UiBackplates.hudUsesColor(), false, "INVERTED selects white HUD ink")
+eq(UiBackplates.hudUsesColorShadow(), false,
+  "INVERTED does not use COLOR's gray shadow")
+settings.hudColor:sync("COLOR")
 eq(UiBackplates.textboxMode(), "WHITE", "latest-compatible default is WHITE")
 
 settings.textboxFill:sync("HALF")
 eq(UiBackplates.textboxMode(), "HALF", "HALF is selectable")
 local half = UiBackplates.textboxFillStyle()
 eq(half[1], 0, "HALF is black")
-eq(half[4], 0.25, "HALF uses the lighter requested translucency")
+eq(half[4], 0.30, "HALF uses the requested translucency")
 
 settings.textboxFill:sync("BLACK")
 local black = UiBackplates.textboxFillStyle()
@@ -53,5 +63,10 @@ settings.textboxFill:sync("HALF")
 settings.arenaFill:sync("WHITE")
 eq(UiBackplates.textboxMode(), "WHITE",
   "ARENA FILL WHITE preserves the official readable white textbox")
+settings.hudColor:sync("INVERTED")
+eq(UiBackplates.hudUsesColor(), true,
+  "ARENA FILL WHITE forces black and coloured HUD rendering")
+eq(UiBackplates.hudUsesColorShadow(), false,
+  "the solid white arena does not add COLOR's gray terrain shadow")
 
 print("textbox_options_test: PASS")

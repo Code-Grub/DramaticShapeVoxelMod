@@ -4,6 +4,11 @@
 
 ### Added
 
+- **Selectable HUD palette.** `HUD COLOR: COLOR / INVERTED` chooses between
+  the forks' original black glyphs and coloured HP bars with a bright shadow,
+  or the current white-ink HUD with a dark shadow. COLOR is the fresh-install
+  default; `ARENA FILL: WHITE` forces it for contrast. Textbox ink remains
+  independently controlled by `TEXTBOX FILL`.
 - **Front-facing animated player trainers.** `PLAYER ANIM` now exposes ASH
   FRONT, BROCK FRONT, BULMA FRONT, and GARY FRONT as distinct five-pose
   introductions without replacing the existing ASH, GARY, or RED choices.
@@ -13,7 +18,7 @@
 - **Selectable battle textbox paper.** `TEXTBOX FILL: WHITE / HALF / BLACK /
   OFF` styles the engine's own textbox fill so its border, corners and ink stay
   aligned under both fixed and fractional battle scaling. WHITE remains the
-  default; HALF uses 0.25 opacity, and dark or transparent modes use white ink
+  default; HALF uses 0.30 opacity, and dark or transparent modes use white ink
   with a one-pixel shadow.
   `ARENA FILL: WHITE` keeps its guaranteed-readable white textbox.
 
@@ -30,6 +35,13 @@
   separate the paper from the glyph scratch layer without drawing the
   stateful engine text area twice, preserving message scrolling and menu
   wipes.
+- **TYPE/PP paper now follows an explicit rule.** In HALF and OFF, the entire
+  TYPE/PP box—including its overlapping bottom tile row—is fully transparent.
+  In WHITE and BLACK it uses the selected solid paper. Border and text remain
+  visible in every mode, with the v1.68 paperless ink draw order.
+- **INVERTED keeps coloured HP gauges.** Only the six gauge-fill cells bypass
+  ink inversion, preserving their green/yellow/red health colour. Names,
+  numbers, the `HP:` label, gauge outline and HUD chrome still invert normally.
 
 ## 1.7.7 — Battle Art
 

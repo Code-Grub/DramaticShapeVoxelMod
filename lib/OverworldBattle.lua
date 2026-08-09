@@ -338,6 +338,22 @@ function OverworldBattle.textRects(battle)
   return out
 end
 
+-- Paper rectangles for the selected textbox mode. HALF deliberately leaves
+-- the whole TYPE/PP box paperless. Its bottom tile row overlaps the ordinary
+-- text box, so merely omitting `moves` would still leave HALF paper showing
+-- through there; split the main box around that 88x8 overlap as well. BLACK
+-- and WHITE retain the normal union, while OFF has no paper anywhere.
+function OverworldBattle.textPaperRects(battle, mode)
+  if mode == "OFF" then return {} end
+  if mode == "HALF" and battle and battle.phase == "moveSelect" then
+    return {
+      boxRightTop = { 88, 96, 72, 8 },
+      boxBottom = { 0, 104, 160, 40 },
+    }
+  end
+  return OverworldBattle.textRects(battle)
+end
+
 -- ------- the HUDs, out at the window's own edges
 --
 -- The battle screen is 160x144 in the MIDDLE of the window and the world is the
@@ -763,11 +779,29 @@ local function drawStyledTextArea(battle, draw)
     end, true)
   end
 
-  return TextboxStyle.withWhiteInk(graphics, style, drawEngineText,
-    function(drawInk)
-      BattleHud.flipGlyphs(BattleScene.GB_W, BattleScene.GB_H,
-                           drawInk, false)
-    end)
+  -- v1.68's clean junction came from keeping the engine ink pass completely
+  -- paperless: the two hardware-style 8x8 wipes were suppressed along with
+  -- Font.drawBox's fills, so they could not leave a second translucent tile
+  -- around the PP count. Keep that proven draw order, but place the selected
+  -- paper directly in the 160x144 UI canvas first. Unlike v1.68's old
+  -- world-canvas slab, this still scales with the border in both FIXED and
+  -- FILL layouts.
+  if style ~= nil then
+    local color = { graphics.getColor() }
+    local blend = { graphics.getBlendMode() }
+    graphics.setBlendMode("replace")
+    graphics.setColor(style[1], style[2], style[3], style[4])
+    for _, rect in pairs(OverworldBattle.textPaperRects(
+                           battle, UiBackplates.textboxMode())) do
+      graphics.rectangle("fill", rect[1], rect[2], rect[3], rect[4])
+    end
+    graphics.setColor(color[1], color[2], color[3], color[4])
+    graphics.setBlendMode(blend[1], blend[2])
+  end
+
+  return BattleHud.flipGlyphs(BattleScene.GB_W, BattleScene.GB_H, function()
+    TextboxStyle.withFill(graphics, nil, drawEngineText)
+  end, false)
 end
 
 -- ------- the hour's light, on a pic that is not geometry
@@ -1409,17 +1443,18 @@ function OverworldBattle.install()
     -- window's edges and composited into the world image (snapHUDs). Drawing
     -- them here as well would show each block twice, once in each place.
     if self.dramaticShapeShot and snapped() then return end
-    -- The WHITE arena fill inverts the HUD ink too: black glyphs with a white
-    -- drop-shadow. Force the flip pass (inverted) even though the verdict would
-    -- otherwise skip it over the now-white field.
-    local inverted = UiBackplates.arenaWhite()
-    if not (self.dramaticShapeShot and (self.dramaticShapeDark or inverted)) then
+    -- COLOR preserves the engine's black glyphs and HP-bar colours, adding a
+    -- white shadow; INVERTED maps its ink to white with a black shadow. The
+    -- former also owns ARENA FILL: WHITE, where white ink would disappear.
+    local color = UiBackplates.hudUsesColor()
+    local colorShadow = UiBackplates.hudUsesColorShadow()
+    if not (self.dramaticShapeShot and (self.dramaticShapeDark or color)) then
       return innerHUDs(self, slide)
     end
     local battle = self
     BattleHud.flipGlyphs(BattleScene.GB_W, BattleScene.GB_H, function()
       innerHUDs(battle, slide)
-    end, inverted)
+    end, color, nil, colorShadow)
   end
 
   BattleState.dramaticShapeBattleHook = true
@@ -1457,14 +1492,14 @@ end
 -- Shadowed on the instance for this call only, the way drawZonePass shadows
 -- activeBgp: putting the field back to whatever it was (normally nil) lets the
 -- class method be found again.
-function OverworldBattle.hudTexture(battle, slide, dark, inverted)
+function OverworldBattle.hudTexture(battle, slide, dark, inverted, colorShadow)
   if not (innerHUDs and battle) then return nil end
   local had = rawget(battle, "colorMode")
   battle.colorMode = function() return false end
   local ok, layer = pcall(BattleHud.layerTexture,
                           BattleScene.GB_W, BattleScene.GB_H, dark,
                           function() innerHUDs(battle, slide) end,
-                          inverted)
+                          inverted, colorShadow)
   battle.colorMode = had
   return ok and layer or nil
 end
@@ -1501,13 +1536,16 @@ function OverworldBattle.snapHUDs(battle, shot)
       live[key] = toWorld(rect, shot)
     end
   end
-  -- Ink treatment: whiten engine ink over the frosted/dark panel unless the
-  -- WHITE arena fill is on (then plain black ink + white drop-shadow). iOS does
-  -- not reach this function (it uses the engine's own in-frame HUD); see update().
-  local dark = not UiBackplates.arenaWhite()
-  if session then session.dark = dark end
-  local layer = OverworldBattle.hudTexture(battle, slide, dark,
-                                           UiBackplates.arenaWhite())
+  -- Both HUD modes run the contrast pass: COLOR preserves black glyphs and
+  -- coloured bars with a white shadow; INVERTED makes the ink white with a
+  -- black shadow. iOS does not reach this function (it uses the engine's own
+  -- in-frame HUD); see update().
+  local color = UiBackplates.hudUsesColor()
+  local colorShadow = UiBackplates.hudUsesColorShadow()
+  local panelDark = not UiBackplates.arenaWhite()
+  if session then session.dark = panelDark end
+  local layer = OverworldBattle.hudTexture(battle, slide, true, color,
+                                           colorShadow)
   if not layer then return false end
 
   local g = love.graphics
@@ -1517,7 +1555,7 @@ function OverworldBattle.snapHUDs(battle, shot)
     g.setCanvas(shot.canvas)
     g.setBlendMode("alpha")
     for key, rect in pairs(live) do
-      BattleHud.panel(rect, shot, dark, true)
+      BattleHud.panel(rect, shot, panelDark, true)
     end
     g.setColor(1, 1, 1, 1)
     for side, band in pairs(OverworldBattle.HUD_BAND) do

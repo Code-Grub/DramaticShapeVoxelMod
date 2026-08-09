@@ -100,10 +100,12 @@ do
   eq(flips, 1, "the single ink pass is flipped")
 
   local paper, clears, inkLines, uiLines = 0, 0, 0, 0
+  local paperCalls = {}
   local wipedLeft, wipedRight = false, false
   for _, call in ipairs(calls) do
     if call.canvas == "ui" and call.mode == "fill" then
       paper = paper + 1
+      paperCalls[#paperCalls + 1] = call
       eq(call.color[4], 0.25, "every paper replacement keeps HALF alpha")
       eq(call.blend[1], "replace", "overlapping paper does not stack")
     elseif call.canvas == "ink" and call.mode == "fill" then
@@ -119,12 +121,17 @@ do
     end
   end
 
-  eq(paper, 4, "outer, nested and wipe paper reaches the UI canvas")
+  eq(paper, 2, "overlapping paper reaches the UI canvas as one disjoint union")
   eq(clears, 4, "every paper draw clears the same ink-layer rectangle")
   eq(inkLines, 4, "borders draw only in the ink layer")
   eq(uiLines, 0, "no black border leaks into the UI paper pass")
   eq(wipedLeft, true, "left 8x8 MoveSelectionMenu wipe is preserved")
   eq(wipedRight, true, "right 8x8 MoveSelectionMenu wipe is preserved")
+  eq(paperCalls[2].x, 0, "the raised TYPE panel keeps its left edge")
+  eq(paperCalls[2].y, 64, "the raised TYPE panel keeps its top edge")
+  eq(paperCalls[2].w, 88, "the raised TYPE panel keeps its width")
+  eq(paperCalls[2].h, 32,
+    "only TYPE rows above the existing bottom paper are composited again")
 end
 
 print("textbox_style_test: PASS")

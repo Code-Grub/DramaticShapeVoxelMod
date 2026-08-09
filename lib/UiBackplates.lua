@@ -44,6 +44,27 @@ function UiBackplates.spritesUnlit()
   return UiBackplates.spriteLight:get() == "UNLIT"
 end
 
+-- ------- HUD COLOR -------
+
+-- COLOR keeps the engine's black HUD glyphs and green/yellow/red HP bars,
+-- adding a bright one-pixel shadow so they remain legible over terrain.
+-- INVERTED is the established fork presentation: white ink with a dark
+-- shadow. COLOR comes first because it is the fresh-install default used by
+-- the other forks. A white arena must use black ink regardless of the saved
+-- choice or the HUD would disappear into its background.
+UiBackplates.hudColor = ModSetting.new("hudColor", "HUD COLOR",
+  { "COLOR", "INVERTED" }, { "COLOR", "INVERTED" })
+
+function UiBackplates.hudUsesColor()
+  return UiBackplates.arenaWhite()
+         or UiBackplates.hudColor:get() == "COLOR"
+end
+
+function UiBackplates.hudUsesColorShadow()
+  return not UiBackplates.arenaWhite()
+         and UiBackplates.hudColor:get() == "COLOR"
+end
+
 -- ------- B) ARENA FILL -------
 
 UiBackplates.arenaFill = ModSetting.new("arenaFill", "ARENA FILL",
@@ -72,7 +93,7 @@ end
 function UiBackplates.textboxFillStyle()
   local mode = UiBackplates.textboxMode()
   if mode == "WHITE" then return { 1, 1, 1, 1 } end
-  if mode == "HALF" then return { 0, 0, 0, 0.25 } end
+  if mode == "HALF" then return { 0, 0, 0, 0.30 } end
   if mode == "BLACK" then return { 0, 0, 0, 1 } end
   return nil
 end
