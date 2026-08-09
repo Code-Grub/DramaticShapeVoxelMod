@@ -17,7 +17,7 @@ BattleArt.backAnimationSetting = ModSetting.new("backAnimatedSet", "BACK ART SET
   { "gen1", "gen2", "gen3", "gen4", "gen5" },
   { "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5" }, 5)
 BattleArt.viewSetting = ModSetting.new("playerView", "PLAYER",
-  { "front", "back" }, { "FRONT SPRITES", "BACK SPRITES" })
+  { "front", "back" }, { "FRONT SPRITES", "BACK SPRITES" }, 2)
 BattleArt.backPlacementSetting = ModSetting.new(
   "backPlacement", "BACK PLACEMENT",
   { "auto", "world", "ui" }, { "AUTO", "WORLD", "OG UI" })
@@ -32,15 +32,54 @@ BattleArt.playerAnimationSetting = ModSetting.new(
   "playerAnimatedSet", "PLAYER ANIM",
   { "png", "gen1", "gen2", "gen3", "gen4", "gen5", "ash", "gary", "red", "rom" },
   { "PNG", "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5", "ASH", "GARY", "RED", "ROM" }, 9)
--- SHINY compatibility for species art only (players can never be shiny).
--- When ON, front/back resolvers check the matching assets/battle/<side>-<kind>/
--- shiny/ folder first; a missing shiny file falls back to the selected
--- generation's normal art, then to ROM. The folders ship empty so a shiny mod
--- can populate them.
-BattleArt.frontShinySetting = ModSetting.new("frontShiny", "FRONT SHINY FIX",
-  { "off", "on" }, { "OFF", "ON" })
-BattleArt.backShinySetting = ModSetting.new("backShiny", "BACK SHINY FIX",
-  { "off", "on" }, { "OFF", "ON" })
+-- One owner for species pictures. BATTLE ART keeps this mod's selected front
+-- and back collections in charge. MODDED is the old FRONT/BACK SHINY FIX: ON
+-- behaviour: it checks the matching shiny override folders first and, when
+-- they are empty, leaves the underlying sprite supplied by another mod in
+-- charge. Players can never be shiny, so this never affects trainer art.
+BattleArt.duplicateSetting = ModSetting.new(
+  "duplicateFix", "DUPLICATE FIX",
+  { "battle_art", "modded" }, { "BATTLE ART", "MODDED" })
+
+-- Player-side front pictures need one presentation decision after their
+-- source has been chosen. Battle Art's ordinary fronts face the same way as
+-- the opponent and are mirrored in world space so the pair face each other.
+-- Some sprite mods instead publish an already-oriented player picture (for
+-- example Crystal Animated Sprites' flipped backsprite). DEFAULT preserves
+-- that authored orientation instead of mirroring it a second time.
+BattleArt.frontFlipSetting = ModSetting.new(
+  "frontFlip", "FLIP FRONT SPRITE",
+  { "battle_art", "default" }, { "BATTLE ART", "DEFAULT" })
+
+function BattleArt.prefersModded()
+  return BattleArt.duplicateSetting:get() == "modded"
+end
+
+function BattleArt.flipsPlayerFront()
+  return BattleArt.frontFlipSetting:get() == "battle_art"
+end
+
+-- Upgrade the two settings used through 1.7.8 without keeping two dead rows
+-- in the new schema. If the old front/back choices disagreed, MODDED wins: it
+-- is the only migration that does not silently take a user's modded art away.
+function BattleArt.migrateDuplicateSetting(game)
+  game = game or require("src.core.Game")
+  local loader = game and game.mods
+  local buckets = loader and loader.modOptions
+  local bucket = buckets and buckets[(V.mod and V.mod.id)
+                                     or "BATTLE_ART_VOXEL_FORK"]
+  if type(bucket) ~= "table" then return false end
+  if bucket.duplicateFix ~= nil then
+    BattleArt.duplicateSetting:sync(bucket.duplicateFix)
+    return false
+  end
+  if bucket.frontShiny == nil and bucket.backShiny == nil then return false end
+  local value = (bucket.frontShiny == "on" or bucket.backShiny == "on")
+                and "modded" or "battle_art"
+  local index = value == "modded" and 2 or 1
+  BattleArt.duplicateSetting:setIndex(index, game)
+  return true
+end
 
 -- BATTLE ART: ROM owns the normal player portrait as completely as it owns
 -- species art. Keep the visible PLAYER ART row honest instead of leaving a
@@ -77,12 +116,19 @@ function BattleArt.playerSide()
 end
 
 local function shinyPrefix(side)
-  -- species-only: front uses FRONT SHINY, back uses BACK SHINY. Players can
-  -- never be shiny, so this never consults player art.
-  local on = side == "back"
-    and BattleArt.backShinySetting:get() == "on"
-    or BattleArt.frontShinySetting:get() == "on"
-  return on and "shiny/" or ""
+  -- species-only. Players can never be shiny, so this never consults player
+  -- art; `side` remains part of the call contract for the folder resolvers.
+  return BattleArt.prefersModded() and "shiny/" or ""
+end
+
+-- Transform does not rewrite mon.species. Crystal Animated Sprites v1.5
+-- records the copied shape here so its animation loop and other sprite mods
+-- can coexist. Honour that record when BATTLE ART owns the final picture too,
+-- otherwise our per-frame apply would turn a transformed Ditto back into
+-- Ditto as soon as its billboard texture was captured.
+function BattleArt.speciesFor(battler)
+  return battler and (battler.__crystalTransformed
+                      or (battler.mon and battler.mon.species)) or nil
 end
 
 local function pathFor(species, side)
@@ -281,7 +327,7 @@ function BattleArt.generationFrontImage(species, generation)
   -- "shiny/", pointing at assets/battle/front-animated/shiny/<gen>/<slug>.png
   -- (sibling of the generation folders, matching the animated shiny layout).
   -- A missing shiny file falls through to ROM -- the normal generation's
-  -- animated atlas is intentionally NOT used here so SHINY ON suppresses it.
+  -- animated atlas is intentionally NOT used here so MODDED suppresses it.
   local rel = ("assets/battle/front-animated/%s%s/%s.png"):format(
     shinyPrefix("front"), generation, slug(species))
   local path = V.mod.assets:path(rel)
@@ -388,7 +434,7 @@ end
 function BattleArt.apply(battle)
   if not battle then return end
   local function applyOne(battler, side)
-    local species = battler and battler.mon and battler.mon.species
+    local species = BattleArt.speciesFor(battler)
     if not species then return end
     -- AnimatedBattleArt owns Pokemon sprites in this mode. Trainers still
     -- pass through applyTrainers below for opponent and scripted trainer art;
@@ -415,6 +461,23 @@ function BattleArt.apply(battle)
 end
 
 function BattleArt.isExternal(img) return external[img] and true or false end
+
+-- Crystal v1.4+ publishes an identity predicate for every decoded/generated
+-- frame it owns. Use the API instead of filenames: v1.5 can synthesize GIF
+-- and transformed-Ditto frames that have no stable path at all.
+function BattleArt.isCrystalImage(img)
+  if not img then return false end
+  local ok, known = pcall(function()
+    local Game = require("src.core.Game")
+    local exports = Game and Game.mods and Game.mods.exports
+    local crystal = exports
+      and exports.crystal_animated_sprites_with_shiny_visuals
+    return crystal and type(crystal.isCrystalImage) == "function"
+           and crystal.isCrystalImage(img) or false
+  end)
+  return ok and known and true or false
+end
+
 function BattleArt.metrics(img) return metrics[img] end
 -- Animated transforms are authored inside a fixed logical canvas. Gen 3 back
 -- APNGs in particular translate the same opaque drawing across that canvas;

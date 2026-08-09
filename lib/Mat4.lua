@@ -109,4 +109,49 @@ function Mat4.lookAt(eye, target, up)
            0, 0, 0, 1 }
 end
 
+
+-- Hot-path model constructors. They are algebraically identical to composing
+-- translate/rotate/scale matrices with Mat4.mul, but allocate ONE 16-number
+-- table instead of a chain of temporary matrices.
+
+-- T(px+8,y,py+8) * Ry(yaw) * Rx(pitch) * Sx(mirror) * T(-8,0,0)
+function Mat4.billboard(px, py, y, yaw, pitch, mirror)
+  local cy, sy = math.cos(yaw or 0), math.sin(yaw or 0)
+  local cx, sx = math.cos(pitch or 0), math.sin(pitch or 0)
+  local mx = mirror and -1 or 1
+
+  return {
+     cy * mx, sy * sx, sy * cx, px + 8 - 8 * cy * mx,
+     0,       cx,      -sx,     y,
+    -sy * mx, cy * sx, cy * cx, py + 8 + 8 * sy * mx,
+     0,       0,       0,       1,
+  }
+end
+
+-- T(wx,y,wz) * T(half,0,0) * Ry(yaw) * T(-half,0,0) * Rx(pitch)
+-- When half is zero this is simply T * Ry * Rx.
+function Mat4.figure(wx, y, wz, yaw, pitch, half)
+  local cy, sy = math.cos(yaw or 0), math.sin(yaw or 0)
+  local cx, sx = math.cos(pitch or 0), math.sin(pitch or 0)
+  half = half or 0
+
+  return {
+     cy, sy * sx, sy * cx, wx + half * (1 - cy),
+     0,  cx,      -sx,     y,
+    -sy, cy * sx, cy * cx, wz + half * sy,
+     0,  0,       0,       1,
+  }
+end
+
+-- T(px+8,y,py+8) * Sx(mirror) * T(-8,0,0) * S(1,1,0)
+function Mat4.caster(px, py, y, mirror)
+  local mx = mirror and -1 or 1
+  return {
+    mx, 0, 0, px + 8 - 8 * mx,
+    0,  1, 0, y,
+    0,  0, 0, py + 8,
+    0,  0, 0, 1,
+  }
+end
+
 return Mat4

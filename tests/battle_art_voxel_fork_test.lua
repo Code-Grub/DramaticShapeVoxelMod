@@ -118,6 +118,21 @@ T.eq(byLabel.VOXEL.value(), "FULL", "the row renders the current rung's label")
 local Runtime = require("src.mods.Runtime")
 local VoxelState = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("VoxelState")
 
+local freshPipelineOptions = {}
+T.eq(VoxelState.seedOptions(freshPipelineOptions), true,
+  "a fresh options table receives the mod's pipeline defaults")
+T.eq(freshPipelineOptions.pipelines.voxel, VoxelState.FULL_LEVEL,
+  "VOXEL starts at FULL on a fresh install")
+T.eq(freshPipelineOptions.pipelines.tiltshift, nil,
+  "the unrequested T-SHIFT default remains independently OFF")
+local explicitPipelineOptions = { pipelines = { voxel = 0, tiltshift = 1 } }
+T.eq(VoxelState.seedOptions(explicitPipelineOptions), false,
+  "a saved VOXEL choice is not treated as a fresh install")
+T.eq(explicitPipelineOptions.pipelines.voxel, 0,
+  "an explicit VOXEL OFF survives an update")
+T.eq(explicitPipelineOptions.pipelines.tiltshift, 1,
+  "and its saved T-SHIFT rung is untouched")
+
 -- ------- FULL is a preset that owns the rows describing the LOOK
 --
 -- While it is selected the settings it drives come OFF the menu -- including
@@ -384,7 +399,7 @@ end
 Pipelines.setLevel("voxel", 2)
 local hookedRows = Runtime.call("ui.options.rows", function(_, r) return r end,
                                { data = Data }, { { id = "text_speed" } })
-T.eq(#hookedRows, 13,
+T.eq(#hookedRows, 14,
   "the options hook added the upstream and visible Battle Art settings")
 local hookedByLabel = {}
 for _, row in ipairs(hookedRows) do hookedByLabel[row.label] = row end
@@ -412,12 +427,20 @@ T.eq(battles.label, "3D-BTL", "the overworld-battle row carries its label")
 T.eq(battles.value(), "ON",
   "overworld battles are on by default -- the mode's headline is the world "
   .. "in 3D, and a battle is where the player spends half the game")
-T.eq(battleArt.value(), "STATIC",
-  "the merged menu retains the bring-your-own-art default")
-T.eq(hookedByLabel.PLAYER.value(), "FRONT SPRITES",
-  "the Battle Art player-view row supersedes upstream's boolean back row")
+T.eq(battleArt.value(), "ANIMATED",
+  "the merged menu starts on the requested animated battle art")
+T.eq(hookedByLabel.PLAYER.value(), "BACK SPRITES",
+  "the Battle Art player-view row defaults to the classic back view")
 T.eq(hookedByLabel["BACK PLACEMENT"].value(), "AUTO",
   "and its mode-aware placement row remains available")
+
+-- Keep orientation directly reachable in the regular OPTIONS menu even while
+-- BACK SPRITES is selected, so it can be prepared before switching views.
+local frontFlipRow = hookedByLabel["FLIP FRONT SPRITE"]
+T.check(frontFlipRow,
+  "the regular OPTIONS menu always exposes front orientation under 3D-BTL")
+T.eq(frontFlipRow.value(), "BATTLE ART",
+  "existing saves retain Battle Art's player-front mirror by default")
 
 -- stepping writes through to the one place both rows read
 local settingGame = { save = { options = {} }, mods = { modOptions = {} } }
@@ -563,17 +586,16 @@ love.image = { newImageData = function(a, b)
   if type(a) == "number" then return fakePixels(a, b) end
   return fakePixels()          -- the "decoded from a path" overload
 end }
--- animate() only uploads when the animation step actually turns over, so
--- counting replacePixels is how the suite sees the step move from outside.
--- builds counts entries made, and uploadFails forces the upload to throw.
-local patches, builds, uploadFails = 0, 0, false
+-- v1.7.8 prebuilds immutable textures for the whole animation cycle. `builds`
+-- therefore moves only while an entry is constructed; selecting later steps
+-- must return those images without another texture creation or upload.
+local builds, buildAttempts, buildFails = 0, 0, false
 love.graphics.newImage = function()
+  buildAttempts = buildAttempts + 1
+  if buildFails then error("transient texture build failure", 0) end
   builds = builds + 1
   return { setFilter = function() end,
-           replacePixels = function()
-             if uploadFails then error("transient upload failure", 0) end
-             patches = patches + 1
-           end }
+           release = function() end }
 end
 
 -- a tileset whose water tile rotates, i.e. one specsFor will accept
@@ -591,10 +613,9 @@ local function animatedMap(id, renderer)
   }
 end
 
--- stands in for the atlas texture: what the engine hands over as
--- renderer.image, and what animate() patches through replacePixels
-local base = { replacePixels = function() end,
-               getDimensions = function() return 128, 48 end }
+-- stands in for the atlas texture the engine hands over as renderer.image.
+-- The optimized path never mutates it (or any other GPU texture) at runtime.
+local base = { getDimensions = function() return 128, 48 end }
 
 T.eq(TileRenderer.atlasImageData, nil,
   "this engine build does not carry the atlasImageData seam (the premise)")
@@ -664,27 +685,26 @@ T.check(okRedpp and redppImg ~= nil,
 PaletteFX.mode = modeWas
 love.graphics.newCanvas = realNewCanvas2
 
--- 3d. A failure that might not repeat must not cost the animation for the
---     rest of the session. It used to: the key was condemned on the first
---     miss and nothing rebuilt it, so water stopped and stayed stopped.
+-- 3d. A transient prebuild failure must not cost the animation for the rest
+--     of the session. The next frame may have a healthy graphics context.
 TerrainAtlas.invalidate()
-uploadFails = true
+buildFails = true
 T.eq(TerrainAtlas.animate(plain, nil, base, false), nil,
-  "a patch that throws declines the frame")
-uploadFails = false
+  "a texture prebuild that throws declines the frame")
+buildFails = false
 local okRetry, retryImg = pcall(TerrainAtlas.animate, plain, nil, base, false)
 T.check(okRetry and retryImg ~= nil,
   "and the next frame rebuilds, rather than staying dead until a hot reload")
 
 -- but a key that keeps failing is given up on, not rebuilt every frame
 TerrainAtlas.invalidate()
-uploadFails = true
+buildFails = true
 for _ = 1, 6 do TerrainAtlas.animate(plain, nil, base, false) end
-local settledBuilds = builds
+local settledAttempts = buildAttempts
 for _ = 1, 6 do TerrainAtlas.animate(plain, nil, base, false) end
-T.eq(builds, settledBuilds,
+T.eq(buildAttempts, settledAttempts,
   "a key that fails repeatedly is condemned rather than rebuilt forever")
-uploadFails = false
+buildFails = false
 TerrainAtlas.invalidate()
 
 -- 4. the reported path end to end: cycle every palette mode over a map with
@@ -742,29 +762,33 @@ T.eq(clock() - before, 7, "the clock follows the engine's tick, rather than sitt
 TileRenderer.tick(1 / 60)
 T.eq(clock() - before, 8, "and a 60Hz frame of wall time advances it exactly one step")
 
--- End to end, and observed from OUTSIDE the clock: animate() re-uploads the
--- atlas only when the step turns over, so walking a full cycle has to
--- produce one upload per step. This is what a frozen clock silently
--- prevented -- it uploads once and then agrees with itself forever, which
--- is why reading the counter back here would prove nothing.
+-- End to end, and observed from OUTSIDE the clock: animate() selects one of
+-- the immutable textures prebuilt for the cycle. A frozen clock would return
+-- one image forever; a healthy one visits every state and comes back around.
 local spec = plain.tileset.animatedTiles[1]
 TerrainAtlas.invalidate()
-patches = 0
-TerrainAtlas.animate(plain, nil, base, false)   -- builds, uploads step 0
-local built = patches
+local first = TerrainAtlas.animate(plain, nil, base, false)
+T.check(first ~= nil, "the immutable animation cycle builds its first state")
+local built = builds
+local seen = {}
+if first then seen[first] = true end
 for _ = 1, #spec.offsets do
   for _ = 1, spec.period do TileRenderer.tick(nil) end
-  TerrainAtlas.animate(plain, nil, base, false)
+  seen[TerrainAtlas.animate(plain, nil, base, false)] = true
 end
-T.eq(patches - built, #spec.offsets,
-  "walking a full cycle re-patches the atlas once per step, rather than freezing at step 0")
+local states = 0
+for _ in pairs(seen) do states = states + 1 end
+T.eq(states, #spec.offsets,
+  "walking a full cycle visits every prebuilt atlas state rather than freezing")
+T.eq(builds, built,
+  "and changing animation state performs no runtime GPU texture creation")
 
--- repeat calls inside one step must NOT re-upload: animate() runs once per
--- map in the neighbourhood every frame, and repatching ~130 pixels each
--- time is the cost the step check exists to avoid
-local settled = patches
+-- repeat calls inside one step are pointer-only too: animate() runs once per
+-- map in the neighbourhood every frame.
+local settled = builds
 for _ = 1, 5 do TerrainAtlas.animate(plain, nil, base, false) end
-T.eq(patches, settled, "and holds still between steps rather than repatching every call")
+T.eq(builds, settled,
+  "and holds still between steps without creating or uploading textures")
 
 -- and the same two guarantees the pixel seam gets: prefer the real thing,
 -- survive a broken one
@@ -1788,6 +1812,13 @@ end
 -- ------- the compiled variants
 local plain = Water._source(false)
 local gridded = Water._source(true)
+local skyOnly = Water._source(false, true)
+T.check(skyOnly:find("#define SKY_ONLY 1", 1, true) ~= nil,
+  "the Android fallback compiles a dedicated sky-only water variant")
+T.check(skyOnly:find("#ifndef SKY_ONLY", 1, true) ~= nil,
+  "the lightweight variant compiles out depth reads and the frame ray march")
+T.check(plain:find("uniform float rays", 1, true) ~= nil,
+  "the proven shared pass still lets SKY disable only the shoreline march")
 T.check(plain:find("#define WAVE_STEPS " .. Water.WAVE_STEPS, 1, true) ~= nil,
   "the relief march's step count is compiled in too")
 -- the whole surface is answered per COLUMN: the ray picks one, and the art,
@@ -1893,6 +1924,35 @@ T.check(gridded:find("#define VOXEL_GRID", 1, true) ~= nil,
   .. "the water")
 T.check(plain:find("//@CRATERS", 1, true) == nil,
   "and the crater placeholder is gone by the time a driver sees the source")
+
+-- The scene colour, readable depth, and reflection-copy canvases are one
+-- attachment/copy family. On high-DPI Android, mixing an explicit dpiscale=1
+-- colour target with LOVE's default-DPI depth target makes their physical
+-- texture sizes differ. Keep every member at one physical texel per requested
+-- pixel so older high-density phones do not allocate three oversized targets.
+do
+local PixelCanvas = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require(
+  "PixelCanvas")
+local realNewCanvas = love.graphics.newCanvas
+local asked = nil
+love.graphics.newCanvas = function(w, h, opts)
+  asked = { w = w, h = h, opts = opts }
+  return { kind = "pixel canvas" }
+end
+local ok, made = PixelCanvas.new(160, 144,
+  { format = "depth24", readable = true })
+love.graphics.newCanvas = realNewCanvas
+T.check(ok and made and made.kind == "pixel canvas",
+  "the shared pixel-canvas allocator preserves newCanvas's protected result")
+T.eq(asked.w, 160, "the shared allocator keeps the requested width")
+T.eq(asked.h, 144, "and the requested height")
+T.eq(asked.opts.format, "depth24",
+  "readable depth keeps its requested texture format")
+T.eq(asked.opts.readable, true,
+  "and stays sampleable for the water pass")
+T.eq(asked.opts.dpiscale, 1,
+  "while the shared allocator applies the low-DPI canvas rule")
+end
 
 -- ANDROID. GLSL ES defaults fragment floats to mediump and samplers to
 -- lowp, and this shader is the one place in the mod where both defaults
@@ -2393,6 +2453,75 @@ T.eq(rig.curve, 0, "the battle camera switches the world curve off")
 -- over a world. It is dropped on the way past and put back on the two cards.
 local Battles = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("OverworldBattle")
 local Art = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattleArt")
+T.eq(type(Battles.battle), "function",
+  "Crystal Animated Sprites can identify the active staged battle")
+T.eq(Art.duplicateSetting.label, "DUPLICATE FIX",
+  "front and back sprite ownership is presented as one duplicate fix")
+T.eq(Art.duplicateSetting.values[1], "battle_art",
+  "BATTLE ART is the default owner, matching both former SHINY FIX rows OFF")
+T.eq(Art.duplicateSetting.labels[1], "BATTLE ART",
+  "the default owner has the player-facing BATTLE ART label")
+T.eq(Art.duplicateSetting.values[2], "modded",
+  "MODDED replaces the former SHINY FIX ON behaviour")
+T.eq(Art.duplicateSetting.labels[2], "MODDED",
+  "the alternate owner has the player-facing MODDED label")
+T.eq(Art.frontFlipSetting.label, "FLIP FRONT SPRITE",
+  "player-front orientation is independent of duplicate ownership")
+T.eq(Art.frontFlipSetting.values[1], "battle_art",
+  "BATTLE ART retains the established player-side mirror")
+T.eq(Art.frontFlipSetting.values[2], "default",
+  "DEFAULT preserves an already-oriented modded sprite")
+T.eq(Art.frontFlipSetting.defaultIndex, 1,
+  "existing users keep the established orientation until they change it")
+
+local optionKeys = {}
+for _, option in ipairs(run.loader.optionSchemas.BATTLE_ART_VOXEL_FORK or {}) do
+  optionKeys[option.key] = true
+end
+T.check(optionKeys.duplicateFix, "the mod manager exposes DUPLICATE FIX")
+T.check(optionKeys.frontFlip,
+  "the mod manager exposes the independent front-orientation choice")
+T.check(not optionKeys.frontShiny and not optionKeys.backShiny,
+  "and no longer exposes either obsolete SHINY FIX row")
+
+do
+  local legacyGame = {
+    save = { options = { modOptions = {
+      BATTLE_ART_VOXEL_FORK = { frontShiny = "off", backShiny = "on" },
+    } } },
+    mods = { modOptions = {
+      BATTLE_ART_VOXEL_FORK = { frontShiny = "off", backShiny = "on" },
+    } },
+    writeOptions = function() end,
+  }
+  T.eq(Art.migrateDuplicateSetting(legacyGame), true,
+    "a save with the old rows is migrated once")
+  T.eq(Art.duplicateSetting:get(), "modded",
+    "either old row ON preserves the user's modded-art preference")
+  T.eq(legacyGame.save.options.modOptions.BATTLE_ART_VOXEL_FORK.duplicateFix,
+    "modded", "the migration persists the consolidated value")
+  T.eq(Art.migrateDuplicateSetting(legacyGame), false,
+    "an explicit consolidated value is never overwritten by legacy keys")
+  Art.duplicateSetting:sync("battle_art")
+end
+
+T.eq(Art.speciesFor({ mon = { species = "DITTO" },
+                      __crystalTransformed = "MEW" }), "MEW",
+  "Crystal v1.5's Transform marker wins while Battle Art captures the card")
+T.eq(Art.speciesFor({ mon = { species = "DITTO" } }), "DITTO",
+  "ordinary battlers still resolve their own species")
+
+Art.viewSetting:sync("front")
+Art.frontFlipSetting:sync("battle_art")
+T.eq(Battles.playerCardNoMirror(), false,
+  "BATTLE ART mirrors a player-side front card toward its opponent")
+Art.frontFlipSetting:sync("default")
+T.eq(Battles.playerCardNoMirror(), true,
+  "DEFAULT keeps Crystal's already-oriented player picture unchanged")
+Art.viewSetting:sync("back")
+T.eq(Battles.playerCardNoMirror(), true,
+  "player backs remain authored-direction pictures in either mode")
+Art.frontFlipSetting:sync("battle_art")
 T.eq(Art.frontAnimationSetting.values[1], "gen1",
   "animated fronts expose the single-frame Gen 1 compatibility collection")
 T.eq(Art.frontAnimationSetting.labels[1], "GEN 1",
@@ -2735,6 +2864,7 @@ local Renderer = require("src.render.Renderer")
 local realEnd, realHook = Renderer.endFrame, Renderer.dramaticShapeTintHook
 local log = {}
 local uiCanvas, worldPixels = { "the UI canvas" }, { "the world canvas" }
+local tintViewport = { gameX = 11, gameY = 7, scale = 4 }
 Renderer.dramaticShapeTintHook = nil
 Renderer.endFrame = function(self)
   log[#log + 1] = "world"
@@ -2742,6 +2872,7 @@ Renderer.endFrame = function(self)
   log[#log + 1] = "ui"
   love.graphics.draw(self.canvas, 0, 0)
   love.graphics.draw(self.canvas, 0, 0)   -- a second SGB zone's quad
+  return tintViewport
 end
 DayTint.install()
 
@@ -2750,7 +2881,8 @@ love.graphics.rectangle = function(...)
   log[#log + 1] = "tint"
   return realRect(...)
 end
-Renderer.endFrame({ canvas = uiCanvas, worldActive = true, map = true })
+local tintedViewport = Renderer.endFrame(
+  { canvas = uiCanvas, worldActive = true, map = true })
 love.graphics.rectangle = realRect
 
 T.eq(table.concat(log, ","), "world,ui,tint",
@@ -2759,6 +2891,8 @@ local painted = 0
 for _, step in ipairs(log) do if step == "tint" then painted = painted + 1 end end
 T.eq(painted, 1,
   "once, not once per SGB zone quad the UI blit issues")
+T.eq(tintedViewport, tintViewport,
+  "the day-tint wrapper forwards endFrame's viewport to render.hud")
 
 -- a frame the gates decline must not leave the shim installed on love.graphics
 local drawWas = love.graphics.draw
@@ -3148,6 +3282,26 @@ T.check(Exit.veil() > 0, "a live fade veils the frame")
 while exitGame.stack:top() ~= exitOw do exitGame.stack:pop() end
 T.eq(Exit.veil(), nil, "and a fade popped from under itself veils nothing")
 
+-- Renderer:endFrame's viewport is a public contract consumed immediately by
+-- render.hud. The exit veil paints after the composite but must not replace
+-- that return value, whether the veil is idle or visible.
+local Renderer = require("src.render.Renderer")
+local exitEnd, exitHook = Renderer.endFrame, Renderer.dramaticShapeExitHook
+local exitViewport = { gameX = 5, gameY = 9, scale = 3 }
+Renderer.endFrame = function() return exitViewport end
+Renderer.dramaticShapeExitHook = nil
+Exit.install()
+T.eq(Renderer.endFrame({}), exitViewport,
+  "the idle battle-exit wrapper forwards endFrame's viewport")
+exitGame.stack = fakeStack(exitOw, exitBattle)
+local returnFade = Exit.start(exitBattle, function() end)
+returnFade:update()
+T.eq(Renderer.endFrame({}), exitViewport,
+  "the visible exit veil also forwards endFrame's viewport")
+exitGame.stack:pop()
+Exit.veil()
+Renderer.endFrame, Renderer.dramaticShapeExitHook = exitEnd, exitHook
+
 Exit.modeOn = realModeOn
 end
 
@@ -3437,6 +3591,41 @@ end
 do
 local ShadowMap = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("ShadowMap")
 local Mat4 = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Mat4")
+local function sameMatrix(a, b, label)
+  for i = 1, 16 do
+    if math.abs(a[i] - b[i]) > 1e-10 then
+      T.check(false, label .. " (element " .. i .. ")")
+      return
+    end
+  end
+  T.check(true, label)
+end
+
+-- The direct constructors are a performance change only. Pin them against
+-- the old composed-matrix definitions so removing temporary tables cannot
+-- change sprite placement, first-person yaw, mirroring, or shadow casters.
+local oldBillboard = Mat4.mul(Mat4.translate(25, 7, 49), Mat4.rotateY(0.37))
+oldBillboard = Mat4.mul(oldBillboard, Mat4.rotateX(-0.61))
+oldBillboard = Mat4.mul(oldBillboard, Mat4.scale(-1, 1, 1))
+oldBillboard = Mat4.mul(oldBillboard, Mat4.translate(-8, 0, 0))
+sameMatrix(Mat4.billboard(17, 41, 7, 0.37, -0.61, true), oldBillboard,
+  "the direct billboard matrix is algebraically identical to composition")
+
+local oldFigure = Mat4.translate(11, 5, 29)
+oldFigure = Mat4.mul(oldFigure, Mat4.translate(6, 0, 0))
+oldFigure = Mat4.mul(oldFigure, Mat4.rotateY(-0.42))
+oldFigure = Mat4.mul(oldFigure, Mat4.translate(-6, 0, 0))
+oldFigure = Mat4.mul(oldFigure, Mat4.rotateX(0.28))
+sameMatrix(Mat4.figure(11, 5, 29, -0.42, 0.28, 6), oldFigure,
+  "the direct figure matrix preserves its centre-pivot yaw and pitch")
+
+local oldCaster = Mat4.translate(25, 7, 49)
+oldCaster = Mat4.mul(oldCaster, Mat4.scale(-1, 1, 1))
+oldCaster = Mat4.mul(oldCaster, Mat4.translate(-8, 0, 0))
+oldCaster = Mat4.mul(oldCaster, Mat4.scale(1, 1, 0))
+sameMatrix(Mat4.caster(17, 41, 7, true), oldCaster,
+  "the direct caster matrix preserves mirrored feet and flattened depth")
+
 local dir = ShadowMap.sunDir()
 local s = -ShadowMap.slack * ShadowMap.SNUG
 local m = ShadowMap.snug(nil)

@@ -1,9 +1,31 @@
 # Changelog
 
-## Unreleased — Battle Art
+## 1.7.7 — Battle Art
+
+- **Selectable player-front orientation.** `FLIP FRONT SPRITE: BATTLE ART /
+  DEFAULT` separates billboard orientation from `DUPLICATE FIX`. BATTLE ART
+  retains the existing player-side mirror; DEFAULT preserves an externally
+  supplied image's authored direction, preventing Crystal Animated Sprites'
+  already-flipped player picture from being flipped back toward the left.
+  The shortened row stays visible in the regular OPTIONS menu whenever
+  `3D-BTL` is ON, as well as on the mod's own options page.
 
 ### Added
 
+- **Requested presentation defaults.** A fresh install now starts at
+  `VOXEL: FULL` and `PLAYER: BACK SPRITES`; the remaining requested defaults
+  already matched the shipped ladders. T-SHIFT remains independently OFF
+  because it was not part of the requested set. Existing pipeline choices are
+  detected by key presence, so an explicitly saved `VOXEL: OFF` is never
+  overwritten.
+- **One explicit sprite owner.** `DUPLICATE FIX: BATTLE ART / MODDED`
+  replaces the separate front/back `SHINY FIX: OFF / ON` rows. BATTLE ART
+  keeps the selected collections on top so Crystal Animated Sprites cannot
+  leave a second picture behind them; MODDED deliberately gives installed
+  sprite mods and shiny override folders priority. Existing saves migrate to
+  MODDED if either former row was ON. Crystal v1.5's transformed-species marker
+  is honoured, so Battle Art keeps Ditto's copied shape instead of restoring
+  Ditto on the next billboard capture.
 - **Zero-configuration bring-your-own battle PNGs.** `BATTLE ART: STATIC`
   looks in `front-static` and the selected `back-static/gen1` through `gen5`,
   uses native image dimensions,
@@ -305,6 +327,17 @@
 
 ### Changed
 
+- **The tested frame-cache work from the 1.7.8 prototype now lives in this Git
+  tree.** Animated
+  terrain states are prebuilt once and selected by pointer, eliminating the
+  three-times-a-second `replacePixels` upload hitch; neighbourhood masks,
+  neighbour mesh/water lists, entity poses, per-frame palette/atlas results,
+  and water draw records reuse their storage. Time-of-day classification is
+  cached for repeated clock queries, and billboard, figure, and caster
+  matrices are built directly instead of through chains of temporary tables.
+  The tradeoff is a one-time texture-build hitch when a new tileset first
+  enters the live area, matching the observed “area change, then smooth”
+  behaviour.
 - **Class heights now follow the models under them.** A tileset's
   `heights` gets stools at 5 and tables at 6 in the houses, Bill's desk
   at 8, and cans at 9 -- each of them the drawn elevation the new
@@ -318,6 +351,15 @@
 
 ### Fixed
 
+- **Android water canvases now share one bounded DPI rule.** Scene colour,
+  readable depth and reflection copy all use `dpiscale = 1`, avoiding both
+  mismatched attachments and the native-resolution three-canvas allocation
+  that can crash older high-density phones such as the Galaxy S9.
+- **Mobile water has a depth-free fallback.** On capable devices SKY and FULL
+  retain the proven shared reflection pass, with SKY disabling only the
+  shoreline ray march. If a driver refuses that pass, either setting falls
+  back to a dedicated sky shader with no readable-depth sampler, reflection
+  copy or screen-space march instead of dropping directly to flat water.
 - **Water no longer hides behind water.** The reflective pass writes no
   depth -- the depth canvas is detached for the length of it so the
   shader can read it -- so nothing put a lake in the buffer and no lake

@@ -272,13 +272,9 @@ end
 local function billboardMatrix(px, py, y, mirror)
   local Voxel = V.require("VoxelState")
   local b = FirstPerson.cardBlend()
-  local m = Mat4.translate(px + 8, y, py + 8)
-  if b > 0 then
-    m = Mat4.mul(m, Mat4.rotateY(FirstPerson.cardYaw(px + 8, py + 8) * b))
-  end
-  m = Mat4.mul(m, Mat4.rotateX((Voxel.angle - math.pi / 2) * (1 - b)))
-  if mirror then m = Mat4.mul(m, Mat4.scale(-1, 1, 1)) end
-  return Mat4.mul(m, Mat4.translate(-8, 0, 0))
+  local yaw = b > 0 and (FirstPerson.cardYaw(px + 8, py + 8) * b) or 0
+  local pitch = (Voxel.angle - math.pi / 2) * (1 - b)
+  return Mat4.billboard(px, py, y, yaw, pitch, mirror)
 end
 
 local function billboardPull()
@@ -305,22 +301,22 @@ local function figureMatrix(f, offX, offZ)
   local Voxel = V.require("VoxelState")
   local b = FirstPerson.cardBlend()
   local wx, wz = f.wx + (offX or 0), f.wz + (offZ or 0)
-  local m = Mat4.translate(wx, f.y, wz)
-  if b > 0 and f.w and f.w > 0 then
-    local half = f.w / 2
-    m = Mat4.mul(m, Mat4.translate(half, 0, 0))
-    m = Mat4.mul(m, Mat4.rotateY(FirstPerson.cardYaw(wx + half, wz) * b))
-    m = Mat4.mul(m, Mat4.translate(-half, 0, 0))
-  end
-  return Mat4.mul(m, Mat4.rotateX((Voxel.angle - math.pi / 2) * (1 - b)))
+  local half = (b > 0 and f.w and f.w > 0) and (f.w / 2) or 0
+  local yaw = half > 0 and (FirstPerson.cardYaw(wx + half, wz) * b) or 0
+  local pitch = (Voxel.angle - math.pi / 2) * (1 - b)
+  return Mat4.figure(wx, f.y, wz, yaw, pitch, half)
 end
 
 -- What the sun sees: the same card UNLEANED and flattened, exactly as
 -- Voxel3D.casterMatrix does it for a character.
 local function figureCaster(f, offX, offZ)
-  return Mat4.mul(
-    Mat4.translate(f.wx + (offX or 0), f.y, f.wz + (offZ or 0)),
-    Mat4.scale(1, 1, 0))
+  local wx, wz = f.wx + (offX or 0), f.wz + (offZ or 0)
+  return {
+    1, 0, 0, wx,
+    0, 1, 0, f.y,
+    0, 0, 0, wz,
+    0, 0, 0, 1,
+  }
 end
 
 -- Every figure on `map`, drawn with `draw(mesh, model, caster)`.
@@ -402,9 +398,57 @@ end
 -- color modes whose atlas is already true color). Returns the finished
 -- canvas, or nil if the 3D pass could not run (headless, no depth support)
 -- so the caller can fall back to 2D.
--- The last live-set key, so eviction only runs when the neighbourhood
--- actually changes (a map crossing), not every frame.
-local lastLiveKey = nil
+-- Neighbourhood-derived data changes only on a map/seam transition, not every
+-- frame. v1.7.6 rebuilt several tables twice per rendered frame (pipeline
+-- update + render). Keep stable masks/live metadata and reuse the output arrays.
+local neighborhood = { map = nil, count = 0, rows = {} }
+local cachedMasks = {}
+local nbMeshBuf, nbWaterBuf = {}, {}
+
+local function neighborhoodChanged(state)
+  local nbs = state.neighbors or {}
+  if neighborhood.map ~= state.map or neighborhood.count ~= #nbs then
+    return true
+  end
+  for i, nb in ipairs(nbs) do
+    local r = neighborhood.rows[i]
+    local def = nb.map and nb.map.def
+    if not r or r.map ~= nb.map or r.ox ~= nb.ox or r.oy ~= nb.oy
+        or r.w ~= (def and def.width) or r.h ~= (def and def.height) then
+      return true
+    end
+  end
+  return false
+end
+
+local function rebuildNeighborhood(state)
+  local nbs = state.neighbors or {}
+  local live = { [state.map.id] = true }
+  local masks = {}
+
+  neighborhood.map = state.map
+  neighborhood.count = #nbs
+
+  for i, nb in ipairs(nbs) do
+    local def = nb.map.def
+    neighborhood.rows[i] = neighborhood.rows[i] or {}
+    local r = neighborhood.rows[i]
+    r.map, r.ox, r.oy = nb.map, nb.ox, nb.oy
+    r.w, r.h = def and def.width, def and def.height
+
+    live[nb.map.id] = true
+    masks[i] = {
+      nb.ox, nb.oy,
+      nb.ox + nb.map.def.width * 32,
+      nb.oy + nb.map.def.height * 32,
+    }
+  end
+  for i = #nbs + 1, #neighborhood.rows do neighborhood.rows[i] = nil end
+
+  cachedMasks = masks
+  ChunkMesher.setLive(live)
+  TerrainAtlas.setLive(live)
+end
 
 -- Request everything `state`'s frame wants and evict what it no longer
 -- does; returns the current map's terrain mesh (or nil while it builds)
@@ -418,33 +462,8 @@ local lastLiveKey = nil
 function VoxelScene.prefetch(state)
   local Voxel = V.require("VoxelState")
 
-  -- The live set is the current map plus its rendered neighbours. When
-  -- it changes, everything outside it (and the previous set, which
-  -- ChunkMesher retains so stepping into a house keeps the town warm)
-  -- is evicted -- meshes released, analysis dropped -- so memory stays
-  -- bounded by the neighbourhood instead of growing with every area
-  -- ever visited.
-  local liveKey = state.map.id
-  local live = { [state.map.id] = true }
-  for _, nb in ipairs(state.neighbors or {}) do
-    live[nb.map.id] = true
-    liveKey = liveKey .. "|" .. nb.map.id
-  end
-  if liveKey ~= lastLiveKey then
-    lastLiveKey = liveKey
-    ChunkMesher.setLive(live)
-    -- RED++ bakes one atlas per map, so its animated copy is per map too
-    -- and is bounded by the same neighbourhood
-    TerrainAtlas.setLive(live)
-  end
-
-  -- masks: where connected neighbour BODIES sit, so the border ring is
-  -- suppressed under them (see runGeometry)
-  local masks = {}
-  for _, nb in ipairs(state.neighbors or {}) do
-    masks[#masks + 1] = { nb.ox, nb.oy,
-                          nb.ox + nb.map.def.width * 32,
-                          nb.oy + nb.map.def.height * 32 }
+  if neighborhoodChanged(state) then
+    rebuildNeighborhood(state)
   end
 
   -- Builds are asynchronous (ChunkMesher.pump runs in the pipeline's
@@ -461,21 +480,24 @@ function VoxelScene.prefetch(state)
   -- cut out of that build's own geometry (ChunkMesher.pair), so the two
   -- always come from the same slot and a lake is never drawn twice or left
   -- as a hole.
-  ChunkMesher.request(state.map, false, masks, true)
+  ChunkMesher.request(state.map, false, cachedMasks, true)
   local terrain, water = ChunkMesher.pair(state.map, false)
   if not terrain then
     terrain, water = ChunkMesher.pair(state.map, true)
   end
-  local nbMesh, nbWater = {}, {}
-  for i, nb in ipairs(state.neighbors or {}) do
+  local nbs = state.neighbors or {}
+  for i, nb in ipairs(nbs) do
     ChunkMesher.request(nb.map, true)
-    nbMesh[i], nbWater[i] = ChunkMesher.pair(nb.map, true)
-    if not nbMesh[i] then
-      nbMesh[i], nbWater[i] = ChunkMesher.pair(nb.map, false)
+    nbMeshBuf[i], nbWaterBuf[i] = ChunkMesher.pair(nb.map, true)
+    if not nbMeshBuf[i] then
+      nbMeshBuf[i], nbWaterBuf[i] = ChunkMesher.pair(nb.map, false)
     end
   end
+  for i = #nbs + 1, #nbMeshBuf do
+    nbMeshBuf[i], nbWaterBuf[i] = nil, nil
+  end
   Voxel.ready = terrain ~= nil
-  return terrain, nbMesh, water, nbWater
+  return terrain, nbMeshBuf, water, nbWaterBuf
 end
 
 -- Capture every entity's pose for this frame. pose() advances the hop /
@@ -491,30 +513,39 @@ end
 -- below). Only that one entry gets the see-through treatment: NPCs and the
 -- ghosts standing on a neighbour map are left to honest occlusion, because
 -- it is only your own character you cannot afford to lose behind a roof.
+local poseBuf = {}
+
+local function poseSlot(i)
+  local p = poseBuf[i]
+  if not p then p = {}; poseBuf[i] = p end
+  p.isPlayer = nil
+  return p
+end
+
 local function posesOf(state, spriteColors)
   local colors = spriteColors(state.map)
-  local posed = {}
-  local me = nil
+  local n, me = 0, nil
   for _, g in ipairs(state.ghosts or {}) do
     local sprite, vx, vy, facing, phase, flip = g.npc:pose()
-    posed[#posed + 1] = {
-      sprite = sprite, px = vx + g.ox, py = g.npc.py + g.oy,
-      facing = facing, phase = phase, flip = flip,
-      gh = groundAt(g.map or state.map, g.npc.cellX, g.npc.cellY),
-      lift = g.npc.py - vy, colors = spriteColors(g.map or state.map),
-    }
+    n = n + 1
+    local p = poseSlot(n)
+    p.sprite, p.px, p.py = sprite, vx + g.ox, g.npc.py + g.oy
+    p.facing, p.phase, p.flip = facing, phase, flip
+    p.gh = groundAt(g.map or state.map, g.npc.cellX, g.npc.cellY)
+    p.lift = g.npc.py - vy
+    p.colors = spriteColors(g.map or state.map)
   end
   for _, e in ipairs(state.entities or {}) do
     if not (state.flyAnim and e == state.player) then
       local sprite, vx, vy, facing, phase, flip = e:pose()
-      posed[#posed + 1] = {
-        sprite = sprite, px = vx, py = e.py,
-        facing = facing, phase = phase, flip = flip,
-        gh = groundAt(state.map, e.cellX, e.cellY),
-        lift = e.py - vy, colors = colors,
-      }
+      n = n + 1
+      local p = poseSlot(n)
+      p.sprite, p.px, p.py = sprite, vx, e.py
+      p.facing, p.phase, p.flip = facing, phase, flip
+      p.gh = groundAt(state.map, e.cellX, e.cellY)
+      p.lift, p.colors = e.py - vy, colors
       if e == state.player then
-        me = posed[#posed]
+        me = p
         -- marked so the camera draw can leave the card out in first
         -- person, where it would fill the lens from inside; the SUN pass
         -- reads the same list and deliberately does not check the mark
@@ -522,7 +553,8 @@ local function posesOf(state, spriteColors)
       end
     end
   end
-  return posed, me
+  for i = n + 1, #poseBuf do poseBuf[i] = nil end
+  return poseBuf, me
 end
 
 -- ------- the glint's drive
@@ -691,23 +723,32 @@ function VoxelScene.drawWater(draws, cast)
     end
   end
   local plain = not curved
-  if Water.enabled() and Voxel3D.depthReadable() then
-    local mirror, depth = Voxel3D.beginWater(cast)
+  local reflected = false
+  local function waterContext(reflect, depth)
     local w, h = Voxel3D.size()
-    local ok = mirror and depth and Water.begin({
-      reflect = mirror, depth = depth,
+    return {
+      reflect = reflect, depth = depth,
       vp = Voxel3D.vp, eye = Voxel3D.eye, curve = { Voxel3D.curveX or 0,
                                                     Voxel3D.curveZ or 0,
                                                     Voxel3D.curveK or 0 },
       screen = { w, h }, cell = Voxel3D.cell, fov = Voxel3D.fovY,
       skyEdge = Voxel3D.skyEdge, grid = VoxelGrid.enabled(),
       lookFlat = Voxel3D.lookFlat, descent = Voxel3D.descent,
-    })
+    }
+  end
+  -- Use the proven shared reflection pass whenever the driver provides its
+  -- targets. SKY sends rays=0 through this same shader; FULL sends rays=1.
+  -- The lightweight shader below is only the fallback when this cannot start.
+  if Water.enabled() and Voxel3D.depthReadable() then
+    local mirror, depth = Voxel3D.beginWater(cast)
+    local ok = mirror and depth
+               and Water.begin(waterContext(mirror, depth), false)
     if ok then
       for _, d in ipairs(draws) do
         Water.draw(d[1], d[2], d[3])
       end
       Water.finish()
+      reflected = true
       plain = false
     end
     -- Unconditionally, and OUTSIDE the success branch: beginWater unbinds
@@ -716,6 +757,22 @@ function VoxelScene.drawWater(draws, cast)
     -- exactly like one that succeeded -- otherwise every pass after it runs
     -- with no shader and no depth test.
     Voxel3D.endWater()
+  end
+  -- SKY does not need the frame copy or readable depth at all. It is also
+  -- FULL's safe fallback on mobile drivers that refuse either heavy target or
+  -- the screen-space shader: a reflected sky is preferable to flat water.
+  if Water.enabled() and not reflected then
+    local ok = Water.begin(waterContext(nil, nil), true)
+    if ok then
+      for _, d in ipairs(draws) do
+        Water.draw(d[1], d[2], d[3])
+      end
+      Water.finish()
+      -- This path never called beginWater, but the following world passes
+      -- still need the scene shader restored after the sky-only shader.
+      Voxel3D.endWater()
+      plain = false
+    end
   end
   -- the fallback flat draw -- unless the curve's prepass already put the
   -- same meshes down, in which case a bailed frame is already whole
@@ -848,6 +905,10 @@ local function castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh,
   ShadowMap.finish(sig)
 end
 
+local renderGeneration = 0
+local atlasFrameCache = setmetatable({}, { __mode = "k" })
+local colorFrameCache = setmetatable({}, { __mode = "k" })
+
 function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   -- With nothing cached at all (the first frame of a fresh toggle),
   -- return nil: the engine keeps the 2D path for the frame and
@@ -878,15 +939,43 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   local g = VoxelScene.glintStep(glint, cx, cy)
   Voxel3D.glassPhase, Voxel3D.glassGlint = g.phase, g.amp
 
+  renderGeneration = renderGeneration + 1
+  local generation = renderGeneration
+
+  local function colorsFor(map)
+    local rec = colorFrameCache[map]
+    if not rec then
+      rec = {}
+      colorFrameCache[map] = rec
+    end
+    if rec.generation ~= generation then
+      rec.generation = generation
+      rec.value = modeColors(paletteFor, map)
+      rec.hasValue = rec.value ~= nil
+    end
+    return rec.hasValue and rec.value or nil
+  end
+
   local function atlasFor(map)
-    return TerrainAtlas.forMap(map, modeColors(paletteFor, map))
+    local rec = atlasFrameCache[map]
+    if not rec then
+      rec = {}
+      atlasFrameCache[map] = rec
+    end
+    if rec.generation ~= generation then
+      rec.generation = generation
+      rec.value = TerrainAtlas.forMap(map, colorsFor(map))
+      rec.hasValue = rec.value ~= nil
+    end
+    return rec.hasValue and rec.value or nil
   end
 
   -- sprite palettes only exist in the SGB modes; under RED++ the OBP bake
   -- inside sprite:resolveImage() already colors the sheet
+  local gbcPack = PaletteFX.usesGbcPack()
   local function spriteColors(map)
-    if PaletteFX.usesGbcPack() then return nil end
-    return modeColors(paletteFor, map)
+    if gbcPack then return nil end
+    return colorsFor(map)
   end
 
   local posed, me = posesOf(state, spriteColors)
@@ -943,16 +1032,27 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   -- lake would otherwise wear one as a black smear. Water covers them,
   -- which is the same answer the shadow map's own pass gives (see
   -- ShadowMap.sprites) -- people do not shadow water either way.
-  local waterDraws = {}
+  VoxelScene._waterDrawBuf = VoxelScene._waterDrawBuf or {}
+  local waterDraws = VoxelScene._waterDrawBuf
+  local waterN = 0
+
+  local function addWaterDraw(mesh, texture, model)
+    waterN = waterN + 1
+    local d = waterDraws[waterN]
+    if not d then d = {}; waterDraws[waterN] = d end
+    d[1], d[2], d[3] = mesh, texture, model
+  end
+
   if water then
-    waterDraws[#waterDraws + 1] = { water, atlasFor(state.map), nil }
+    addWaterDraw(water, atlasFor(state.map), nil)
   end
   for i, nb in ipairs(state.neighbors or {}) do
     if nbWater and nbWater[i] then
-      waterDraws[#waterDraws + 1] = { nbWater[i], atlasFor(nb.map),
-                                      Mat4.translate(nb.ox, 0, nb.oy) }
+      addWaterDraw(nbWater[i], atlasFor(nb.map),
+                   Mat4.translate(nb.ox, 0, nb.oy))
     end
   end
+  for i = waterN + 1, #waterDraws do waterDraws[i] = nil end
   -- the cast goes into the reflection copy only -- see drawWater for why it
   -- cannot be composited yet and why it is drawn through the same function
   -- the real pass below uses

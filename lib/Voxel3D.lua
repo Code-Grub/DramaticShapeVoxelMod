@@ -309,8 +309,10 @@ local function newDepth(w, h)
   if not (love.graphics and love.graphics.newCanvas) then return nil end
   local c = nil
   for _, format in ipairs(DEPTH_FORMATS) do
-    local ok, made = pcall(love.graphics.newCanvas, w, h,
-                           { format = format, readable = true })
+    -- This is attached to the scene canvas and sampled by Water. Both are
+    -- created through PixelCanvas so Android gives them the same low DPI.
+    local ok, made = PixelCanvas.new(w, h,
+                                     { format = format, readable = true })
     if ok and made then c = made break end
   end
   if not c then return nil end
@@ -881,7 +883,9 @@ end
 function Voxel3D.beginWater(paint)
   if not (active and canvas and held and held.depth) then return nil end
   if not held.mirror then
-    local ok, c = pcall(love.graphics.newCanvas, held.w, held.h)
+    -- Must match both the scene colour canvas and its readable depth target
+    -- in physical pixels; see PixelCanvas and newDepth above.
+    local ok, c = PixelCanvas.new(held.w, held.h)
     if not (ok and c) then return nil end
     pcall(c.setFilter, c, "nearest", "nearest")
     pcall(c.setWrap, c, "clamp", "clamp")
@@ -1027,10 +1031,7 @@ end
 -- one a few pixels behind it, and a figure cannot fringe itself. On the
 -- caster itself it is a no-op -- that quad is already flat.
 function Voxel3D.casterMatrix(px, py, y, mirror)
-  local m = Mat4.translate(px + 8, y, py + 8)
-  if mirror then m = Mat4.mul(m, Mat4.scale(-1, 1, 1)) end
-  return Mat4.mul(Mat4.mul(m, Mat4.translate(-8, 0, 0)),
-                  Mat4.scale(1, 1, 0))
+  return Mat4.caster(px, py, y, mirror)
 end
 
 -- FALLBACK ONLY (no shadow map: headless, or a driver that cannot make the

@@ -93,6 +93,13 @@ function OverworldBattle.enabled()
   return OverworldBattle.setting:get() and true or false
 end
 
+-- Public compatibility seam used by Crystal Animated Sprites v1.4+: it asks
+-- whether its BattleState is the one currently being captured into voxel
+-- billboards before choosing its staged palette/transparency path.
+function OverworldBattle.battle()
+  return session and session.battle or nil
+end
+
 -- ------- battle-art view
 --
 -- The staged shot stands BOTH mons on the map, which is the mode's whole
@@ -880,6 +887,15 @@ local OFF = {
   player = { enemy = false, showEnemyTrainer = false },
 }
 
+-- Whether the player's captured world card should keep the horizontal
+-- orientation already present in its image. Backs always do. Fronts normally
+-- receive Battle Art's face-the-opponent mirror, unless the user has selected
+-- DEFAULT for an external sprite that is already authored for the player side.
+function OverworldBattle.playerCardNoMirror()
+  return BattleArt.playerSide() == "back"
+         or not BattleArt.flipsPlayerFront()
+end
+
 -- Render one side's pics layer into its canvas and report where the pic's
 -- feet ended up, in canvas coordinates.
 function OverworldBattle.sideTexture(battle, side)
@@ -956,6 +972,8 @@ function OverworldBattle.sideTexture(battle, side)
      and not metric then
     ax, ay = TRAINER_AX, TRAINER_AY
   end
+  local playerNoMirror = side == "player"
+                         and OverworldBattle.playerCardNoMirror()
   return { canvas = canvas, ax = ax, ay = ay, trainer = trainer,
            noDayTint = BattleArt.isStaticFront(shownImage),
            -- Opponent trainer cards are authored for a compact intro slot.
@@ -963,7 +981,7 @@ function OverworldBattle.sideTexture(battle, side)
            -- supplied them. Pokemon remain native 1x and untouched.
            presentationScale = side == "enemy" and trainer
                                and OPPONENT_TRAINER_SCALE or 1,
-           noMirror = side == "player" and BattleArt.playerSide() == "back" }
+           noMirror = playerNoMirror }
 end
 
 -- Whether the hit flash is showing this frame.
@@ -1018,6 +1036,41 @@ function OverworldBattle.install()
   end
 
   local BattleState = require("src.battle.BattleState")
+
+  -- Crystal Animated Sprites advances by assigning battler.sprite after the
+  -- engine update. DUPLICATE FIX: BATTLE ART owns that same field, so retain
+  -- our already-selected frame when (and only when) Crystal's exported image
+  -- predicate confirms that its loop overwrote it. The optional dependency in
+  -- manifest.json makes this wrapper outermost even with Crystal v1.5's 980
+  -- priority. Engine effects and unknown sprite mods pass through untouched.
+  if not BattleState.dramaticShapeDuplicateFixHook then
+    local innerUpdate = BattleState.update
+    function BattleState:update(dt)
+      local enemy = self.enemy
+      local player = self.player
+      local ownedEnemy = enemy and BattleArt.isExternal(enemy.sprite)
+                         and enemy.sprite or nil
+      local ownedPlayer = player and BattleArt.isExternal(player.sprite)
+                          and player.sprite or nil
+      local enemySpecies = BattleArt.speciesFor(enemy)
+      local playerSpecies = BattleArt.speciesFor(player)
+      local result = innerUpdate(self, dt)
+      if not BattleArt.prefersModded() then
+        if ownedEnemy and enemy and enemySpecies == BattleArt.speciesFor(enemy)
+           and BattleArt.isCrystalImage(enemy.sprite) then
+          enemy.sprite = ownedEnemy
+        end
+        if ownedPlayer and player
+           and playerSpecies == BattleArt.speciesFor(player)
+           and BattleArt.isCrystalImage(player.sprite) then
+          player.sprite = ownedPlayer
+        end
+      end
+      return result
+    end
+    BattleState.dramaticShapeDuplicateFixHook = true
+  end
+
   if not BattleState.dramaticShapeTrainerPartyHook then
     local newTrainer = BattleState.newTrainer
     function BattleState.newTrainer(game_, oppClass, partyIndex)

@@ -243,7 +243,7 @@ local function shinyDefFor(def, side)
 end
 
 local function definition(battler, side)
-  local species = battler and battler.mon and battler.mon.species
+  local species = BattleArt.speciesFor(battler)
   local key = species and tostring(species):upper()
   local setting = side == "back" and BattleArt.backAnimationSetting
                                   or BattleArt.frontAnimationSetting
@@ -251,11 +251,9 @@ local function definition(battler, side)
   local selected = collections[setting:get()]
   local bySide = selected and key and selected[key]
   local def = bySide and bySide[side] or nil
-  -- SHINY compatibility (species only): when the slot's option is on, prefer
-  -- the shiny atlas; if it is absent fall back to the normal generation's art
-  -- (handled by returning the normal def, which then resolves or ROMs).
-  if def and ((side == "back" and BattleArt.backShinySetting:get() == "on")
-              or (side == "front" and BattleArt.frontShinySetting:get() == "on")) then
+  -- MODDED compatibility (species only): prefer the shiny atlas. If it is
+  -- absent, resolution leaves the underlying mod-owned sprite in charge.
+  if def and BattleArt.prefersModded() then
     def = shinyDefFor(def, side)
   end
   return def
@@ -299,7 +297,7 @@ end
 
 local function updateStaticBack(battler, generation, mode)
   if not (battler and battler.sprite) then return end
-  local species = battler.mon and battler.mon.species
+  local species = BattleArt.speciesFor(battler)
   local image = species and BattleArt.generationBackImage(species, generation)
   local state = states[battler]
   if state and (state.kind ~= "static" or state.generation ~= generation
@@ -322,7 +320,7 @@ end
 
 local function updateStaticFront(battler, generation, mode)
   if not (battler and battler.sprite) then return end
-  local species = battler.mon and battler.mon.species
+  local species = BattleArt.speciesFor(battler)
   local image = species and BattleArt.generationFrontImage(species, generation)
   local state = states[battler]
   if state and (state.kind ~= "static" or state.side ~= "front"
@@ -345,12 +343,12 @@ local function updateStaticFront(battler, generation, mode)
 end
 
 local function updateFront(battler, generation, dt, mode)
-  -- FRONT SHINY ON overrides the generation entirely: route every front
+  -- DUPLICATE FIX: MODDED overrides the generation entirely: route every front
   -- generation through the single-image shinyPrefix path (the same path gen1
   -- already uses) so the selected generation's animated atlas is suppressed
   -- and only the shiny folder (or ROM) shows -- never the normal gen sprite
   -- playing over a shiny mod's sprite.
-  if BattleArt.frontShinySetting:get() == "on" then
+  if BattleArt.prefersModded() then
     updateStaticFront(battler, generation, mode)
     return
   end
@@ -377,12 +375,12 @@ function AnimatedBattleArt.update(battle, dt)
   local playerSide = BattleArt.playerSide()
   if playerSide == "back" then
     local generation = BattleArt.backAnimationSetting:get()
-    -- BACK SHINY ON overrides the generation entirely: route every back
+    -- DUPLICATE FIX: MODDED overrides the generation entirely: route every back
     -- generation through the single-image shinyPrefix path so the selected
     -- generation's animated atlas (gen3/gen5) is suppressed and only the
     -- shiny folder (or ROM) shows -- never the normal gen sprite playing
     -- over a shiny mod's sprite.
-    if BattleArt.backShinySetting:get() == "on" then
+    if BattleArt.prefersModded() then
       updateStaticBack(battle.player, generation, mode)
     elseif BACK_SOURCE_KIND[generation] == "animated" then
       updateBattler(battle.player, "back", dt, mode)

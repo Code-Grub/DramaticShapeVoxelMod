@@ -186,9 +186,9 @@ function BattleExit.install()
   if not Renderer.dramaticShapeExitHook then
     local inner = Renderer.endFrame
     function Renderer:endFrame(zones, worldZones)
-      inner(self, zones, worldZones)
+      local viewport = inner(self, zones, worldZones)
       local a = BattleExit.veil()
-      if not a or a <= 0 then return end
+      if not a or a <= 0 then return viewport end
       -- The composite is on the screen by now, in LOVE units, so one rect over
       -- the window darkens the world, the letterbox bars, the text box and
       -- anything a present pass put on top, all by the same amount. Left to
@@ -198,6 +198,7 @@ function BattleExit.install()
       love.graphics.setColor(0, 0, 0, a)
       love.graphics.rectangle("fill", 0, 0, w, h)
       love.graphics.setColor(1, 1, 1, 1)
+      return viewport
     end
     Renderer.dramaticShapeExitHook = true
   end

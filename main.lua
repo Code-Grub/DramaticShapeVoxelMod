@@ -338,8 +338,9 @@ applyFull = function(level)
   -- battle rows stay on the menu under FULL (see the rows hook), so this is
   -- where the preset puts them and not where they are held.
   OverworldBattle.setting:setIndex(1, Game)
-  -- default to the player's front view, with both battlers world-placed.
-  BattleArt.viewSetting:setIndex(1, Game)
+  -- default to the classic player back view. The foe remains world-placed;
+  -- AUTO decides whether the selected back belongs in-world or on OG UI.
+  BattleArt.viewSetting:setIndex(2, Game)
   -- and the battle screen the staged fight is composed for. WIDE re-lays that
   -- screen out on a 304x144 surface, which moves every anchor the arena camera
   -- is solved against (OverworldBattle.forceOG); FULL has just switched staged
@@ -447,23 +448,22 @@ local SETTINGS = {
     when = function()
       return stagedBattles() and BattleArt.setting:get() ~= "rom"
     end, full = true },
-  { BattleArt.frontShinySetting,
-    "When ON, front sprites are read from assets/battle/front-static/shiny "
-    .. "or front-animated/shiny first. A missing shiny file falls back to the "
-    .. "selected generation's normal front, then to ROM. Keep the shiny "
-    .. "folders empty for a shiny mod to populate.",
+  { BattleArt.duplicateSetting,
+    "Choose who owns Pokemon pictures when another sprite mod is installed. "
+    .. "BATTLE ART keeps this mod's selected front and back collections on "
+    .. "top, preventing a second modded picture behind them. MODDED gives "
+    .. "mod-provided and shiny override art priority. This replaces both old "
+    .. "FRONT SHINY FIX and BACK SHINY FIX rows.",
     when = function() return stagedBattles() end, full = true },
-  { BattleArt.backShinySetting,
-    "When ON, back sprites are read from assets/battle/back-static/shiny or "
-    .. "back-animated/shiny first. A missing shiny file falls back to the "
-    .. "selected generation's normal back, then to ROM. Players can never be "
-    .. "shiny, so this never touches the player's own portrait.",
-    when = function()
-      return stagedBattles() and BattleArt.setting:get() ~= "rom"
-    end, full = true },
   { BattleArt.viewSetting,
     "Show the player's Pokemon from the front or back. Supplied art stays "
     .. "world-placed; a missing selected back falls back to the ROM UI pic.",
+    when = function() return stagedBattles() end, full = true },
+  { BattleArt.frontFlipSetting,
+    "Orient the player-side FRONT SPRITES card. BATTLE ART mirrors ordinary "
+    .. "front art so it faces the opponent. DEFAULT preserves the image's "
+    .. "authored direction, for sprite mods that already supply a flipped "
+    .. "player picture such as Crystal Animated Sprites.",
     when = function() return stagedBattles() end, full = true },
   { BattleArt.backPlacementSetting,
     "Place player back art automatically, force it into the 3D world, or "
@@ -512,6 +512,11 @@ for i, entry in ipairs(SETTINGS) do
   schema[i] = entry[1]:schema(entry[2])
 end
 mod.options:define(schema)
+
+-- Read the raw pre-1.7.7 keys before duplicateFix's schema default can be
+-- mistaken for an explicit choice. The same helper runs again when a real
+-- save is attached below; this early call covers the already-loaded profile.
+pcall(BattleArt.migrateDuplicateSetting)
 
 -- ------- this mod's hotkeys
 --
@@ -1020,7 +1025,16 @@ mod.events:on("save.writing", function()
   DayNight.store()
 end)
 
-mod.events:on("save.loaded", function()
+-- Render pipelines are engine-owned settings and therefore have no
+-- ModSetting schema default. Save creation fires before Game:applyOptions,
+-- so writing FULL into an absent key here makes it the true fresh-install
+-- default while leaving an explicitly saved OFF untouched.
+mod.events:on("save.loaded", function(payload)
+  local save = payload and payload.save
+  if save and Voxel.seedOptions(save.options) then
+    require("src.render.Pipelines").applyOptions(save.options)
+  end
+  BattleArt.migrateDuplicateSetting()
   DayNight.restore()
   -- a save written before this mod was installed can carry TILT or GBC FX
   -- switched on, and their rows are not there to switch them back off (see
@@ -1029,7 +1043,10 @@ mod.events:on("save.loaded", function()
   pinEngineFx()
 end)
 
-mod.events:on("save.created", function()
+mod.events:on("save.created", function(payload)
+  local save = payload and payload.save
+  if save then Voxel.seedOptions(save.options) end
+  BattleArt.migrateDuplicateSetting()
   DayNight.restore()
   pinEngineFx()
 end)
@@ -1045,7 +1062,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.7.6"
+mod.exports.version = "1.7.7"
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout
 mod.exports.lib = V

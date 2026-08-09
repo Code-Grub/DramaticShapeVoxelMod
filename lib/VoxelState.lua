@@ -49,6 +49,20 @@ Voxel.MAX_LEVEL = #Voxel.ANGLES_DEG - 1
 -- the rung FULL sits on, so nothing has to hunt for it by label
 Voxel.FULL_LEVEL = 1
 
+-- Pipeline levels live in the engine's shared options bucket rather than in
+-- ModSetting, so they have no schema-level default. Seed only a genuinely
+-- absent voxel key: an explicit OFF is a player's choice and must survive an
+-- update/reinstall. T-SHIFT is deliberately not seeded here: it was not part
+-- of the requested default set and remains independently OFF on a fresh
+-- install (cycling onto FULL later still invokes the established preset).
+function Voxel.seedOptions(opts)
+  if type(opts) ~= "table" then return false end
+  opts.pipelines = type(opts.pipelines) == "table" and opts.pipelines or {}
+  if opts.pipelines.voxel ~= nil then return false end
+  opts.pipelines.voxel = Voxel.FULL_LEVEL
+  return true
+end
+
 function Voxel.isFull(level)
   return (level or Voxel.level) == Voxel.FULL_LEVEL
 end
