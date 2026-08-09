@@ -2417,25 +2417,20 @@ T.eq(Battles.flashing({ fx = { flash = 16 }, frame = 2 }), false,
 T.eq(Battles.flashing({ fx = { flash = 16 }, frame = 5 }), true,
   "on a four-frame cycle")
 
--- ------- the wireframe is forced on in a battle
+-- ------- the wireframe setting owns battles too
 --
--- A fight is a staged shot rather than the world being walked through, so it
--- always wears the seams. The player's own V-GRID row must not be touched by
--- that -- an override, not a write, or switching the mode off mid-battle
--- would quietly rewrite a setting they chose.
+-- V-GRID is one binary preference: OFF removes seams from both free roam and
+-- staged battles, while ON enables them in both. A battle must not invent a
+-- third state or silently override the player's choice.
 local Grid = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("VoxelGrid")
-Grid.override = nil
 local rowWas = Grid.setting:get()
+Grid.setting:sync(false)
+T.eq(Grid.enabled(), false, "V-GRID OFF also disables battle seams")
+Grid.setting:sync(true)
+T.eq(Grid.enabled(), true, "V-GRID ON also enables battle seams")
+Grid.setting:sync(rowWas)
 T.eq(Grid.enabled(), rowWas and true or false,
-  "with no override the wireframe follows the row")
-Grid.override = true
-T.eq(Grid.enabled(), true, "an override forces it on")
-T.eq(Grid.setting:get(), rowWas, "and leaves the player's row alone")
-Grid.override = false
-T.eq(Grid.enabled(), false, "an override can force it off too")
-Grid.override = nil
-T.eq(Grid.enabled(), rowWas and true or false,
-  "and clearing it hands the answer back to the row")
+  "the test restores the player's wireframe choice")
 
 -- ------- the depth of field is measured off the two marks
 --
