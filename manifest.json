@@ -12,7 +12,11 @@
   "optional_dependencies": [
     "crystal_animated_sprites_with_shiny_visuals"
   ],
-  "conflicts": [],
+  "conflicts": [
+    "DRAMATIC_SHAPE",
+    "DRAMALESS_SHAPE",
+    "potato_voxel"
+  ],
   "permissions": [
     "engine_internals"
   ],
