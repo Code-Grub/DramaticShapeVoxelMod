@@ -14,6 +14,7 @@
 local V = ...
 
 local Budget = V.require("BuildBudget")
+local StaticGeometry = V.require("StaticGeometry")
 
 local ffi = nil
 do
@@ -23,8 +24,8 @@ end
 
 local Disk = {}
 
-Disk.CACHE_REVISION = 1
-Disk.DIRECTORY = "mod-derived/BATTLE_ART_VOXEL_FORK/mesh-cache-v1"
+Disk.CACHE_REVISION = 2
+Disk.DIRECTORY = "mod-derived/BATTLE_ART_VOXEL_FORK/static-mesh-cache-v2"
 
 local MAGIC = "BAVC"
 local FORMAT = 2
@@ -71,7 +72,38 @@ end
 -- Map block edits, tileset replacements, connection-mask changes and void-fill
 -- changes therefore invalidate themselves without relying on a remembered
 -- cleanup event. The revision covers algorithm/data rules not present here.
+local function canonicalMasks(map, masks)
+  local out, seen = {}, {}
+  local def = map and map.def or {}
+  -- ChunkMesher's FULL ring extends three 32px blocks. Neighbours outside
+  -- that rectangle cannot remove a vertex; runtime survey zoom may discover
+  -- more of them than the title generator, and they must not create a false
+  -- persistent variant.
+  local pad, w, h = 96, (def.width or 0) * 32, (def.height or 0) * 32
+  for _, mask in ipairs(masks or {}) do
+    local row = { mask[1], mask[2], mask[3], mask[4] }
+    local relevant = row[3] > -pad and row[1] < w + pad
+                     and row[4] > -pad and row[2] < h + pad
+    local key = table.concat(row, ",")
+    if relevant and not seen[key] then
+      seen[key], out[#out + 1] = true, row
+    end
+  end
+  table.sort(out, function(a, b)
+    for i = 1, 4 do
+      if a[i] ~= b[i] then return (a[i] or 0) < (b[i] or 0) end
+    end
+    return false
+  end)
+  return out
+end
+
+function Disk.staticEligible(map)
+  return StaticGeometry.source(map) ~= nil
+end
+
 function Disk.fingerprint(map, slot, masks, kind)
+  map = StaticGeometry.source(map) or map
   local def, tileset = map.def or {}, map.tileset or {}
   local parts = {
     "rev", tostring(Disk.CACHE_REVISION),
@@ -93,7 +125,7 @@ function Disk.fingerprint(map, slot, masks, kind)
   parts[#parts + 1] = "tiles"
   addList(parts, tileset.blocks)
   parts[#parts + 1] = "masks"
-  addList(parts, masks)
+  addList(parts, canonicalMasks(map, masks))
   return table.concat(parts, "|")
 end
 
@@ -159,7 +191,7 @@ end
 -- Whether one map/slot has both persistent products the renderer will ask
 -- for: shared grass/flower/figure data and its terrain+water stream.
 function Disk.complete(map, bodyOnly, masks)
-  if not map then return false end
+  if not map or not Disk.staticEligible(map) then return false end
   local slot = bodyOnly and "body" or "full"
   return headerMatches(pathFor(map, "aux", "aux"),
                        Disk.fingerprint(map, "aux", nil, "aux"))
@@ -242,6 +274,7 @@ local function readValidated(path, fp)
 end
 
 function Disk.loadTerrain(map, slot, masks)
+  if not Disk.staticEligible(map) then return nil end
   local path = pathFor(map, slot, "terrain")
   local fp = Disk.fingerprint(map, slot, masks, "terrain")
   local blob, pos = readValidated(path, fp)
@@ -263,6 +296,7 @@ local function float4(blob, pos)
 end
 
 function Disk.loadAux(map)
+  if not Disk.staticEligible(map) then return nil end
   local path = pathFor(map, "aux", "aux")
   local fp = Disk.fingerprint(map, "aux", nil, "aux")
   local blob, pos = readValidated(path, fp)
@@ -329,6 +363,7 @@ local function writeFile(path, fp, writer)
 end
 
 function Disk.saveTerrain(map, slot, masks, terrain, water)
+  if not Disk.staticEligible(map) then return false end
   local path = pathFor(map, slot, "terrain")
   local fp = Disk.fingerprint(map, slot, masks, "terrain")
   return writeFile(path, fp, function(file)
@@ -343,6 +378,7 @@ local function f32x4(a, b, c, d)
 end
 
 function Disk.saveAux(map, aux)
+  if not Disk.staticEligible(map) then return false end
   local path = pathFor(map, "aux", "aux")
   local fp = Disk.fingerprint(map, "aux", nil, "aux")
   return writeFile(path, fp, function(file)

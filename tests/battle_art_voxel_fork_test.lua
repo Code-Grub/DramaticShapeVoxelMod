@@ -106,6 +106,7 @@ T.eq(bodyById.FIX_ROUTE, 1,
 -- Persistent streams are trusted only while every geometry input still
 -- matches.  The fingerprint is pure, so validate dirtiness headlessly.
 local VoxelMeshDisk = modExports.lib.require("VoxelMeshDisk")
+local StaticGeometry = modExports.lib.require("StaticGeometry")
 local cacheMap = {
   id = "FIX_TOWN",
   def = Data.maps.FIX_TOWN,
@@ -113,20 +114,36 @@ local cacheMap = {
 }
 local cacheMask = { { 0, -576, 320, 0 } }
 local fingerprint = VoxelMeshDisk.fingerprint(cacheMap, "full", cacheMask,
-                                              "terrain")
+                                               "terrain")
+T.check(StaticGeometry.available(),
+  "immutable geometry is captured after every content mod has loaded")
+T.check(VoxelMeshDisk.staticEligible(cacheMap),
+  "an unchanged live map may reuse its immutable persistent mesh")
 T.eq(VoxelMeshDisk.fingerprint(cacheMap, "full", cacheMask, "terrain"),
      fingerprint, "identical voxel inputs reuse the same disk-cache key")
+local objects = cacheMap.def.objects
+cacheMap.def.objects = { { runtime = true, sprite = "SPAWNED_POKEMON" } }
+T.check(VoxelMeshDisk.staticEligible(cacheMap),
+  "runtime NPC and Pokemon objects never dirty static geometry")
+T.eq(VoxelMeshDisk.fingerprint(cacheMap, "full", cacheMask, "terrain"),
+     fingerprint, "spawned objects are absent from the persistent key")
+cacheMap.def.objects = objects
 local oldBlock = cacheMap.def.blocks[1]
 cacheMap.def.blocks[1] = oldBlock + 1
-T.check(VoxelMeshDisk.fingerprint(cacheMap, "full", cacheMask, "terrain")
-        ~= fingerprint, "a changed map block dirties its persisted voxel mesh")
+T.check(not VoxelMeshDisk.staticEligible(cacheMap),
+  "a runtime block edit is meshed in RAM instead of replacing static disk data")
 cacheMap.def.blocks[1] = oldBlock
+T.check(VoxelMeshDisk.staticEligible(cacheMap),
+  "restoring canonical blocks makes the persistent mesh reusable again")
 T.check(VoxelMeshDisk.fingerprint(cacheMap, "full",
           { { 32, -576, 352, 0 } }, "terrain") ~= fingerprint,
   "a changed connection placement dirties the full-mesh border mask")
+T.eq(VoxelMeshDisk.fingerprint(cacheMap, "full",
+       { { 0, -576, 320, 0 }, { 5000, 5000, 5100, 5100 } }, "terrain"),
+     fingerprint, "off-ring survey neighbours do not create cache variants")
 T.eq(VoxelMeshDisk.DIRECTORY,
-  "mod-derived/BATTLE_ART_VOXEL_FORK/mesh-cache-v1",
-  "persistent voxel data lives under the mod-derived save tree")
+  "mod-derived/BATTLE_ART_VOXEL_FORK/static-mesh-cache-v2",
+  "persistent static voxel data has its own versioned save tree")
 
 -- A healthy cold build returns an opaque surface rather than exposing the
 -- engine's flat world.  Exercise the veil independently of a GL context.

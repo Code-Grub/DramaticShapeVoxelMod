@@ -85,6 +85,7 @@ local ChunkMesher = V.require("ChunkMesher")
 local VoxelPrecache = V.require("VoxelPrecache")
 local VoxelLoadingVeil = V.require("VoxelLoadingVeil")
 local VoxelPrecacheScreen = V.require("VoxelPrecacheScreen")
+local StaticGeometry = V.require("StaticGeometry")
 local VoxelGrid = V.require("VoxelGrid")
 local WorldCurve = V.require("WorldCurve")
 local OverworldBattle = V.require("OverworldBattle")
@@ -100,6 +101,13 @@ local AntiAlias = V.require("AntiAlias")
 local FirstPerson = V.require("FirstPerson")
 local FreeMove = V.require("FreeMove")
 local PoisonFlash = V.require("PoisonFlash")
+
+-- `mods.loaded` is the first point at which every content mod has finished
+-- patching the registries and the last point before a save can mutate live map
+-- blocks. Persistent voxel meshes are keyed exclusively from this snapshot.
+mod.events:on("mods.loaded", function(payload)
+  StaticGeometry.capture(payload and payload.data)
+end)
 
 -- Forward declaration: the voxel pipeline's update hook (registered below)
 -- calls this, and it is defined further down with the settings it drives.
@@ -1142,7 +1150,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.8.0"
+mod.exports.version = "1.8.1"
 mod.exports.battlePresentation = BattlePresentation.export()
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout

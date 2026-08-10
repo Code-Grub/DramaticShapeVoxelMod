@@ -15,6 +15,18 @@
   data is released between generated maps and corrupt or stale files rebuild
   through the ordinary cooperative mesher.
 
+### Fixed
+
+- **Persistent records now have a genuinely static boundary.** The mod snapshots
+  final modded map/tileset geometry at `mods.loaded`; terrain, buildings, trees,
+  static vegetation and authored figures use `static-mesh-cache-v2`. Runtime
+  NPC/Pokemon objects never enter the key, and Cut, doors or script-edited live
+  blocks build RAM-only meshes without deleting or replacing the static record.
+- **Connection discovery no longer creates equivalent FULL variants.** Masks
+  are sorted, deduplicated and limited to neighbours which intersect the
+  three-block border ring, so survey zoom and traversal order cannot churn an
+  otherwise identical disk mesh.
+
 ## 1.7.8 — Battle UI
 
 ### Added

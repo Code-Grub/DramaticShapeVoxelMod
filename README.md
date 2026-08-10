@@ -97,7 +97,10 @@ it again resumes: records whose exact input fingerprint is still valid are
 counted as EXISTING rather than rebuilt.
 
 The generator writes only beneath
-`mod-derived/BATTLE_ART_VOXEL_FORK/mesh-cache-v1` in the game's save directory:
+`mod-derived/BATTLE_ART_VOXEL_FORK/static-mesh-cache-v2` in the game's save
+directory. At `mods.loaded` it takes a private snapshot of the final map and
+tileset geometry, after content mods have patched it but before gameplay can
+change it:
 
 - one `MAP.full.terrain.bavc` for every loadable map, containing terrain and
   the separately drawn water surface, with that map's connection masks;
@@ -106,17 +109,29 @@ The generator writes only beneath
 - one shared `MAP.aux.bavc` per generated map, containing tall grass, flowers,
   and authored figure geometry.
 
-These are LZ4-compressed raw six-float vertex streams, not GPU objects or ROM
-data. Each header fingerprints the mod/cache revision, map blocks, tileset
-blocks, dimensions, border/void policy and connection masks. A changed input
-therefore rebuilds its own record; corrupt/truncated records fail open to the
+These records contain only geometry derived from that immutable snapshot:
+terrain, water sheets, buildings, trees, static grass/flowers and figures
+authored into the tileset. Runtime NPCs and spawned overworld Pokemon remain
+ordinary sprite billboards and never enter a disk record or fingerprint. If a
+script, Cut or a door changes a live block, that one live map is meshed in RAM;
+it neither reads nor replaces the canonical static file. Returning to the
+canonical layout reuses the disk mesh again.
+
+BAVC is a small documented container, not a serialized GPU object or ROM dump:
+a `BAVC`/version/fingerprint header followed by LZ4 chunks of interleaved
+`position.xyz`, `uv.xy`, `shade` float vertices. Standard GLB was evaluated for
+inspectability, but the measured 744 MiB test cache contains 2.73 GiB of raw
+vertex data; without shipping a mesh-compression decoder, GLB would increase
+mobile storage about 3.7 times. Corrupt/truncated records fail open to the
 ordinary cooperative mesher. Runtime meshes are released between maps, so
 generating the whole cache does not hold the whole world in RAM.
 
 The completion screen reports map, file, FULL/BODY/AUX counts and total MiB or
 GiB. Exact size depends on the imported ROM and installed map/tileset content;
 large routes dominate and a complete cache can occupy hundreds of MiB or more.
-The directory is disposable: deleting it only makes the mod regenerate meshes.
+The directory is disposable: deleting it only makes the mod regenerate static
+meshes. The older `mesh-cache-v1` directory is no longer read and may be removed
+manually after confirming the v2 build.
 
 ## Battle UI compatibility
 

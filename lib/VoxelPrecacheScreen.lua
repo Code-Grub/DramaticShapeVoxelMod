@@ -13,6 +13,7 @@ local Font = require("src.render.Font")
 local ChunkMesher = V.require("ChunkMesher")
 local MeshDisk = V.require("VoxelMeshDisk")
 local Precache = V.require("VoxelPrecache")
+local StaticGeometry = V.require("StaticGeometry")
 
 local Screen = {}
 Screen.__index = Screen
@@ -42,7 +43,9 @@ local function countKinds(jobs)
 end
 
 function Screen.new(game)
-  local jobs = Precache.allJobs(game and game.data)
+  StaticGeometry.capture(game and game.data) -- lifecycle/test fallback
+  local data = StaticGeometry.data() or (game and game.data)
+  local jobs = Precache.allJobs(data)
   local maps, full, body = countKinds(jobs)
   local self = setmetatable({
     game = game,
@@ -75,9 +78,7 @@ end
 function Screen:loadMap(id)
   if self.loadedId == id and self.loadedMap then return self.loadedMap end
   self:releaseLoaded(id)
-  local okLoader, MapLoader = pcall(require, "src.world.MapLoader")
-  if not (okLoader and MapLoader and MapLoader.load) then return nil end
-  local ok, map = pcall(MapLoader.load, self.game.data, id)
+  local ok, map = pcall(StaticGeometry.map, id)
   if not (ok and map) then return nil end
   self.loadedId, self.loadedMap = id, map
   return map
@@ -106,7 +107,8 @@ function Screen:startNext()
       self.index = self.index + 1
     else
       local masks = job.bodyOnly and nil
-                    or Precache.masksFor(self.game.data, job.id)
+                    or Precache.masksFor(StaticGeometry.data() or self.game.data,
+                                         job.id)
       if MeshDisk.complete(map, job.bodyOnly, masks) then
         self.skipped = self.skipped + 1
         self.index = self.index + 1
