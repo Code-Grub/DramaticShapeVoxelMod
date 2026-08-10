@@ -228,6 +228,10 @@ local function shadowSignature(state, arena, terrain, nbMesh, token)
   local host = arena.map or state.map
   local parts = { "battle", host.id, arena.x, arena.y, arena.shape,
                   tostring(terrain), tostring(token or 0),
+                  -- UNLIT removes the cards from the caster pass. Carry that
+                  -- decision so switching SPRITE LIGHT or ARENA FILL cannot
+                  -- reuse a map that still contains their old silhouettes.
+                  tostring(UiBackplates.spritesUnlit()),
                   -- the cycle keeps running through a fight, and an arena lit
                   -- from somewhere new must be re-cast from there
                   math.floor(ShadowMap.KX * 128),
@@ -271,12 +275,19 @@ local function castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh,
   -- marked as the CAST, so a fight staged at the water's edge does not lay a
   -- cut-out of a Pokemon across the lake (see ShadowMap.sprites); the arena's
   -- own floor still takes them, which is the shadow that matters here
-  ShadowMap.sprites(true)
-  for _, card in ipairs(cards or {}) do
-    ShadowMap.draw(BattleBillboard.mesh(), card.tex,
-                   ShadowMap.snug(card.model))
+  --
+  -- UNLIT cards are absent from this pass as well as bypassing it when they
+  -- are drawn below. That makes the contract symmetric: they neither receive
+  -- somebody else's shadow nor cast/self-cast one of their own, independent
+  -- of the selected arena fill.
+  if not UiBackplates.spritesUnlit() then
+    ShadowMap.sprites(true)
+    for _, card in ipairs(cards or {}) do
+      ShadowMap.draw(BattleBillboard.mesh(), card.tex,
+                     ShadowMap.snug(card.model))
+    end
+    ShadowMap.sprites(false)
   end
-  ShadowMap.sprites(false)
 
   ShadowMap.finish(sig)
 end
@@ -406,8 +417,17 @@ function BattleScene.render(state, arena, textures, token)
   Voxel3D.viewProjection(cx, cy, vw, vh)
   local cards = monCards(arena, groundY, textures)
   Voxel3D.camera = nil
-  castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh, atlasFor,
-              cards, token, host, neighbors, water, nbWater)
+  local whiteFill = UiBackplates.arenaWhite()
+  if whiteFill then
+    -- WHITE is a genuinely flat stage: there is no visible world receiver,
+    -- and its cards must neither cast nor receive. Do not merely omit the
+    -- cards from a newly built map; discard any map left by the preceding
+    -- overworld/battle too, so beginScene binds the blank sampler.
+    ShadowMap.discard()
+  else
+    castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh, atlasFor,
+                cards, token, host, neighbors, water, nbWater)
+  end
 
   -- An opaque void either way. Outdoors the camera is low enough that the
   -- horizon is genuinely in frame, so it is sky; indoors it is the dark end
@@ -449,7 +469,6 @@ function BattleScene.render(state, arena, textures, token)
     -- and skipping the terrain/water/grass/flower draws; the 2D attack
     -- animations and the menus composite on top afterwards, so they stay
     -- above the white too. Requires sprite light UNLIT (see UiBackplates).
-    local whiteFill = UiBackplates.arenaWhite()
     local skyFill = whiteFill and { 1, 1, 1 } or sky
     if not Voxel3D.beginScene(rw, rh, cx, cy, vw, vh, skyFill, "battle") then
       return
@@ -514,11 +533,18 @@ function BattleScene.render(state, arena, textures, token)
       if unlit then
         Voxel3D.tint = { 1, 1, 1 }
         Voxel3D.dayTint({ 1, 1, 1 })
+        -- dayTint alone is not enough: the shared scene shader also samples
+        -- the sun map. The old ternary-like `unlit and nil or snug` expression
+        -- selected snug even when unlit (nil falls through `or`), so the card
+        -- still received scene shadows and could darken on a white arena.
+        -- Bypass the complete equation and restore it immediately afterward.
+        Voxel3D.lighting(false)
       end
+      local sunModel = not unlit and ShadowMap.snug(card.model) or nil
       Voxel3D.draw(BattleBillboard.mesh(), card.tex, card.model,
-                   BattleBillboard.PULL,
-                   unlit and nil or ShadowMap.snug(card.model))
+                   BattleBillboard.PULL, sunModel)
       if unlit then
+        Voxel3D.lighting(true)
         Voxel3D.tint = savedTint
         Voxel3D.dayTint()
       end

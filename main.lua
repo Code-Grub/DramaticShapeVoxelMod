@@ -85,12 +85,14 @@ local ChunkMesher = V.require("ChunkMesher")
 local VoxelGrid = V.require("VoxelGrid")
 local WorldCurve = V.require("WorldCurve")
 local OverworldBattle = V.require("OverworldBattle")
+local BattlePresentation = V.require("BattlePresentation")
 local BattleArt = V.require("BattleArt")
 local UiBackplates = V.require("UiBackplates")
 local BattleExit = V.require("BattleExit")
 local DayNight = V.require("DayNight")
 local DayTint = V.require("DayTint")
 local Water = V.require("Water")
+local Shadows = V.require("Shadows")
 local AntiAlias = V.require("AntiAlias")
 local FirstPerson = V.require("FirstPerson")
 local FreeMove = V.require("FreeMove")
@@ -401,6 +403,11 @@ local SETTINGS = {
     .. "shoreline, the trees and the buildings behind it; SKY is the sky, "
     .. "the sun and the moon alone, which is most of the look for a "
     .. "fraction of the cost." },
+  { Shadows.setting,
+    "Enable shadows. OFF removes both the real cast-shadow map and its flat "
+    .. "fallback from free roam and staged battles; UNLIT battle cards also "
+    .. "decline shadows even while this global switch is ON.",
+    full = true },
   -- `full` marks a row FULL does not take away. FULL owns the diorama's own
   -- knobs; what a battle is drawn over, and how it is framed, are not that.
   { OverworldBattle.setting,
@@ -1091,6 +1098,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
 end)
 
 mod.exports.version = "1.7.8"
+mod.exports.battlePresentation = BattlePresentation.export()
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout
 mod.exports.lib = V

@@ -4,6 +4,12 @@
 
 ### Added
 
+- **Modern/Gen 3 battle UI compatibility.** Replacement presenters can claim
+  native `hud`, `text`, or `panels` through the fail-open
+  `battle.presentation.suppress_native.v1` hook. A guarded adapter also
+  recognises `gen3_battle_ui` v0.1 and its `revampedBattleUI` toggle, plus the
+  older `gen1_modern_ui` `battleUiWip` opt-in. Gen 3 UI retains native Mimic,
+  Safari and scripted-demo text that its v0.1 renderer does not draw.
 - **Selectable HUD palette.** `HUD COLOR: COLOR / INVERTED` chooses between
   the forks' original black glyphs and coloured HP bars with a bright shadow,
   or the current white-ink HUD with a dark shadow. COLOR is the fresh-install
@@ -24,6 +30,22 @@
 
 ### Fixed
 
+- **UNLIT battle sprites are now genuinely full-bright.** Pokémon cards bypass
+  the complete scene-light equation, including the shadow-map lookup, instead
+  of neutralising only the day/night tint, and are omitted from the caster
+  pass too. They neither receive nor cast scene shadows at any arena fill.
+- **Global `SHADOWS: ON / OFF`.** OFF prevents the real shadow map from being
+  generated or sampled and suppresses the flat fallback in both free roam and
+  staged battles. The stored `shadowQuality` key remains compatible with the
+  mobile quality fork.
+- **UNLIT and white arenas reject shadows completely.** UNLIT cards now take
+  a dedicated true-colour shader path so they cannot receive night tint or
+  cast/self shadows, while `ARENA FILL: WHITE` skips and discards the battle
+  shadow map entirely.
+- **Native ROM sprite whites are restored.** Yellow's decoded battle pictures
+  no longer bypass the paper reconstruction. Pokemon use a sealed silhouette
+  so pale bodies cannot drain out through their lower edge, while authored
+  Battle Art and Crystal frames preserve their own alpha exactly.
 - **Overworld poison no longer flashes the whole display.** The normal
   four-step poison tick still deals damage, plays its sound, reports fainted
   Pokémon and blacks out an exhausted party; only the legacy dark screen
@@ -40,8 +62,10 @@
   In WHITE and BLACK it uses the selected solid paper. Border and text remain
   visible in every mode, with the v1.68 paperless ink draw order.
 - **INVERTED keeps coloured HP gauges.** Only the six gauge-fill cells bypass
-  ink inversion, preserving their green/yellow/red health colour. Names,
-  numbers, the `HP:` label, gauge outline and HUD chrome still invert normally.
+  ink inversion, preserving their health band. The dim two-thirds engine fill
+  is lifted to a bright green when healthy, yellow at medium HP and red when
+  critical. Names, numbers, the `HP:` label, gauge outline and HUD chrome still
+  follow the selected HUD mode normally.
 
 ## 1.7.7 — Battle Art
 

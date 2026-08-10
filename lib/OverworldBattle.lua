@@ -44,6 +44,7 @@ local BattleCam = V.require("BattleCam")
 local BattleScene = V.require("BattleScene")
 local BattleDOF = V.require("BattleDOF")
 local BattleHud = V.require("BattleHud")
+local BattlePresentation = V.require("BattlePresentation")
 local UiBackplates = V.require("UiBackplates")
 local TextboxStyle = V.require("TextboxStyle")
 local BattlePics = V.require("BattlePics")
@@ -195,6 +196,15 @@ function OverworldBattle.pinnedPic(battle, img)
   if img == battle.playerBackPic then return true end
   local player = battle.player
   return (player and img == player.sprite) and true or false
+end
+
+-- Whether this image is one of the two live Pokemon pictures rather than a
+-- trainer intro. Kept as an identity test so ROM paths, palettes and species
+-- names never have to be guessed.
+function OverworldBattle.isPokemonPic(battle, img)
+  if not (battle and img) then return false end
+  return ((battle.enemy and img == battle.enemy.sprite)
+          or (battle.player and img == battle.player.sprite)) and true or false
 end
 
 -- ------- both mons face you
@@ -1206,21 +1216,30 @@ function OverworldBattle.install()
   -- instead -- see BattlePics, which puts the paper back without touching
   -- the silhouette.
   --
-  -- The pinned pic is told that its feet are on the box, which is what lets
-  -- the pale-bodied back sprites be filled at all: their bellies leak out
-  -- through an opening too wide to read as a drain, and only the box under
-  -- them settles that it is not a hole. Passed the pre-bake image, because
-  -- that is the one the battle holds a reference to.
+  -- Native Pokemon pics use a sealed lower silhouette whether they stand in
+  -- the world or sit on the box. Yellow's pale-bodied sprites often carry
+  -- their shade-0 paper all the way to the lower edge; treating that opening
+  -- as scenery turns Jigglypuff, Seel and friends into outlines. Native
+  -- trainer art keeps the open-bottom rule so the world can still show
+  -- between authored legs. Passed the pre-bake image, because that is the
+  -- one the battle holds a reference to.
   local innerPic = BattleState.picImage
   function BattleState:picImage(img)
     local out = innerPic(self, img)
     if not OverworldBattle.shot() then return out end
-    if BattleArt.isExternal(out) then return out end
-    -- ROM-fallback sprites (no authored PNG) are already transparent; the
-    -- diorama behind them must show through, so do not white-fill their gaps.
-    -- Mirrors upstream DramaticShapeVoxelMod PR #96 (crystal-sprite skip).
-    if not BattleArt.isExternal(img) then return out end
-    return BattlePics.filled(out, OverworldBattle.pinnedPic(self, img))
+    -- Authored Battle Art PNGs already distinguish white paint from alpha.
+    -- Crystal Animated Sprites does too and publishes an identity predicate
+    -- for generated/transform frames. Do not reinterpret either one's holes.
+    if BattleArt.isExternal(img) or BattleArt.isExternal(out)
+       or BattleArt.isCrystalImage(img) or BattleArt.isCrystalImage(out) then
+      return out
+    end
+
+    -- Everything left is the engine's decoded ROM art. Its shade-0 paper was
+    -- keyed to alpha because the original battle field was itself white.
+    local pokemon = OverworldBattle.isPokemonPic(self, img)
+    local sealBottom = pokemon or OverworldBattle.pinnedPic(self, img)
+    return BattlePics.filled(out, sealBottom)
   end
 
   -- While a billboard texture is being rendered both pics are put in the same
@@ -1339,6 +1358,7 @@ function OverworldBattle.install()
   local innerText = BattleState.drawTextArea
   function BattleState:drawTextArea()
     if not self.dramaticShapeShot then return innerText(self) end
+    if BattlePresentation.suppressed("text", self) then return end
     if isIOS() then return innerText(self) end
     return drawStyledTextArea(self, innerText)
   end
@@ -1439,6 +1459,8 @@ function OverworldBattle.install()
   -- only an exactly-black set is remapped.
   innerHUDs = BattleState.drawHUDs
   function BattleState:drawHUDs(slide)
+    if self.dramaticShapeShot
+       and BattlePresentation.suppressed("hud", self) then return end
     -- Normally the HUDs have already been drawn this frame, snapped out to the
     -- window's edges and composited into the world image (snapHUDs). Drawing
     -- them here as well would show each block twice, once in each place.
@@ -1499,7 +1521,7 @@ function OverworldBattle.hudTexture(battle, slide, dark, inverted, colorShadow)
   local ok, layer = pcall(BattleHud.layerTexture,
                           BattleScene.GB_W, BattleScene.GB_H, dark,
                           function() innerHUDs(battle, slide) end,
-                          inverted, colorShadow)
+                          inverted, colorShadow, battle)
   battle.colorMode = had
   return ok and layer or nil
 end

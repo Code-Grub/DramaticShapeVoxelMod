@@ -20,6 +20,42 @@ local run = T.sdk.loadMod(MOD_PATH, { data = Data })
 T.eq(#run.errors, 0,
   "BATTLE_ART_VOXEL_FORK loads clean: " .. table.concat(run.errors, "; "))
 
+-- Replacement battle UIs claim only the native surface they actually draw.
+-- With no consumer the contract fails open; a throwing consumer does too.
+local modExports = run.loader.exports.BATTLE_ART_VOXEL_FORK
+local BattlePresentation = modExports.lib.require("BattlePresentation")
+local presentationExport = modExports.battlePresentation
+T.eq(presentationExport.apiVersion, 1,
+  "the public battle-presentation descriptor is versioned")
+T.eq(presentationExport.suppressHook,
+  "battle.presentation.suppress_native.v1",
+  "replacement UIs discover the provider-neutral suppression hook")
+T.eq(BattlePresentation.suppressed("hud"), false,
+  "native HUD rendering fails open without a replacement consumer")
+T.eq(BattlePresentation.suppressed("unknown"), false,
+  "unknown presentation surfaces can never suppress native rendering")
+
+local Runtime = require("src.mods.Runtime")
+local removeClaim = Runtime.hooks:wrap(
+  BattlePresentation.SUPPRESS_HOOK,
+  function(next, request)
+    local claimed = next(request)
+    return claimed == true or request.surface == "hud"
+  end, 9000, "battle-presentation-test")
+T.eq(BattlePresentation.suppressed("hud"), true,
+  "a replacement presenter can claim the native HUD")
+T.eq(BattlePresentation.suppressed("text"), false,
+  "a HUD claim does not hide the native text/menu surface")
+removeClaim()
+
+local removeBroken = Runtime.hooks:wrap(
+  BattlePresentation.SUPPRESS_HOOK,
+  function() error("intentional compatibility test") end,
+  9000, "battle-presentation-broken-test")
+T.eq(BattlePresentation.suppressed("hud"), false,
+  "a broken replacement presenter leaves the native HUD visible")
+removeBroken()
+
 -- The mod removes only the presentation flag created by field poison. The
 -- poison routine itself remains the engine's routine (wrapped in main.lua),
 -- so damage, timing, sound and faint handling are not reimplemented here.
@@ -176,6 +212,8 @@ T.check(fullIds["BATTLE_ART_VOXEL_FORK:battleBack"], "and BACK SPRITES with it")
 -- and AA, for the opposite reason: it is not a knob on the look at all, it is
 -- what the look COSTS, and only the player knows what their machine can carry
 T.check(fullIds["BATTLE_ART_VOXEL_FORK:aa"], "and AA, which FULL neither sets nor owns")
+T.check(fullIds["BATTLE_ART_VOXEL_FORK:shadowQuality"],
+  "and SHADOWS, whose GPU cost remains the player's choice under FULL")
 
 -- DAYTIME is not only hidden under FULL, it is HELD at SYNC: the row cannot
 -- be reached while FULL owns it, so a value changed underneath (the mod
@@ -410,7 +448,7 @@ end
 Pipelines.setLevel("voxel", 2)
 local hookedRows = Runtime.call("ui.options.rows", function(_, r) return r end,
                                { data = Data }, { { id = "text_speed" } })
-T.eq(#hookedRows, 15,
+T.eq(#hookedRows, 16,
   "the options hook added the upstream and visible Battle Art settings")
 local hookedByLabel = {}
 for _, row in ipairs(hookedRows) do hookedByLabel[row.label] = row end
@@ -454,9 +492,35 @@ T.eq(frontFlipRow.value(), "BATTLE ART",
   "existing saves retain Battle Art's player-front mirror by default")
 T.eq(hookedByLabel["HUD COLOR"].value(), "COLOR",
   "fresh installs retain the forks' original black and coloured HUD")
+T.eq(hookedByLabel.SHADOWS.value(), "ON",
+  "real cast shadows remain on by default")
+
+do
+local Backplates = modExports.lib.require("UiBackplates")
+local Voxel = modExports.lib.require("Voxel3D")
+Backplates.spriteLight:sync("SHADED")
+Backplates.arenaFill:sync("WHITE")
+T.check(Backplates.spritesUnlit(),
+  "ARENA FILL: WHITE forces ROM and authored cards through UNLIT")
+T.check(type(Voxel.unlitShader) == "function",
+  "UNLIT has a dedicated true-colour shader rather than a tint multiplier")
+Backplates.arenaFill:sync("OFF")
+Backplates.spriteLight:sync("UNLIT")
+T.check(Backplates.spritesUnlit(),
+  "SPRITE LIGHT: UNLIT uses the same true-colour path without white fill")
+Backplates.spriteLight:sync("SHADED")
+end
 
 -- stepping writes through to the one place both rows read
 local settingGame = { save = { options = {} }, mods = { modOptions = {} } }
+hookedByLabel.SHADOWS.step(settingGame)
+T.eq(hookedByLabel.SHADOWS.value(), "OFF",
+  "the SHADOWS row can disable the shadow-map path")
+T.eq(settingGame.save.options.modOptions.BATTLE_ART_VOXEL_FORK.shadowQuality,
+  "off", "SHADOWS persists on the quality-fork-compatible key")
+hookedByLabel.SHADOWS.step(settingGame, -1)
+T.eq(hookedByLabel.SHADOWS.value(), "ON",
+  "and can restore the cast-shadow path")
 grid.step(settingGame)
 T.eq(grid.value(), "ON", "stepping the row toggles the grid")
 T.eq(settingGame.save.options.modOptions.BATTLE_ART_VOXEL_FORK.grid, true,
@@ -2301,6 +2365,7 @@ local BattleCam = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattleCa
 local BattleScene = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattleScene")
 local BattleHud = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattleHud")
 local flipSource = BattleHud._flipSource or ""
+local hpColorSource = BattleHud._hpColorSource or ""
 local shadowSource = BattleHud._shadowSource or ""
 T.eq(BattleHud.COLOR_SHADOW_SHADE, 1.0,
   "COLOR uses a clean white shadow rather than a muddy gray duplicate")
@@ -2310,10 +2375,16 @@ T.check(BattleHud.COLOR_SHADOW_ALPHA >= 0.35
 T.check(flipSource:find("px.x >= 32.0", 1, true) ~= nil
         and flipSource:find("px.x >= 96.0", 1, true) ~= nil,
   "INVERTED exempts only the enemy and player HP gauge spans")
-T.check(flipSource:find("!hpGaugeColor(p, tc)", 1, true) ~= nil,
-  "INVERTED preserves coloured gauge pixels while still flipping HUD ink")
+T.check(flipSource:find("p.rgb = brightHpGauge(p)", 1, true) ~= nil,
+  "INVERTED brightens coloured gauge pixels instead of flipping them as ink")
 T.check(shadowSource:find("!hpGaugeColor(p, tc)", 1, true) ~= nil,
   "INVERTED does not stamp a black duplicate over coloured gauge pixels")
+T.check(hpColorSource:find("vec3(0.20, 0.92, 0.32)", 1, true) ~= nil,
+  "healthy HP is lifted from the engine's dark green to bright green")
+T.check(hpColorSource:find("vec3(1.00, 0.82, 0.05)", 1, true) ~= nil,
+  "medium HP keeps a clearly visible yellow gauge")
+T.check(hpColorSource:find("vec3(1.00, 0.16, 0.10)", 1, true) ~= nil,
+  "critical HP keeps a clearly visible red gauge")
 local Voxel3Dcam = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Voxel3D")
 
 -- where a world point lands in the 160x144 frame, or nil behind the camera
@@ -2549,6 +2620,17 @@ T.eq(Battles.playerCardNoMirror(), true,
 Art.viewSetting:sync("back")
 T.eq(Battles.playerCardNoMirror(), true,
   "player backs remain authored-direction pictures in either mode")
+local romEnemy, romPlayer, romTrainer = {}, {}, {}
+local romBattle = {
+  enemy = { sprite = romEnemy },
+  player = { sprite = romPlayer },
+  trainerPic = romTrainer,
+}
+T.check(Battles.isPokemonPic(romBattle, romEnemy)
+        and Battles.isPokemonPic(romBattle, romPlayer),
+  "both live ROM battler pictures take the sealed paper reconstruction")
+T.check(not Battles.isPokemonPic(romBattle, romTrainer),
+  "native trainer art retains its open stride instead of becoming a white fill")
 Art.frontFlipSetting:sync("battle_art")
 T.eq(Art.frontAnimationSetting.values[1], "gen1",
   "animated fronts expose the single-frame Gen 1 compatibility collection")

@@ -204,6 +204,7 @@ local SHADER = [[
 
   uniform vec3 ghostColor;    // the flat silhouette colour
   uniform float ghost;        // 0 = shade normally, 1 = flatten to it
+  uniform float lightOn;      // 1 = scene lighting, 0 = texture true-colour
   uniform vec3 dayTint;       // the hour's light on the world; 1,1,1 = noon
   uniform Image glassMask;    // opaque where the atlas texel is window glass
   uniform vec2 glassSize;     // the mask's dimensions: tc -> atlas texels
@@ -218,9 +219,25 @@ local SHADER = [[
     // blending keeps those texels out of the depth buffer, so a model never
     // carves a transparent hole out of whatever stands behind it
     if (p.a < 0.5) discard;
+    // UNLIT is an exact texture pass, not merely a zero-weight blend with
+    // the lit result. Some GLSL drivers still evaluate both sides of mix(),
+    // including the shadow lookup, and have shown pieces of that result on
+    // battle cards even when lightOn was zero. Returning here guarantees an
+    // UNLIT card cannot receive face light, the day tint, voxel seams, glass
+    // or any cast/self shadow.
+    if (lightOn < 0.5) {
+      return vec4(mix(p.rgb, ghostColor, ghost), 1.0) * color;
+    }
+#ifdef UNLIT_ONLY
+    // A separately compiled card shader. Unlike a uniform branch in the
+    // scene shader, this program contains no live day/shadow calculation for
+    // a driver to evaluate or fold incorrectly. Ghost remains for hit flashes.
+    return vec4(mix(p.rgb, ghostColor, ghost), 1.0) * color;
+#endif
     // the hour's tint multiplies like the sun terms do: it is LIGHT, the
     // same warm or moonlit cast on every surface, not a palette swap
-    vec3 rgb = p.rgb * vShade * sunlight(vSun) * dayTint;
+    vec3 litRgb = p.rgb * vShade * sunlight(vSun) * dayTint;
+    vec3 rgb = litRgb;
 #ifdef VOXEL_GRID
     // darken what is there rather than painting a colour, so a seam across
     // dark grass and one across a white roof each stay in their own palette
@@ -268,13 +285,18 @@ local SHADER = [[
 #endif
 ]]
 
--- Two compilations of SHADER: the plain scene, and the same thing with the
--- voxel wireframe compiled in. The wireframe needs shader derivatives
+-- Three compilations of SHADER: the plain scene, the same thing with the
+-- voxel wireframe compiled in, and a card-only true-colour variant. The
+-- wireframe needs shader derivatives
 -- (fwidth), the one piece of this a driver can refuse, so it is a separate
 -- build rather than a branch -- a refusal costs the grid and nothing else.
 -- Each entry is nil = untried, false = unavailable.
 local shaders = { [false] = nil, [true] = nil }
-local activeShader = nil      -- the variant this pass bound
+local unlitShader = nil       -- nil = untried, false = unavailable
+local activeShader = nil      -- the shader draws are currently sent to
+local sceneShader = nil       -- the lit variant this pass opened with
+local flattenColor = nil      -- tightly scoped hit-flash state for shader swaps
+local flattenAmount = 0
 
 -- Scene canvases, one per NAMED SLOT. There are exactly two callers and
 -- they want different sizes -- the free-roam pass renders at the window's
@@ -373,6 +395,18 @@ function Voxel3D.shader(grid)
     end
   end
   return shaders[grid] or nil
+end
+
+-- A card-only compilation with lighting removed at compile time. It keeps the
+-- scene vertex transform, so cards retain perspective, depth and placement;
+-- only their pixel colour is an exact copy of the authored texture.
+function Voxel3D.unlitShader()
+  if unlitShader == nil then
+    local ok, sh = pcall(love.graphics.newShader,
+                         "#define UNLIT_ONLY 1\n" .. SHADER)
+    unlitShader = ok and sh or false
+  end
+  return unlitShader or nil
 end
 
 -- Whether the 3D path can run at all. False on a headless test run (no
@@ -730,6 +764,11 @@ function Voxel3D.beginScene(w, h, cx, cy, vw, vh, sky, slot)
   -- start out flattening everything it drew.
   pcall(sh.send, sh, "ghost", 0)
   pcall(sh.send, sh, "ghostColor", Voxel3D.GHOST_COLOR)
+  flattenColor, flattenAmount = nil, 0
+  -- Ordinary geometry receives the complete scene light. A tightly scoped
+  -- sprite pass may switch this off, but every new scene starts lit so an
+  -- interrupted frame cannot leak UNLIT into the next one.
+  pcall(sh.send, sh, "lightOn", 1)
   -- the hour's light, as the caller last set it (see Voxel3D.tint)
   pcall(sh.send, sh, "dayTint", Voxel3D.tint or { 1, 1, 1 })
   -- the window glass: the tileset's mask (or the blank -- the sampler is
@@ -757,6 +796,7 @@ function Voxel3D.beginScene(w, h, cx, cy, vw, vh, sky, slot)
   -- against (so scale == 1 for anything standing at the view centre)
   local m = Voxel3D.vp
   Voxel3D.focusW = m[13] * cx + m[14] * 0 + m[15] * cy + m[16]
+  sceneShader = sh
   activeShader = sh
   active = true
   return true
@@ -835,9 +875,12 @@ function Voxel3D.flatten(color, amount)
   if not (active and activeShader) then return end
   local sh = activeShader
   if color then
-    pcall(sh.send, sh, "ghostColor", color)
-    pcall(sh.send, sh, "ghost", math.max(0, math.min(1, amount or 1)))
+    flattenColor = color
+    flattenAmount = math.max(0, math.min(1, amount or 1))
+    pcall(sh.send, sh, "ghostColor", flattenColor)
+    pcall(sh.send, sh, "ghost", flattenAmount)
   else
+    flattenColor, flattenAmount = nil, 0
     pcall(sh.send, sh, "ghost", 0)
   end
 end
@@ -1100,6 +1143,41 @@ function Voxel3D.dayTint(tint)
         tint or Voxel3D.tint or { 1, 1, 1 })
 end
 
+-- Draw the next geometry with or without the scene's complete lighting.
+-- Unlike dayTint(), disabling this also bypasses the shadow-map lookup and
+-- per-face shade, which is what a genuinely UNLIT texture requires.
+function Voxel3D.lighting(on)
+  if not (active and activeShader) then return end
+  if on == false then
+    local flat = Voxel3D.unlitShader()
+    if flat then
+      -- Only the vertex uniforms the flat program still consumes. Per-draw
+      -- model/pull values are sent by Voxel3D.draw immediately afterward.
+      pcall(flat.send, flat, "vp", "row", Voxel3D.vp)
+      pcall(flat.send, flat, "eye", Voxel3D.eye)
+      pcall(flat.send, flat, "curve",
+            { Voxel3D.curveX or 0, Voxel3D.curveZ or 0,
+              Voxel3D.curveK or 0 })
+      pcall(flat.send, flat, "ghost", flattenAmount)
+      pcall(flat.send, flat, "ghostColor",
+            flattenColor or Voxel3D.GHOST_COLOR)
+      love.graphics.setShader(flat)
+      activeShader = flat
+      return
+    end
+    -- Compilation refusal costs only the dedicated program. Retain the
+    -- uniform path as a compatibility fallback.
+    pcall(activeShader.send, activeShader, "lightOn", 0)
+    return
+  end
+
+  if sceneShader then
+    love.graphics.setShader(sceneShader)
+    activeShader = sceneShader
+  end
+  pcall(activeShader.send, activeShader, "lightOn", 1)
+end
+
 -- Project a world point to canvas pixels: returns (x, y, scale), or nil
 -- when the point is behind the camera. `scale` is how much bigger a thing
 -- at that depth appears than one at the focus point, so a caller can size
@@ -1144,7 +1222,7 @@ end
 -- Close the overlay begun by beginOverlay.
 function Voxel3D.endOverlay()
   love.graphics.setCanvas()
-  active, activeShader = false, nil
+  active, activeShader, sceneShader = false, nil, nil
 end
 
 -- End the pass and hand back the rendered canvas.
@@ -1154,7 +1232,7 @@ function Voxel3D.endScene()
   love.graphics.setDepthMode()
   love.graphics.setMeshCullMode("none")
   love.graphics.setCanvas()
-  active, activeShader = false, nil
+  active, activeShader, sceneShader = false, nil, nil
   return canvas
 end
 

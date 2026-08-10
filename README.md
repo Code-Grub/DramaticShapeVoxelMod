@@ -75,7 +75,8 @@ menu.
 | the **PLAYER** options row | FRONT SPRITES / BACK SPRITES — supplied art is world-placed; a missing selected back uses the ROM's UI-attached pic |
 | the **FLIP FRONT SPRITE** options row | BATTLE ART / DEFAULT — mirror ordinary Battle Art on the player side, or preserve an already-oriented picture supplied by a sprite mod |
 | the **BACK PLACEMENT** options row | AUTO / WORLD / OG UI — use the mode-aware default or force every player back onto one layer |
-| battle HUD ink | HUD and dialogue glyphs stay white through every battle phase and receive a one-pixel dark shadow over transparent panels |
+| the **HUD COLOR** options row | COLOR keeps black HUD glyphs and coloured HP gauges with a light shadow; INVERTED uses white glyphs with a dark shadow. Gauge health remains bright green / amber / red in either mode |
+| the **SHADOWS** options row | ON uses cast shadows (with the flat fallback on unsupported hardware); OFF removes both paths in free roam and staged battles. UNLIT battle sprites neither receive nor cast shadows even while this is ON |
 | `9`, or the **WATER** options row | FULL / SKY / OFF — waves and reflections on water. **SKY** gives the surface its pixel-tall wave columns and puts the sky, the sun, the moon and the cast in them; **FULL** adds a screen-space ray march that also reflects the shoreline, the trees and the buildings standing behind it |
 | the **AA** options row | OFF / 2X / 4X — smooth the stair-stepped edges of the 3D world by rendering the diorama larger than the window and folding it back down. The ladder is samples per display pixel: 2X is a canvas root-two wider and taller, 4X one exactly twice the size. Every edge in the projected picture softens with the silhouettes — the tileset's own texels are quads in a perspective view and cross the pixel grid at the same arbitrary angles — so the diorama reads smoother rather than sharper. The most expensive row in the mod, so it is OFF by default and **FULL** leaves it alone |
 | the **DAYTIME** options row | SYNC / DAY / NIGHT / DUSK / DAWN / CYCLE — what time it is outdoors, on the diorama *and* on the flat 2D world; held at SYNC (and off the menu) while VOXEL is FULL |
@@ -86,6 +87,23 @@ are preserved across updates.
 
 **3D-BTL** is on by default and is independent of **VOXEL**: battles draw
 on the world whether or not the free-roam camera is pitched over.
+
+## Battle UI compatibility
+
+Battle Art automatically yields its native battle HUD, text/menu layer and
+panels to the installed `gen3_battle_ui` while that mod's `revampedBattleUI`
+option is enabled. Mimic, Safari and the scripted demo retain native text
+because Gen 3 UI v0.1 does not replace those phases.
+The older `gen1_modern_ui` adapter is also recognised when its experimental
+`battleUiWip` option is explicitly enabled.
+
+Other replacement presenters can wrap
+`battle.presentation.suppress_native.v1`. The request reports API version 1,
+source ID `BATTLE_ART_VOXEL_FORK`, the requested `hud`, `text`, or `panels`
+surface, and the current battle when available. Return exactly `true` only
+when the consumer will draw that complete surface. The descriptor is exported
+as `mod.find("BATTLE_ART_VOXEL_FORK").exports.battlePresentation`; absent,
+throwing or false consumers fail open to Battle Art's native presentation.
 
 ## Bring your own battle art
 

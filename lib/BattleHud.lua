@@ -25,6 +25,8 @@
 -- the mod namespace (see main.lua): V.require loads a sibling module
 local V = ...
 
+local BattlePresentation = V.require("BattlePresentation")
+
 local BattleHud = {}
 
 -- How solid the frost is over the world behind it, and how far the tint
@@ -255,6 +257,7 @@ end
 -- used, so the contrast is guaranteed rather than hoped for: a dark panel
 -- gets darker under white text, a bright one brighter under black text.
 function BattleHud.panel(rect, box, dark, world)
+  if BattlePresentation.suppressed("panels") then return true end
   -- Fully transparent means absent, not a zero-alpha draw. Avoid touching the
   -- destination canvas or blend state at all; premultiplied driver paths can
   -- otherwise retain RGB from a transparent sample as a dim veil.
@@ -306,15 +309,56 @@ local FLIP = [[
     float chroma = max(p.r, max(p.g, p.b)) - min(p.r, min(p.g, p.b));
     return gauge && chroma > 0.04 * p.a;
   }
+  vec3 brightHpGauge(vec4 p) {
+    // The engine's fill shade is deliberately only 2/3 bright. That reads as
+    // near-black over terrain, so retain its health band but lift it to a
+    // display colour: green healthy, yellow at mid HP, red when critical.
+    if (p.g > p.r + 0.08 * p.a && p.g > p.b)
+      return vec3(0.20, 0.92, 0.32) * p.a;
+    if (p.r > p.g * 1.35)
+      return vec3(1.00, 0.16, 0.10) * p.a;
+    return vec3(1.00, 0.82, 0.05) * p.a;
+  }
   vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
     vec4 p = Texel(tex, tc);
     float luma = dot(p.rgb, vec3(0.299, 0.587, 0.114));
-    if (p.a > 0.0 && luma <= ink * p.a && !hpGaugeColor(p, tc))
+    if (hpGaugeColor(p, tc))
+      p.rgb = brightHpGauge(p);
+    else if (p.a > 0.0 && luma <= ink * p.a)
       p.rgb = vec3(p.a);
     return p * color;
   }
 ]]
 BattleHud._flipSource = FLIP
+
+-- COLOR mode keeps the engine's black ink, but the gauge needs the same
+-- visibility lift as INVERTED. This shader changes only saturated pixels in
+-- the two fixed six-cell HP spans; labels, numbers, outlines and chrome pass
+-- through byte-for-byte.
+local HP_COLOR = [[
+  bool hpGaugeColor(vec4 p, vec2 tc) {
+    vec2 px = tc * vec2(160.0, 144.0);
+    bool gauge = (px.x >= 32.0 && px.x < 80.0
+                  && px.y >= 16.0 && px.y < 24.0)
+              || (px.x >= 96.0 && px.x < 144.0
+                  && px.y >= 72.0 && px.y < 80.0);
+    float chroma = max(p.r, max(p.g, p.b)) - min(p.r, min(p.g, p.b));
+    return gauge && chroma > 0.04 * p.a;
+  }
+  vec3 brightHpGauge(vec4 p) {
+    if (p.g > p.r + 0.08 * p.a && p.g > p.b)
+      return vec3(0.20, 0.92, 0.32) * p.a;
+    if (p.r > p.g * 1.35)
+      return vec3(1.00, 0.16, 0.10) * p.a;
+    return vec3(1.00, 0.82, 0.05) * p.a;
+  }
+  vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
+    vec4 p = Texel(tex, tc);
+    if (hpGaugeColor(p, tc)) p.rgb = brightHpGauge(p);
+    return p * color;
+  }
+]]
+BattleHud._hpColorSource = HP_COLOR
 
 -- Textbox paper is split from its ink before it reaches this shader. Border
 -- glyph pages can still carry opaque light matte pixels of their own (most
@@ -391,6 +435,7 @@ local COLOR_SHADOW = [[
 ]]
 
 local flipShader = nil
+local hpColorShader = nil
 local inkOnlyShader = nil
 local shadowShader = nil
 local whiteShadowShader = nil
@@ -403,6 +448,14 @@ local function getFlip()
     flipShader = (ok and sh) or false
   end
   return flipShader or nil
+end
+
+local function getHpColor()
+  if hpColorShader == nil then
+    local ok, sh = pcall(love.graphics.newShader, HP_COLOR)
+    hpColorShader = (ok and sh) or false
+  end
+  return hpColorShader or nil
 end
 
 local function getInkOnly()
@@ -487,9 +540,10 @@ function BattleHud.flipGlyphs(w, h, fn, inverted, inkOnly, colorShadow)
       love.graphics.setColor(1, 1, 1, 1)
       love.graphics.draw(layer, 1, 1)
     end
-    love.graphics.setShader()
+    love.graphics.setShader(getHpColor())
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.draw(layer, 0, 0)
+    love.graphics.setShader()
     return
   end
 
@@ -522,11 +576,12 @@ end
 -- whiten the terrain behind the glyphs along with them.
 local hudLayer = nil
 
-function BattleHud.layerTexture(w, h, dark, fn, inverted, colorShadow)
+function BattleHud.layerTexture(w, h, dark, fn, inverted, colorShadow, battle)
   if not hudLayer or hudLayer:getWidth() ~= w or hudLayer:getHeight() ~= h then
     hudLayer = canvasOf(w, h, "nearest")
     if not hudLayer then return nil end
   end
+  local suppressHud = BattlePresentation.suppressed("hud", battle)
   local g = love.graphics
   local prevCanvas = g.getCanvas()
   local prevBlend, prevAlpha = g.getBlendMode()
@@ -538,10 +593,12 @@ function BattleHud.layerTexture(w, h, dark, fn, inverted, colorShadow)
     -- flipGlyphs renders fn into its own scratch layer and composites the
     -- whitened result into whatever is bound, which is this canvas. `inverted`
     -- (the WHITE arena fill) keeps the glyphs black with a white drop-shadow.
-    if dark then
-      BattleHud.flipGlyphs(w, h, fn, inverted, nil, colorShadow)
-    else
-      fn()
+    if not suppressHud then
+      if dark then
+        BattleHud.flipGlyphs(w, h, fn, inverted, nil, colorShadow)
+      else
+        fn()
+      end
     end
   end)
   if prevCanvas then g.setCanvas(prevCanvas) else g.setCanvas() end
