@@ -29,6 +29,7 @@ below read five-pose strips from this folder:
 | GARY | `garyplayer.png` |
 | RED | `redplayer.png` |
 | ASH FRONT | `ashfrontplayer.png` |
+| MISTY FRONT | `mistyfrontplayer.png` |
 | BROCK FRONT | `brockfrontplayer.png` |
 | BULMA FRONT | `bulmafrontplayer.png` |
 | GARY FRONT | `garyfrontplayer.png` |

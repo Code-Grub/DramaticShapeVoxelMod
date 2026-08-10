@@ -1320,7 +1320,11 @@ end
 -- to the flat 2D path, a whole-world blink for a one-block edit.
 function ChunkMesher.refresh(mapId)
   if not mapId then return ChunkMesher.invalidate() end
-  MeshDisk.invalidate(mapId)
+  -- Do not eagerly erase every persistent variant. Some engine/mod paths emit
+  -- a conservative block notification while loading an area even when its
+  -- final geometry is unchanged. The queued refresh reads each BAVC through
+  -- its exact current fingerprint: a real block/tileset change rejects and
+  -- replaces that record, while a false-positive notification reuses it.
   local c = cache[mapId]
   -- nothing drawable cached: the plain drop costs nothing visible
   if not (c and (c.full or c.body)) then
@@ -1372,6 +1376,37 @@ function ChunkMesher.setLive(live)
     end
   end
   prevLive = live
+end
+
+-- Release session-only meshes/analysis while deliberately keeping the
+-- persistent BAVC files.  The title-screen whole-game generator builds one
+-- map at a time and calls this between maps so a complete cache does not also
+-- become a complete copy of the world in GPU/RAM.  This differs from
+-- invalidate(), whose purpose is changed geometry and therefore removes disk
+-- records through MeshDisk.
+function ChunkMesher.evictRuntime(mapId)
+  local function evict(id)
+    local c = cache[id]
+    if c then releaseEntry(c) end
+    cache[id] = nil
+    gen[id] = (gen[id] or 0) + 1
+    Structures.invalidate(id)
+  end
+  if mapId then
+    evict(mapId)
+  else
+    local ids = {}
+    for id in pairs(cache) do ids[#ids + 1] = id end
+    for _, id in ipairs(ids) do evict(id) end
+    prevLive = {}
+  end
+  for i = #jobs, 1, -1 do
+    local job = jobs[i]
+    if mapId == nil or job.id == mapId then
+      jobIndex[jobKey(job.id, job.slot)] = nil
+      table.remove(jobs, i)
+    end
+  end
 end
 
 -- Drop one map's mesh (Cut swapped a block) or all of them (hot reload).

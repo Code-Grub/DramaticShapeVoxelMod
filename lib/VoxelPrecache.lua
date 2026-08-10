@@ -112,6 +112,36 @@ function Precache.masksFor(data, mapId)
   return out
 end
 
+-- Every persistent variant gameplay can request, in deterministic map order.
+-- FULL is the map when current. BODY is only needed for maps which participate
+-- in an outdoor connection and may therefore be drawn as somebody else's
+-- neighbour; interiors reached solely by warps never request that duplicate.
+-- Kept pure so the title screen and tests can explain exactly what "all" is.
+function Precache.allJobs(data)
+  local maps = data and data.maps or {}
+  local ids, connected = {}, {}
+  for id, def in pairs(maps) do
+    if type(id) == "string" and type(def) == "table" then
+      ids[#ids + 1] = id
+      for _, connection in pairs(def.connections or {}) do
+        local other = type(connection) == "table" and connection.map or nil
+        if other and maps[other] then
+          connected[id], connected[other] = true, true
+        end
+      end
+    end
+  end
+  table.sort(ids)
+  local jobs = {}
+  for _, id in ipairs(ids) do
+    jobs[#jobs + 1] = { id = id, bodyOnly = false, kind = "full" }
+    if connected[id] then
+      jobs[#jobs + 1] = { id = id, bodyOnly = true, kind = "body" }
+    end
+  end
+  return jobs
+end
+
 local function restart(data, overworld)
   rootId = overworld.map.id
   candidates = Precache.candidates(data, overworld)

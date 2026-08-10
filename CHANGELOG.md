@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.8.0 — Persistent voxel cache (work in progress)
+
+### Added
+
+- **Misty front-facing player intro.** `PLAYER ANIM: MISTY FRONT` selects the
+  native 400×80, five-pose `mistyfrontplayer.png` atlas.
+- **Title-menu whole-game precache.** `PRECACHE` opens a cancellable generator
+  before gameplay, resumes valid existing files, reports live/final disk use,
+  and builds every map's FULL terrain/water/auxiliary streams plus BODY streams
+  only where seamless neighbour rendering can request them.
+- **Persistent mesh streams.** LZ4-compressed BAVC records are fingerprinted by
+  their geometry inputs and loaded into session meshes on demand. GPU/runtime
+  data is released between generated maps and corrupt or stale files rebuild
+  through the ordinary cooperative mesher.
+
 ## 1.7.8 — Battle UI
 
 ### Added

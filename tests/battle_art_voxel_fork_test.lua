@@ -86,6 +86,22 @@ T.eq(#predictedMasks, 1,
   "a precached full mesh receives the live renderer's connection masks")
 T.eq(predictedMasks[1][2], -Data.maps.FIX_ROUTE.height * 32,
   "the north-neighbour mask is placed in destination world pixels")
+local allCacheJobs = VoxelPrecache.allJobs(Data)
+local fullById, bodyById, lastJob = {}, {}, ""
+for _, job in ipairs(allCacheJobs) do
+  T.check(job.id >= lastJob,
+    "whole-game cache jobs remain in deterministic map order")
+  lastJob = job.id
+  if job.bodyOnly then bodyById[job.id] = (bodyById[job.id] or 0) + 1
+  else fullById[job.id] = (fullById[job.id] or 0) + 1 end
+end
+for id in pairs(Data.maps) do
+  T.eq(fullById[id], 1, id .. " receives exactly one full persistent mesh")
+end
+T.eq(bodyById.FIX_TOWN, 1,
+  "a connected source receives the neighbour body variant")
+T.eq(bodyById.FIX_ROUTE, 1,
+  "a connected destination receives the neighbour body variant")
 
 -- Persistent streams are trusted only while every geometry input still
 -- matches.  The fingerprint is pure, so validate dirtiness headlessly.
@@ -241,6 +257,16 @@ T.eq(byLabel.VOXEL.value(), "FULL", "the row renders the current rung's label")
 
 local Runtime = require("src.mods.Runtime")
 local VoxelState = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("VoxelState")
+
+local titleItems = Runtime.call("ui.title_menu.items",
+  function(_, got) return got end, { data = Data }, {
+    { label = "CONTINUE" }, { label = "NEW GAME" },
+    { label = "OPTION" }, { label = "EXIT GAME" },
+  })
+T.eq(titleItems[4].label, "PRECACHE",
+  "the title menu exposes the compact whole-game cache button before exit")
+T.eq(titleItems[5].label, "EXIT GAME",
+  "adding the cache generator preserves the vanilla exit item")
 
 local freshPipelineOptions = {}
 T.eq(VoxelState.seedOptions(freshPipelineOptions), true,
@@ -2738,6 +2764,7 @@ for value, label in pairs(expectedStaticPlayers) do
 end
 local expectedFrontPlayers = {
   ash_front = "ASH FRONT",
+  misty_front = "MISTY FRONT",
   brock_front = "BROCK FRONT",
   bulma_front = "BULMA FRONT",
   gary_front = "GARY FRONT",

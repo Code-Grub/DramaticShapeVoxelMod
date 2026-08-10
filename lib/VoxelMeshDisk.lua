@@ -126,6 +126,79 @@ local function parseHeader(blob, expected)
   return first + n
 end
 
+-- Cheap resume probe for the title-screen whole-game generator.  Reading and
+-- decompressing a 20+ MiB route merely to learn that it is already cached
+-- would make "resume" nearly as expensive as generating it, so inspect only
+-- the fixed header and exact fingerprint.  The ordinary load path still fully
+-- validates every stream before gameplay uses it.
+local function headerMatches(path, expected)
+  if not available() then return false end
+  local fs = love.filesystem
+  local info = fs.getInfo and fs.getInfo(path)
+  if not (info and info.type == "file" and info.size >= 12) then return false end
+  local ok, matches = pcall(function()
+    local file = assert(fs.newFile(path, "r"))
+    local fixed = file:read(12)
+    if not fixed or #fixed ~= 12 or fixed:sub(1, 4) ~= MAGIC
+       or readU32(fixed, 5) ~= FORMAT then
+      file:close()
+      return false
+    end
+    local n = readU32(fixed, 9)
+    if not n or n ~= #expected or 12 + n > info.size then
+      file:close()
+      return false
+    end
+    local fp = file:read(n)
+    file:close()
+    return fp == expected
+  end)
+  return ok and matches or false
+end
+
+-- Whether one map/slot has both persistent products the renderer will ask
+-- for: shared grass/flower/figure data and its terrain+water stream.
+function Disk.complete(map, bodyOnly, masks)
+  if not map then return false end
+  local slot = bodyOnly and "body" or "full"
+  return headerMatches(pathFor(map, "aux", "aux"),
+                       Disk.fingerprint(map, "aux", nil, "aux"))
+     and headerMatches(pathFor(map, slot, "terrain"),
+                       Disk.fingerprint(map, slot, masks, "terrain"))
+end
+
+-- Small public report used by the generator screen and documentation checks.
+-- It never loads cached payloads, only directory entries and file metadata.
+function Disk.stats()
+  local out = { bytes = 0, files = 0, maps = 0,
+                aux = 0, full = 0, body = 0 }
+  if not available() then return out end
+  local ok, names = pcall(love.filesystem.getDirectoryItems, Disk.DIRECTORY)
+  if not ok then return out end
+  local maps = {}
+  for _, name in ipairs(names or {}) do
+    if name:sub(-5) == ".bavc" then
+      local info = love.filesystem.getInfo(Disk.DIRECTORY .. "/" .. name)
+      if info and info.type == "file" then
+        out.files = out.files + 1
+        out.bytes = out.bytes + (info.size or 0)
+        local id = name:match("^(.-)%.aux%.bavc$")
+                or name:match("^(.-)%.full%.terrain%.bavc$")
+                or name:match("^(.-)%.body%.terrain%.bavc$")
+        if id then maps[id] = true end
+        if name:match("%.aux%.bavc$") then out.aux = out.aux + 1
+        elseif name:match("%.full%.terrain%.bavc$") then
+          out.full = out.full + 1
+        elseif name:match("%.body%.terrain%.bavc$") then
+          out.body = out.body + 1
+        end
+      end
+    end
+  end
+  for _ in pairs(maps) do out.maps = out.maps + 1 end
+  return out
+end
+
 local function streamRecord(blob, pos)
   local n = readU32(blob, pos)
   if not n then return nil end

@@ -84,6 +84,7 @@ local TiltShift = V.require("TiltShift")
 local ChunkMesher = V.require("ChunkMesher")
 local VoxelPrecache = V.require("VoxelPrecache")
 local VoxelLoadingVeil = V.require("VoxelLoadingVeil")
+local VoxelPrecacheScreen = V.require("VoxelPrecacheScreen")
 local VoxelGrid = V.require("VoxelGrid")
 local WorldCurve = V.require("WorldCurve")
 local OverworldBattle = V.require("OverworldBattle")
@@ -798,6 +799,30 @@ mod.hooks:wrap("ui.options.rows", function(next, game, rows)
   return insertGrouped(out, extra)
 end)
 
+-- The title menu is the one place a whole-game cache belongs: before
+-- CONTINUE/NEW GAME has put an overworld and its live streaming workload on
+-- screen.  Keep the compact menu label within the stock title box; the screen
+-- it opens spells out GENERATE PRECACHE, its exact products and live disk use.
+mod.hooks:wrap("ui.title_menu.items", function(next, game, items)
+  local out = next(game, items)
+  if type(out) ~= "table" then return out end
+  local entry = {
+    label = "PRECACHE",
+    onSelect = function()
+      game.stack:push(VoxelPrecacheScreen.new(game))
+    end,
+  }
+  local at = #out + 1
+  for i, item in ipairs(out) do
+    if tostring(item and item.label or "") == "EXIT GAME" then
+      at = i
+      break
+    end
+  end
+  table.insert(out, at, entry)
+  return out
+end)
+
 -- The mod manager writes and persists on its own, so the only thing left
 -- to do is move our cached index and pick the new value up.
 mod.events:on("mod.options_changed", function(payload)
@@ -874,9 +899,12 @@ do
   end
 end
 
--- A reloaded map is rebuilt from scratch (warps that re-enter the same map,
--- hot reload), so its mesh is stale for the same reason -- with one
--- exception, and it is the common one.
+-- A reloaded map replaces the live Map object (warps that re-enter the same
+-- map, hot reload), so its GPU mesh and Structures analysis must be released.
+-- Do NOT invalidate its persistent files here: their exact fingerprints
+-- include the reloaded block layer and tileset. A genuine geometry change is
+-- rejected by the disk loader and rebuilt, while an unchanged area can reuse
+-- the precache instead of deleting it merely because the player entered it.
 --
 -- A palette switch reloads the map ONLY to rebuild its atlas
 -- (PaletteFX.setMode -> reloadMap(id, "colors")). The geometry that comes
@@ -894,7 +922,7 @@ end
 mod.events:on("map.reloaded", function(payload)
   if payload and payload.reason == "colors" then return end
   local mapId = payload and (payload.mapId or (payload.map and payload.map.id))
-  if mapId then ChunkMesher.invalidate(mapId) end
+  if mapId then ChunkMesher.evictRuntime(mapId) end
 end)
 
 -- ------- rows come and go, so the menu has to notice

@@ -68,7 +68,7 @@ menu.
 | the **BATTLE ART** options row | STATIC / ANIMATED / ROM — use optional battle-only art, with a direct ROM fallback when a file or atlas is absent |
 | the **TRAINER ART** options row | GEN 1 / GEN 2 / GEN 3 — choose a static opponent-trainer collection |
 | the **PLAYER ART** options row | PNG / GEN 1–5 / ASH / GARY / BOY / LASS / HILBERT / ROM — choose the static player trainer battle-intro portrait; BATTLE ART: ROM pins it to ROM |
-| the **PLAYER ANIM** options row | PNG / GEN 1–5 / ASH / GARY / RED / ASH FRONT / BROCK FRONT / BULMA FRONT / GARY FRONT / ROM — choose a static `player.png` or five-pose player intro while ANIMATED is selected |
+| the **PLAYER ANIM** options row | PNG / GEN 1–5 / ASH / GARY / RED / ASH FRONT / MISTY FRONT / BROCK FRONT / BULMA FRONT / GARY FRONT / ROM — choose a static `player.png` or five-pose player intro while ANIMATED is selected |
 | the **ANIM FRONT GEN** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 — choose a single-frame Gen 1 compatibility set or an animated Gen 2–5 collection |
 | the **BACK ART SET** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 — STATIC always uses generation PNGs; ANIMATED uses Gen 3/5 atlases and Gen 1/2/4 PNGs |
 | the **DUPLICATE FIX** options row | BATTLE ART / MODDED — keep the selected Battle Art pictures in charge, or give installed sprite mods and shiny overrides priority; replaces both old SHINY FIX rows |
@@ -87,6 +87,36 @@ are preserved across updates.
 
 **3D-BTL** is on by default and is independent of **VOXEL**: battles draw
 on the world whether or not the free-roam camera is pitched over.
+
+## Persistent voxel precache
+
+The title menu's **PRECACHE** item opens **GENERATE PRECACHE** before gameplay.
+It cooperatively prepares every persistent mesh variant the renderer can ask
+for, shows live progress and disk use, and remains cancellable with B. Running
+it again resumes: records whose exact input fingerprint is still valid are
+counted as EXISTING rather than rebuilt.
+
+The generator writes only beneath
+`mod-derived/BATTLE_ART_VOXEL_FORK/mesh-cache-v1` in the game's save directory:
+
+- one `MAP.full.terrain.bavc` for every loadable map, containing terrain and
+  the separately drawn water surface, with that map's connection masks;
+- one `MAP.body.terrain.bavc` only for maps participating in seamless outdoor
+  connections, because only neighbour rendering requests the body-only form;
+- one shared `MAP.aux.bavc` per generated map, containing tall grass, flowers,
+  and authored figure geometry.
+
+These are LZ4-compressed raw six-float vertex streams, not GPU objects or ROM
+data. Each header fingerprints the mod/cache revision, map blocks, tileset
+blocks, dimensions, border/void policy and connection masks. A changed input
+therefore rebuilds its own record; corrupt/truncated records fail open to the
+ordinary cooperative mesher. Runtime meshes are released between maps, so
+generating the whole cache does not hold the whole world in RAM.
+
+The completion screen reports map, file, FULL/BODY/AUX counts and total MiB or
+GiB. Exact size depends on the imported ROM and installed map/tileset content;
+large routes dominate and a complete cache can occupy hundreds of MiB or more.
+The directory is disposable: deleting it only makes the mod regenerate meshes.
 
 ## Battle UI compatibility
 
@@ -186,7 +216,7 @@ PNG is the default and reads `back-static/player.png`; every missing named
 choice tries that same generic PNG before falling back to ROM.
 In ANIMATED mode, `PLAYER ANIM: PNG` reads the static
 `back-static/player.png`. Named choices select the corresponding five-frame
-strip from `back-animated`; the four `*frontplayer.png` choices retain their
+strip from `back-animated`; the five `*frontplayer.png` choices retain their
 authored front-facing poses, while ROM retains the engine portrait. Frame one
 holds during the stationary entrance pose. Frames two through five advance
 once with the engine's leftward intro slide and then stop; they do not loop.
