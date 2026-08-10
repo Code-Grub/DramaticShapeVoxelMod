@@ -909,12 +909,25 @@ end
 local renderGeneration = 0
 local atlasFrameCache = setmetatable({}, { __mode = "k" })
 local colorFrameCache = setmetatable({}, { __mode = "k" })
+local lastPaletteFor = nil
+
+-- Prepare the same atlas a future render will select.  Predictive area
+-- precaching runs from update, where no render context exists, so retain the
+-- latest palette resolver seen by render rather than guessing at SGB/RED++
+-- colours.  Before the first render nil is correct for true-colour atlases and
+-- harmless for the others (their exact coloured variant is made normally).
+function VoxelScene.warmAtlas(map)
+  if not map then return nil end
+  return TerrainAtlas.forMap(map, modeColors(lastPaletteFor, map))
+end
 
 function VoxelScene.render(state, w, h, vw, vh, paletteFor)
-  -- With nothing cached at all (the first frame of a fresh toggle),
-  -- return nil: the engine keeps the 2D path for the frame and
-  -- Voxel.ready holds the camera tween at flat, so the switch waits
-  -- invisibly instead of freezing or tilting an empty stage.
+  lastPaletteFor = paletteFor
+  -- With nothing cached at all (the first frame of a fresh toggle), return
+  -- nil and let the pipeline choose its cold-build veil.  A settled failure
+  -- still falls back to the engine's 2D path; an in-flight healthy build stays
+  -- black so flat tiles are never exposed immediately before the voxels land.
+  -- Voxel.ready also holds the camera tween at flat until terrain exists.
   local terrain, nbMesh, water, nbWater = VoxelScene.prefetch(state)
   if not terrain then return nil end
 

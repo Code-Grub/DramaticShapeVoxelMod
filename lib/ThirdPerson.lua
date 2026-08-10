@@ -124,9 +124,10 @@ end
 -- plane clips a hole in the very wall the boom stopped at.
 --
 -- CLEAR is how high above a cell's ground the eye must be to pass OVER
--- something unwalkable rather than being stopped by it: a fence, a kerb or
--- a plant pot should not shove the camera in, a building should. Roughly
--- head height, so the eye clears the props and never the walls.
+-- something unwalkable outdoors rather than being stopped by it: a fence, a
+-- kerb or a plant pot should not shove the camera in. Indoor unwalkable cells
+-- are treated as walls at every height below, because those maps have neither
+-- ceilings nor a drawable world outside their room shell.
 ThirdPerson.STEP = 4
 ThirdPerson.REFINE = 4
 ThirdPerson.PAD = 5
@@ -190,10 +191,12 @@ function ThirdPerson.extended()
 end
 
 -- How far back the eye must ACTUALLY be, in world pixels, for the player's
--- own card to be worth drawing: a shade under a cell, which is the point
--- where a 16-pixel card stops being a character and starts being a wall of
--- pixels across the lens.
-ThirdPerson.SHOW_AT = 14
+-- own card to be worth drawing.  At the old one-cell threshold a camera
+-- squeezed by an interior wall drew the 16-pixel card across almost the
+-- entire 65-degree frame.  Twenty-eight keeps the card below roughly half
+-- the view; tighter rooms gracefully become first person until the boom has
+-- enough room to frame the player again.
+ThirdPerson.SHOW_AT = 28
 
 -- Whether the player's own card belongs in the frame. Not the same
 -- question as extended(): back into a fence and the boom collapses into
@@ -261,7 +264,18 @@ local function occupied(ow, wx, y, wz)
   gh = (okG and gh) or 0
   if y < gh + ThirdPerson.PAD then return true end
   local okW, walkable = pcall(function() return map:isWalkableCell(cx, cy) end)
-  if okW and not walkable and y < gh + ThirdPerson.CLEAR then return true end
+  if okW and not walkable then
+    local def = map.def
+    -- Outdoor unwalkable cells include low fences, kerbs and props which the
+    -- boom may legitimately clear.  Indoor unwalkable cells are the room's
+    -- walls: Gen 1 interiors have no ceiling or world beyond them, so letting
+    -- a pitched boom rise over their nominal voxel height exposes the black
+    -- void.  Unknown/headless maps retain the historical outdoor behaviour.
+    local indoor = def and (def.outdoor == false
+      or (def.outdoor == nil and def.tileset
+          and def.tileset ~= "OVERWORLD"))
+    if indoor or y < gh + ThirdPerson.CLEAR then return true end
+  end
   return false
 end
 
@@ -375,7 +389,8 @@ function ThirdPerson.place(pivot, lx, ly, lz, focus)
 
   local want = ThirdPerson.reachFor() * e
   ThirdPerson.want = want
-  local room = ThirdPerson.reach(overworld(), orbit, -lx, -ly, -lz, want)
+  local world = overworld()
+  local room = ThirdPerson.reach(world, orbit, -lx, -ly, -lz, want)
   -- in instantly, out only as fast as update() allows
   ThirdPerson.len = math.min(ThirdPerson.len, room)
   local len = ThirdPerson.len
@@ -394,6 +409,17 @@ function ThirdPerson.place(pivot, lx, ly, lz, focus)
     local s = ThirdPerson.SHOULDER * ThirdPerson.zoom * e
               * (len / math.max(want, 1e-6))
     sx, sz = -lz / flat * s, lx / flat * s
+  end
+
+  -- The boom march follows its centre line, while the shoulder rail moves
+  -- the final eye sideways.  In a narrow gate that last offset alone can put
+  -- the lens through a side wall even though the centre line was clear.  Give
+  -- up the cosmetic shoulder before accepting an occupied final position.
+  if (sx ~= 0 or sz ~= 0) and world
+     and occupied(world, orbit[1] - lx * len + sx,
+                          orbit[2] - ly * len,
+                          orbit[3] - lz * len + sz) then
+    sx, sz = 0, 0
   end
 
   local eye = { orbit[1] - lx * len + sx,

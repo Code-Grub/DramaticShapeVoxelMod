@@ -82,6 +82,8 @@ local Voxel3D = V.require("Voxel3D")
 local VoxelScene = V.require("VoxelScene")
 local TiltShift = V.require("TiltShift")
 local ChunkMesher = V.require("ChunkMesher")
+local VoxelPrecache = V.require("VoxelPrecache")
+local VoxelLoadingVeil = V.require("VoxelLoadingVeil")
 local VoxelGrid = V.require("VoxelGrid")
 local WorldCurve = V.require("WorldCurve")
 local OverworldBattle = V.require("OverworldBattle")
@@ -232,6 +234,10 @@ mod.content.render_pipelines:register("voxel", {
     local ow = Game and Game.overworld
     if ow and ow.map and ow.camera then
       pcall(VoxelScene.prefetch, ow)
+      -- Once the visible neighbourhood is ready, cooperatively prepare the
+      -- current map's real warp/connection destinations.  This is automatic:
+      -- no prebuild button, startup pause or whole-world resident cache.
+      pcall(VoxelPrecache.update, Game)
     end
     ChunkMesher.pump(Game and Game.stack
                      and Game.stack:top() ~= ow)
@@ -253,7 +259,17 @@ mod.content.render_pipelines:register("voxel", {
     local rw, rh = AntiAlias.expand(sw, sh)
     local canvas = VoxelScene.render(ctx.state, rw, rh,
                                      ctx.vw, ctx.vh, ctx.paletteFor)
-    if not canvas then return nil end   -- fall back to the 2D path
+    if not canvas then
+      local map = ctx.state and ctx.state.map
+      local generating = map and not ChunkMesher.slotKnown(map, false)
+      if generating then
+        -- A nil world would expose the engine's ordinary 2D renderer. Keep a
+        -- cold boot/door transition opaque until the requested FULL voxel mesh
+        -- has actually landed, then reveal the first finished 3D frame.
+        return VoxelLoadingVeil.get(sw, sh)
+      end
+      return nil                    -- genuine build/driver failure: safe 2D
+    end
     if Voxel3D.beginOverlay() then
       -- the FX closures are ordinary 2D draws sized in DISPLAY pixels, and
       -- they are drawing into the supersampled canvas alongside everything
@@ -273,6 +289,7 @@ mod.content.render_pipelines:register("voxel", {
     Voxel3D.invalidate()
     OverworldBattle.invalidate()
     AntiAlias.invalidate()
+    VoxelLoadingVeil.invalidate()
     ChunkMesher.invalidate()   -- no map id = every cached mesh
   end,
 })
@@ -1097,7 +1114,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.7.9"
+mod.exports.version = "1.8.0"
 mod.exports.battlePresentation = BattlePresentation.export()
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout

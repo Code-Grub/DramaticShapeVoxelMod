@@ -67,6 +67,83 @@ T.eq(poisonState.unrelated, true, "suppressing the pulse changes no other state"
 T.check(require("src.world.OverworldController").dramaticShapePoisonFlashHook,
   "the poison visual wrapper is installed")
 
+-- Predictive area precaching follows the engine's warp/connection graph and
+-- deduplicates a destination reached both ways.  FIX_ROUTE is north of town
+-- and is also its only authored warp destination.
+local VoxelPrecache = modExports.lib.require("VoxelPrecache")
+local predicted = VoxelPrecache.candidates(Data, {
+  map = { id = "FIX_TOWN", def = Data.maps.FIX_TOWN },
+  player = { cellX = 5, cellY = 4 },
+})
+T.eq(#predicted, 1,
+  "the automatic precacher deduplicates warp and connection destinations")
+T.eq(predicted[1].id, "FIX_ROUTE",
+  "the automatic precacher resolves the map the real warp will enter")
+T.eq(predicted[1].kind, "warp",
+  "a real warp keeps priority when a connection names the same destination")
+local predictedMasks = VoxelPrecache.masksFor(Data, "FIX_TOWN")
+T.eq(#predictedMasks, 1,
+  "a precached full mesh receives the live renderer's connection masks")
+T.eq(predictedMasks[1][2], -Data.maps.FIX_ROUTE.height * 32,
+  "the north-neighbour mask is placed in destination world pixels")
+
+-- Persistent streams are trusted only while every geometry input still
+-- matches.  The fingerprint is pure, so validate dirtiness headlessly.
+local VoxelMeshDisk = modExports.lib.require("VoxelMeshDisk")
+local cacheMap = {
+  id = "FIX_TOWN",
+  def = Data.maps.FIX_TOWN,
+  tileset = Data.tilesets[Data.maps.FIX_TOWN.tileset],
+}
+local cacheMask = { { 0, -576, 320, 0 } }
+local fingerprint = VoxelMeshDisk.fingerprint(cacheMap, "full", cacheMask,
+                                              "terrain")
+T.eq(VoxelMeshDisk.fingerprint(cacheMap, "full", cacheMask, "terrain"),
+     fingerprint, "identical voxel inputs reuse the same disk-cache key")
+local oldBlock = cacheMap.def.blocks[1]
+cacheMap.def.blocks[1] = oldBlock + 1
+T.check(VoxelMeshDisk.fingerprint(cacheMap, "full", cacheMask, "terrain")
+        ~= fingerprint, "a changed map block dirties its persisted voxel mesh")
+cacheMap.def.blocks[1] = oldBlock
+T.check(VoxelMeshDisk.fingerprint(cacheMap, "full",
+          { { 32, -576, 352, 0 } }, "terrain") ~= fingerprint,
+  "a changed connection placement dirties the full-mesh border mask")
+T.eq(VoxelMeshDisk.DIRECTORY,
+  "mod-derived/BATTLE_ART_VOXEL_FORK/mesh-cache-v1",
+  "persistent voxel data lives under the mod-derived save tree")
+
+-- A healthy cold build returns an opaque surface rather than exposing the
+-- engine's flat world.  Exercise the veil independently of a GL context.
+local VoxelLoadingVeil = modExports.lib.require("VoxelLoadingVeil")
+do
+  local graphics = love.graphics
+  local oldNew, oldGet, oldSet, oldClear = graphics.newCanvas,
+    graphics.getCanvas, graphics.setCanvas, graphics.clear
+  local selected, cleared
+  local fake = {
+    setFilter = function() end,
+    release = function() end,
+  }
+  graphics.newCanvas = function(w, h, opts)
+    T.eq(w, 160, "the loading veil uses the display width")
+    T.eq(h, 144, "the loading veil uses the display height")
+    T.eq(opts.dpiscale, 1, "the loading veil is not Android-density multiplied")
+    return fake
+  end
+  graphics.getCanvas = function() return "previous" end
+  graphics.setCanvas = function(canvas) selected = canvas end
+  graphics.clear = function(r, g, b, a) cleared = { r, g, b, a } end
+  VoxelLoadingVeil.invalidate()
+  T.eq(VoxelLoadingVeil.get(160, 144), fake,
+    "a generating voxel world receives a real cover canvas")
+  T.eq(cleared[1], 0, "the loading veil is black")
+  T.eq(cleared[4], 1, "the loading veil is fully opaque")
+  T.eq(selected, "previous", "painting the veil restores the caller's canvas")
+  VoxelLoadingVeil.invalidate()
+  graphics.newCanvas, graphics.getCanvas = oldNew, oldGet
+  graphics.setCanvas, graphics.clear = oldSet, oldClear
+end
+
 -- Game:load does this after the merge; the SDK harness merges into a
 -- fixture dataset instead, so point the dispatcher at that one.
 Pipelines.install(Data)
@@ -3888,6 +3965,8 @@ end
 do
 local FirstPerson =
   run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("FirstPerson")
+local ThirdPerson =
+  run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("ThirdPerson")
 local VoxelState = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("VoxelState")
 local FreeMove = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("FreeMove")
 local Voxel3D = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("Voxel3D")
@@ -3959,6 +4038,31 @@ T.check(rig.curve == 0,
   .. "could override")
 T.check(rig.focus[3] > rig.eye[3],
   "yaw 0 focuses south of the eye")
+
+-- A pitched third-person boom rises as it pulls back.  Outdoor props may be
+-- cleared at that height, but an interior's unwalkable cells are its room
+-- walls and must remain solid or the camera sees the roofless black void.
+local cameraMap = {
+  id = "CAMERA_COLLISION",
+  def = { tileset = "OVERWORLD" },
+  inBounds = function() return true end,
+  isWalkableCell = function() return false end,
+  cellTile = function() return 0 end,
+}
+T.check(not ThirdPerson._occupied({ map = cameraMap }, 8, 25, 8),
+  "a high outdoor boom may clear a short unwalkable prop")
+cameraMap.def.tileset = "HOUSE"
+T.check(ThirdPerson._occupied({ map = cameraMap }, 8, 25, 8),
+  "an indoor wall blocks the boom even above the outdoor clearance")
+
+local oldOut, oldLen = ThirdPerson.out, ThirdPerson.len
+ThirdPerson.out, ThirdPerson.len = 1, ThirdPerson.SHOW_AT - 1
+T.check(not ThirdPerson.showsPlayer(),
+  "a wall-compressed third-person camera hides the oversized player card")
+ThirdPerson.len = ThirdPerson.SHOW_AT
+T.check(ThirdPerson.showsPlayer(),
+  "the player card returns once the boom can frame it")
+ThirdPerson.out, ThirdPerson.len = oldOut, oldLen
 
 -- surf bob and ledge lift carry the eye with them
 local bobbed = FirstPerson.frame({ px = 100, py = 200, gh = 4, lift = 6 },
