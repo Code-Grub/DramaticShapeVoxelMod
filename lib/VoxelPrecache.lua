@@ -16,6 +16,7 @@
 local V = ...
 
 local ChunkMesher = V.require("ChunkMesher")
+local MeshDisk = V.require("VoxelMeshDisk")
 
 local Precache = {}
 
@@ -23,6 +24,10 @@ local rootId = nil
 local candidates = {}
 local nextCandidate = 1
 local active = nil
+
+function Precache.cacheable(map)
+  return MeshDisk.staticEligible(map)
+end
 
 local function addCandidate(out, seen, id, distance, kind)
   if not id or seen[id] then return end
@@ -202,6 +207,15 @@ function Precache.update(game)
   if not (okLoader and MapLoader and MapLoader.load) then return end
   local okMap, map = pcall(MapLoader.load, data, candidate.id)
   if not (okMap and map) then
+    nextCandidate = nextCandidate + 1
+    return
+  end
+
+  -- A destination whose live geometry differs from the immutable post-mod
+  -- snapshot is deliberately RAM-only. Do not spend background time building
+  -- a variant which the persistent cache is forbidden to save; the visible
+  -- renderer will build it if/when the player actually enters that state.
+  if not Precache.cacheable(map) then
     nextCandidate = nextCandidate + 1
     return
   end

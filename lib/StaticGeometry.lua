@@ -16,6 +16,10 @@ local V = ...
 local StaticGeometry = {}
 
 local snapshot, maps = nil, {}
+local ledger, ledgerLoaded = {}, false
+
+StaticGeometry.EXCLUSION_FILE =
+  "mod-derived/BATTLE_ART_VOXEL_FORK/static-cache-exclusions.tsv"
 
 local function clone(value, seen)
   if type(value) ~= "table" then return value end
@@ -45,6 +49,129 @@ end
 local function sameScalarList(a, b)
   a, b = a or {}, b or {}
   return sameList(a, b)
+end
+
+local function clean(value)
+  return tostring(value or "-"):gsub("[\t\r\n]", " ")
+end
+
+local function loadLedger()
+  if ledgerLoaded then return end
+  ledgerLoaded = true
+  local fs = love and love.filesystem
+  if not (fs and fs.read) then return end
+  local ok, text = pcall(fs.read, StaticGeometry.EXCLUSION_FILE)
+  if not ok or type(text) ~= "string" then return end
+  for line in text:gmatch("[^\r\n]+") do
+    if line:sub(1, 1) ~= "#" and line ~= "map\tkind\tasset\tdetail" then
+      ledger[line] = true
+    end
+  end
+end
+
+local function writeLedger()
+  local fs = love and love.filesystem
+  if not (fs and fs.write and fs.createDirectory) then return false end
+  local rows = {}
+  for line in pairs(ledger) do rows[#rows + 1] = line end
+  table.sort(rows)
+  local text = table.concat({
+    "# BATTLE ART VOXEL FORK static-cache exclusion ledger",
+    "# Rows are live components deliberately refused by persistent precaching.",
+    "# Canonical terrain remains cacheable; this is not a permanent map blacklist.",
+    "map\tkind\tasset\tdetail",
+    table.concat(rows, "\n"),
+    "",
+  }, "\n")
+  local ok = pcall(function()
+    assert(fs.createDirectory("mod-derived/BATTLE_ART_VOXEL_FORK"))
+    assert(fs.write(StaticGeometry.EXCLUSION_FILE, text))
+  end)
+  return ok
+end
+
+local function record(mapId, kind, asset, detail)
+  loadLedger()
+  local line = table.concat({ clean(mapId), clean(kind), clean(asset),
+                              clean(detail) }, "\t")
+  if ledger[line] then return false end
+  ledger[line] = true
+  writeLedger()
+  return true
+end
+
+function StaticGeometry.record(mapId, kind, asset, detail)
+  return record(mapId, kind, asset, detail)
+end
+
+local function geometryDifferences(map)
+  local out = {}
+  if not (snapshot and map and map.id and map.def and map.tileset) then
+    out[#out + 1] = { "map.unavailable", "-", "missing snapshot or live map" }
+    return out
+  end
+  local def = snapshot.maps[map.id]
+  local tileset = def and snapshot.tilesets[def.tileset]
+  if not def then
+    out[#out + 1] = { "map.unregistered", map.id, "added after mods.loaded" }
+    return out
+  end
+  if not tileset then
+    out[#out + 1] = { "tileset.unregistered", def.tileset,
+                      "missing from immutable snapshot" }
+    return out
+  end
+  local liveDef, liveTs = map.def, map.tileset
+  if liveDef.tileset ~= def.tileset or liveDef.width ~= def.width
+     or liveDef.height ~= def.height or liveDef.borderBlock ~= def.borderBlock
+     or liveDef.outdoor ~= def.outdoor then
+    out[#out + 1] = { "map.layout", map.id,
+                      "tileset/size/border/outdoor changed at runtime" }
+  end
+  if not sameList(liveDef.blocks, def.blocks) then
+    out[#out + 1] = { "map.blocks", map.id,
+                      "Cut, door, script, or runtime block patch" }
+  end
+  if liveTs.id ~= tileset.id or liveTs.image ~= tileset.image
+     or liveTs.imageWidth ~= tileset.imageWidth
+     or liveTs.imageHeight ~= tileset.imageHeight
+     or liveTs.tilesPerRow ~= tileset.tilesPerRow
+     or liveTs.trueColor ~= tileset.trueColor then
+    out[#out + 1] = { "tileset.art", liveDef.tileset,
+                      "image or atlas layout changed at runtime" }
+  end
+  if not sameList(liveTs.blocks, tileset.blocks) then
+    out[#out + 1] = { "tileset.blocks", liveDef.tileset,
+                      "tile composition changed at runtime" }
+  end
+  if liveTs.grassTile ~= tileset.grassTile
+     or not sameScalarList(liveTs.walkable, tileset.walkable)
+     or not sameScalarList(liveTs.doorTiles, tileset.doorTiles)
+     or not sameScalarList(liveTs.waterTiles, tileset.waterTiles)
+     or not sameScalarList(liveTs.shoreTiles, tileset.shoreTiles) then
+    out[#out + 1] = { "tileset.rules", liveDef.tileset,
+                      "geometry-bearing collision/material rules changed" }
+  end
+  return out
+end
+
+function StaticGeometry.report(map)
+  if not map then return {} end
+  local differences = geometryDifferences(map)
+  for _, row in ipairs(differences) do
+    record(map.id, row[1], row[2], row[3])
+  end
+  -- Runtime objects are never a mismatch because billboards are not part of
+  -- static geometry. Record their asset keys anyway so a playtest can prove
+  -- which Pokemon/NPC mod content was explicitly kept out of precaching.
+  for _, obj in ipairs((map.def and map.def.objects) or {}) do
+    if obj.runtime then
+      record(map.id, "runtime.object",
+             obj.sprite or obj.image or obj.species or obj.name,
+             "owner=" .. clean(obj.owner))
+    end
+  end
+  return differences
 end
 
 function StaticGeometry.capture(data)
@@ -80,35 +207,16 @@ end
 -- warps, signs, connections, palette animation and other gameplay/presentation
 -- data do not alter emitted vertices. Everything Structures does read is here.
 function StaticGeometry.matches(map)
-  if not (snapshot and map and map.id and map.def and map.tileset) then return false end
-  local def = snapshot.maps[map.id]
-  local tileset = def and snapshot.tilesets[def.tileset]
-  if not (def and tileset) then return false end
-  local liveDef, liveTs = map.def, map.tileset
-  if liveDef.tileset ~= def.tileset or liveDef.width ~= def.width
-     or liveDef.height ~= def.height or liveDef.borderBlock ~= def.borderBlock
-     or liveDef.outdoor ~= def.outdoor or not sameList(liveDef.blocks, def.blocks) then
-    return false
-  end
-  return liveTs.id == tileset.id
-     and liveTs.image == tileset.image
-     and liveTs.imageWidth == tileset.imageWidth
-     and liveTs.imageHeight == tileset.imageHeight
-     and liveTs.tilesPerRow == tileset.tilesPerRow
-     and liveTs.trueColor == tileset.trueColor
-     and liveTs.grassTile == tileset.grassTile
-     and sameList(liveTs.blocks, tileset.blocks)
-     and sameScalarList(liveTs.walkable, tileset.walkable)
-     and sameScalarList(liveTs.doorTiles, tileset.doorTiles)
-     and sameScalarList(liveTs.waterTiles, tileset.waterTiles)
-     and sameScalarList(liveTs.shoreTiles, tileset.shoreTiles)
+  return #geometryDifferences(map) == 0
 end
 
 -- The private snapshot map is itself the canonical source. Runtime maps return
 -- it only when eligible, which lets Disk.fingerprint ignore NPC/object churn.
 function StaticGeometry.source(map)
   local canonical = map and StaticGeometry.map(map.id) or nil
-  if map == canonical or StaticGeometry.matches(map) then return canonical end
+  if map == canonical then return canonical end
+  StaticGeometry.report(map)
+  if StaticGeometry.matches(map) then return canonical end
   return nil
 end
 

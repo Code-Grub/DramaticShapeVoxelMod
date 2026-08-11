@@ -125,6 +125,8 @@ local objects = cacheMap.def.objects
 cacheMap.def.objects = { { runtime = true, sprite = "SPAWNED_POKEMON" } }
 T.check(VoxelMeshDisk.staticEligible(cacheMap),
   "runtime NPC and Pokemon objects never dirty static geometry")
+T.check(VoxelPrecache.cacheable(cacheMap),
+  "the background precacher accepts canonical terrain with runtime billboards")
 T.eq(VoxelMeshDisk.fingerprint(cacheMap, "full", cacheMask, "terrain"),
      fingerprint, "spawned objects are absent from the persistent key")
 cacheMap.def.objects = objects
@@ -132,6 +134,11 @@ local oldBlock = cacheMap.def.blocks[1]
 cacheMap.def.blocks[1] = oldBlock + 1
 T.check(not VoxelMeshDisk.staticEligible(cacheMap),
   "a runtime block edit is meshed in RAM instead of replacing static disk data")
+T.check(not VoxelPrecache.cacheable(cacheMap),
+  "the background precacher skips a noncanonical live variant")
+local excluded = StaticGeometry.report(cacheMap)
+T.eq(excluded[1] and excluded[1][1], "map.blocks",
+  "the exclusion report names the geometry component which changed")
 cacheMap.def.blocks[1] = oldBlock
 T.check(VoxelMeshDisk.staticEligible(cacheMap),
   "restoring canonical blocks makes the persistent mesh reusable again")
@@ -144,6 +151,9 @@ T.eq(VoxelMeshDisk.fingerprint(cacheMap, "full",
 T.eq(VoxelMeshDisk.DIRECTORY,
   "mod-derived/BATTLE_ART_VOXEL_FORK/static-mesh-cache-v2",
   "persistent static voxel data has its own versioned save tree")
+T.eq(StaticGeometry.EXCLUSION_FILE,
+  "mod-derived/BATTLE_ART_VOXEL_FORK/static-cache-exclusions.tsv",
+  "excluded runtime assets and variants have a human-readable ledger")
 
 -- A healthy cold build returns an opaque surface rather than exposing the
 -- engine's flat world.  Exercise the veil independently of a GL context.

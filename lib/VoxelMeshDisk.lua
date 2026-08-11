@@ -148,14 +148,45 @@ local function header(fp)
   return MAGIC .. u32(FORMAT) .. u32(#fp) .. fp
 end
 
+local FP_LABEL = {
+  rev = true, mod = true, kind = true, slot = true, map = true,
+  tileset = true, size = true, border = true, image = true,
+  imageSize = true, row = true, trueColor = true, void = true,
+  blocks = true, tiles = true, masks = true,
+}
+
+local function fingerprintDifference(actual, expected)
+  local a, e = {}, {}
+  for part in tostring(actual or ""):gmatch("[^|]+") do a[#a + 1] = part end
+  for part in tostring(expected or ""):gmatch("[^|]+") do e[#e + 1] = part end
+  local n = math.max(#a, #e)
+  for i = 1, n do
+    if a[i] ~= e[i] then
+      local label = "fingerprint"
+      for j = i, 1, -1 do
+        if FP_LABEL[e[j]] then label = e[j] break end
+      end
+      return ("%s: stored=%s expected=%s"):format(
+        label, tostring(a[i]), tostring(e[i]))
+    end
+  end
+  return "fingerprint differs"
+end
+
+local function reportMismatch(map, path, actual, expected, detail)
+  StaticGeometry.record(map and map.id, "cache.record", path,
+    detail or fingerprintDifference(actual, expected))
+end
+
 local function parseHeader(blob, expected)
-  if not blob or #blob < 12 or blob:sub(1, 4) ~= MAGIC then return nil end
+  if not blob or #blob < 12 or blob:sub(1, 4) ~= MAGIC then return nil, nil end
   local format = readU32(blob, 5)
   local n = readU32(blob, 9)
-  if format ~= FORMAT or not n or 12 + n > #blob then return nil end
+  if format ~= FORMAT or not n or 12 + n > #blob then return nil, nil end
   local first = 13
-  if blob:sub(first, first + n - 1) ~= expected then return nil end
-  return first + n
+  local actual = blob:sub(first, first + n - 1)
+  if actual ~= expected then return nil, actual end
+  return first + n, actual
 end
 
 -- Cheap resume probe for the title-screen whole-game generator.  Reading and
@@ -163,7 +194,7 @@ end
 -- would make "resume" nearly as expensive as generating it, so inspect only
 -- the fixed header and exact fingerprint.  The ordinary load path still fully
 -- validates every stream before gameplay uses it.
-local function headerMatches(path, expected)
+local function headerMatches(path, expected, map)
   if not available() then return false end
   local fs = love.filesystem
   local info = fs.getInfo and fs.getInfo(path)
@@ -174,15 +205,18 @@ local function headerMatches(path, expected)
     if not fixed or #fixed ~= 12 or fixed:sub(1, 4) ~= MAGIC
        or readU32(fixed, 5) ~= FORMAT then
       file:close()
+      reportMismatch(map, path, nil, expected, "invalid BAVC header/format")
       return false
     end
     local n = readU32(fixed, 9)
-    if not n or n ~= #expected or 12 + n > info.size then
+    if not n or 12 + n > info.size then
       file:close()
+      reportMismatch(map, path, nil, expected, "invalid fingerprint length")
       return false
     end
     local fp = file:read(n)
     file:close()
+    if fp ~= expected then reportMismatch(map, path, fp, expected) end
     return fp == expected
   end)
   return ok and matches or false
@@ -194,9 +228,9 @@ function Disk.complete(map, bodyOnly, masks)
   if not map or not Disk.staticEligible(map) then return false end
   local slot = bodyOnly and "body" or "full"
   return headerMatches(pathFor(map, "aux", "aux"),
-                       Disk.fingerprint(map, "aux", nil, "aux"))
+                       Disk.fingerprint(map, "aux", nil, "aux"), map)
      and headerMatches(pathFor(map, slot, "terrain"),
-                       Disk.fingerprint(map, slot, masks, "terrain"))
+                       Disk.fingerprint(map, slot, masks, "terrain"), map)
 end
 
 -- Small public report used by the generator screen and documentation checks.
@@ -264,12 +298,17 @@ local function streamRecord(blob, pos)
   return { n = n, blob = raw, offset = 0 }, pos
 end
 
-local function readValidated(path, fp)
+local function readValidated(path, fp, map)
   if not available() then return nil end
   local ok, blob = pcall(love.filesystem.read, path)
   if not ok or not blob then return nil end
-  local pos = parseHeader(blob, fp)
-  if not pos then remove(path); return nil end
+  local pos, actual = parseHeader(blob, fp)
+  if not pos then
+    reportMismatch(map, path, actual, fp,
+                   actual and nil or "invalid BAVC header/format")
+    remove(path)
+    return nil
+  end
   return blob, pos
 end
 
@@ -277,7 +316,7 @@ function Disk.loadTerrain(map, slot, masks)
   if not Disk.staticEligible(map) then return nil end
   local path = pathFor(map, slot, "terrain")
   local fp = Disk.fingerprint(map, slot, masks, "terrain")
-  local blob, pos = readValidated(path, fp)
+  local blob, pos = readValidated(path, fp, map)
   if not blob then return nil end
   local terrain, nextPos = streamRecord(blob, pos)
   local water, finalPos = nextPos and streamRecord(blob, nextPos) or nil
@@ -299,7 +338,7 @@ function Disk.loadAux(map)
   if not Disk.staticEligible(map) then return nil end
   local path = pathFor(map, "aux", "aux")
   local fp = Disk.fingerprint(map, "aux", nil, "aux")
-  local blob, pos = readValidated(path, fp)
+  local blob, pos = readValidated(path, fp, map)
   if not blob then return nil end
   local grass, p2 = streamRecord(blob, pos)
   local flowers, p3 = p2 and streamRecord(blob, p2) or nil

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.8.0 — Persistent voxel cache (work in progress)
+## 1.8.1 — Persistent voxel cache (work in progress)
 
 ### Added
 
@@ -26,6 +26,10 @@
   are sorted, deduplicated and limited to neighbours which intersect the
   three-block border ring, so survey zoom and traversal order cannot churn an
   otherwise identical disk mesh.
+- **Cache exclusions are inspectable.** Runtime object asset keys and exact
+  static-geometry mismatches are deduplicated into
+  `static-cache-exclusions.tsv`; noncanonical live destinations are skipped by
+  background precaching instead of generating an unsaveable variant.
 
 ## 1.7.8 — Battle UI
 

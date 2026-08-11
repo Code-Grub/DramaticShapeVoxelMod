@@ -117,6 +117,13 @@ script, Cut or a door changes a live block, that one live map is meshed in RAM;
 it neither reads nor replaces the canonical static file. Returning to the
 canonical layout reuses the disk mesh again.
 
+For auditing, the mod builds
+`mod-derived/BATTLE_ART_VOXEL_FORK/static-cache-exclusions.tsv`. It records the
+map, component and asset key for runtime objects and noncanonical live geometry
+which were deliberately refused by background/persistent precaching. It is a
+human-readable exclusion ledger, not a permanent map blacklist: a spawned
+Pokemon can never poison its town's canonical terrain cache.
+
 BAVC is a small documented container, not a serialized GPU object or ROM dump:
 a `BAVC`/version/fingerprint header followed by LZ4 chunks of interleaved
 `position.xyz`, `uv.xy`, `shade` float vertices. Standard GLB was evaluated for
