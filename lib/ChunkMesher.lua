@@ -1081,7 +1081,6 @@ local function runJob(job)
         if not current() then return end
         MeshDisk.saveAux(map, aux)
         if not current() then
-          MeshDisk.invalidate(job.id)
           return
         end
       end
@@ -1128,7 +1127,6 @@ local function runJob(job)
     end
   end
   if not current() then
-    MeshDisk.invalidate(job.id)
     if mesh and mesh.release then pcall(mesh.release, mesh) end
     if water and water.release then pcall(water.release, water) end
     return
@@ -1320,11 +1318,10 @@ end
 -- to the flat 2D path, a whole-world blink for a one-block edit.
 function ChunkMesher.refresh(mapId)
   if not mapId then return ChunkMesher.invalidate() end
-  -- Do not eagerly erase every persistent variant. Some engine/mod paths emit
-  -- a conservative block notification while loading an area even when its
-  -- final geometry is unchanged. The queued refresh reads each BAVC through
-  -- its exact current fingerprint: a real block/tileset change rejects and
-  -- replaces that record, while a false-positive notification reuses it.
+  -- Never erase the immutable persistent record. Some engine/mod paths emit a
+  -- conservative block notification while loading an area even when its final
+  -- geometry is unchanged. The queued refresh reads BAVC only for canonical
+  -- geometry; a real live edit is rebuilt in RAM and cannot replace it.
   local c = cache[mapId]
   -- nothing drawable cached: the plain drop costs nothing visible
   if not (c and (c.full or c.body)) then
@@ -1382,8 +1379,7 @@ end
 -- persistent BAVC files.  The title-screen whole-game generator builds one
 -- map at a time and calls this between maps so a complete cache does not also
 -- become a complete copy of the world in GPU/RAM.  This differs from
--- invalidate(), whose purpose is changed geometry and therefore removes disk
--- records through MeshDisk.
+-- invalidate(), which also cancels queued work and discards live GPU meshes.
 function ChunkMesher.evictRuntime(mapId)
   local function evict(id)
     local c = cache[id]

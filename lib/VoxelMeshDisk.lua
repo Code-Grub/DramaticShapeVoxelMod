@@ -433,16 +433,4 @@ function Disk.saveAux(map, aux)
   end)
 end
 
--- Remove every file belonging to a dirty map. Fingerprints would reject them
--- anyway; eager deletion prevents edited maps from leaving dead files behind.
-function Disk.invalidate(mapId)
-  if not (available() and mapId) then return end
-  local prefix = safeId(mapId) .. "."
-  local ok, names = pcall(love.filesystem.getDirectoryItems, Disk.DIRECTORY)
-  if not ok then return end
-  for _, name in ipairs(names or {}) do
-    if name:sub(1, #prefix) == prefix then remove(Disk.DIRECTORY .. "/" .. name) end
-  end
-end
-
 return Disk
