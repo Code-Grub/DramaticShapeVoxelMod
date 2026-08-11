@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.8.2 — Session RAM cache
+
+### Added
+
+- **Whole-cache RAM preload after CONTINUE.** Compressed BAVC containers are
+  copied into RAM behind an opaque loading screen and retained for the game
+  session, while decoded and GPU meshes remain limited to active areas.
+- **Explicit pause-menu cache control.** `CACHE: SAVE` persists only dirty
+  runtime-generated containers; failed mobile writes remain retryable after
+  storage access is granted. `CACHE: DROP` releases the preload and unsaved
+  entries so subsequent adjacent areas refill RAM lazily.
+- **Native Ditto transformation compatibility.** Static and animated Battle
+  Art now follow transformed species without restoring Ditto's old sprite.
+
+### Fixed
+
+- **Large cache records decode into stable buffers.** Chunk streams now unpack
+  directly into one ByteData allocation, avoiding duplicate raw strings and
+  FFI pointers retained across cooperative yields.
+- **Area transitions retain the last complete scene.** A new neighbourhood is
+  presented only after its current and connected meshes are ready, preventing
+  perimeter holes and unvoxelized flashes while streaming.
+- **BODY and auxiliary cache decoding.** BODY fingerprints no longer vary with
+  irrelevant connection masks, and multi-result Lua decode calls preserve
+  their stream positions instead of falsely rejecting valid records.
+
 ## 1.8.1 — Persistent voxel cache (work in progress)
 
 ### Added

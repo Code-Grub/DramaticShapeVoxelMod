@@ -28,6 +28,10 @@ local ramDirty, ramRejected = {}, {}
 local ramBytes = 0
 
 Disk.CACHE_REVISION = 2
+-- Patch releases which do not change emitted vertices must keep the existing
+-- world cache usable. This token matches the first static-mesh-cache-v2 build;
+-- CACHE_REVISION, not the public mod version, owns geometry compatibility.
+Disk.CACHE_FAMILY = "1.8.1"
 Disk.DIRECTORY = "mod-derived/BATTLE_ART_VOXEL_FORK/static-mesh-cache-v2"
 
 local MAGIC = "BAVC"
@@ -114,7 +118,7 @@ function Disk.fingerprint(map, slot, masks, kind)
   local def, tileset = map.def or {}, map.tileset or {}
   local parts = {
     "rev", tostring(Disk.CACHE_REVISION),
-    "mod", tostring(V.mod and V.mod.version),
+    "mod", Disk.CACHE_FAMILY,
     "kind", tostring(kind), "slot", tostring(slot),
     "map", tostring(map.id), "tileset", tostring(def.tileset),
     "size", tostring(def.width), tostring(def.height),
