@@ -90,6 +90,10 @@ function Screen:finish(phase)
   self:releaseLoaded(nil)
   self.stats = MeshDisk.stats()
   self.phase = phase
+  -- Whole-world generation touches several route-sized FFI buffers. Runtime
+  -- meshes are already released above; collect their Lua/cdata owners before
+  -- returning to gameplay so the first warp does not inherit generator debris.
+  collectgarbage("collect")
 end
 
 function Screen:startNext()
@@ -106,9 +110,11 @@ function Screen:startNext()
       self.failed = self.failed + 1
       self.index = self.index + 1
     else
-      local masks = job.bodyOnly and nil
-                    or Precache.masksFor(StaticGeometry.data() or self.game.data,
-                                         job.id)
+      local masks
+      if not job.bodyOnly then
+        masks = Precache.masksFor(StaticGeometry.data() or self.game.data,
+                                  job.id)
+      end
       if MeshDisk.complete(map, job.bodyOnly, masks) then
         self.skipped = self.skipped + 1
         self.index = self.index + 1

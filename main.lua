@@ -85,6 +85,8 @@ local ChunkMesher = V.require("ChunkMesher")
 local VoxelPrecache = V.require("VoxelPrecache")
 local VoxelLoadingVeil = V.require("VoxelLoadingVeil")
 local VoxelPrecacheScreen = V.require("VoxelPrecacheScreen")
+local VoxelCacheRamScreen = V.require("VoxelCacheRamScreen")
+local VoxelMeshDisk = V.require("VoxelMeshDisk")
 local StaticGeometry = V.require("StaticGeometry")
 local VoxelGrid = V.require("VoxelGrid")
 local WorldCurve = V.require("WorldCurve")
@@ -101,6 +103,7 @@ local AntiAlias = V.require("AntiAlias")
 local FirstPerson = V.require("FirstPerson")
 local FreeMove = V.require("FreeMove")
 local PoisonFlash = V.require("PoisonFlash")
+local TransformCompat = V.require("TransformCompat")
 
 -- `mods.loaded` is the first point at which every content mod has finished
 -- patching the registries and the last point before a save can mutate live map
@@ -266,18 +269,24 @@ mod.content.render_pipelines:register("voxel", {
     -- canvas it was handed, so the sky's dither, the water's march and the
     -- camera itself all come out the same picture at a higher sample rate.
     local rw, rh = AntiAlias.expand(sw, sh)
-    local canvas = VoxelScene.render(ctx.state, rw, rh,
-                                     ctx.vw, ctx.vh, ctx.paletteFor)
+    local canvas, waiting = VoxelScene.render(ctx.state, rw, rh,
+                                              ctx.vw, ctx.vh, ctx.paletteFor)
     if not canvas then
       local map = ctx.state and ctx.state.map
       local generating = map and not ChunkMesher.slotKnown(map, false)
-      if generating then
+      if waiting or generating then
         -- A nil world would expose the engine's ordinary 2D renderer. Keep a
         -- cold boot/door transition opaque until the requested FULL voxel mesh
         -- has actually landed, then reveal the first finished 3D frame.
         return VoxelLoadingVeil.get(sw, sh)
       end
       return nil                    -- genuine build/driver failure: safe 2D
+    end
+    if waiting then
+      -- The canvas is the last wholly rendered neighbourhood. Do not composite
+      -- the new area's field FX over that old camera; reveal both together once
+      -- all connected BODY meshes are ready.
+      return AntiAlias.resolve(canvas, sw, sh, "world")
     end
     if Voxel3D.beginOverlay() then
       -- the FX closures are ordinary 2D draws sized in DISPLAY pixels, and
@@ -295,6 +304,7 @@ mod.content.render_pipelines:register("voxel", {
   end,
 
   invalidate = function()
+    VoxelScene.invalidate()
     Voxel3D.invalidate()
     OverworldBattle.invalidate()
     AntiAlias.invalidate()
@@ -814,9 +824,35 @@ end)
 mod.hooks:wrap("ui.title_menu.items", function(next, game, items)
   local out = next(game, items)
   if type(out) ~= "table" then return out end
+  for _, item in ipairs(out) do
+    if tostring(item and item.label or "") == "CONTINUE"
+        and type(item.onSelect) == "function" then
+      local continue = item.onSelect
+      item.onSelect = function()
+        VoxelMeshDisk.beginSession()
+        local names = select(1, VoxelMeshDisk.ramPlan())
+        if not names or #names == 0 or VoxelMeshDisk.ramReady(names) then
+          continue()
+        else
+          game.stack:push(VoxelCacheRamScreen.new(game, continue))
+        end
+      end
+    elseif tostring(item and item.label or "") == "NEW GAME"
+        and type(item.onSelect) == "function" then
+      local newGame = item.onSelect
+      item.onSelect = function()
+        -- A save which has never run PRECACHE still gets the same RAM-only
+        -- gameplay layer. Its first adjacent maps are generated lazily and
+        -- may later be persisted with pause-menu CACHE -> SAVE.
+        VoxelMeshDisk.beginSession()
+        newGame()
+      end
+    end
+  end
   local entry = {
     label = "PRECACHE",
     onSelect = function()
+      VoxelMeshDisk.beginPrecache()
       game.stack:push(VoxelPrecacheScreen.new(game))
     end,
   }
@@ -826,6 +862,62 @@ mod.hooks:wrap("ui.title_menu.items", function(next, game, items)
       at = i
       break
     end
+  end
+  table.insert(out, at, entry)
+  return out
+end)
+
+-- Gameplay cache writes are opt-in. Generated/repaired BAVC containers stay
+-- dirty in RAM until CACHE -> SAVE; DROP abandons the whole preload and those
+-- unsaved changes, leaving uploaded current-area meshes intact and allowing
+-- subsequent adjacent-area requests to refill RAM lazily.
+mod.hooks:wrap("ui.start_menu.items", function(next, game, items)
+  local out = next(game, items)
+  if type(out) ~= "table" then return out end
+  for _, item in ipairs(out) do
+    if tostring(item and item.label or "") == "CACHE" then return out end
+  end
+
+  local entry = {
+    label = "CACHE",
+    onSelect = function()
+      local Menu = require("src.ui.Menu")
+      local Screens = require("src.ui.Screens")
+      local TextBox = require("src.render.TextBox")
+      local function reopen() Screens.push(game, "StartMenu") end
+      game.stack:push(Menu.new(game, {
+        { label = "SAVE", onSelect = function()
+          local before = VoxelMeshDisk.ramStats()
+          local ok, saved, failed, errors = VoxelMeshDisk.saveRamToDisk()
+          if not ok then
+            local Logger = require("src.core.Logger")
+            for _, err in ipairs(errors or {}) do
+              Logger.error("voxel cache save: %s", tostring(err))
+            end
+            game.stack:push(TextBox.new(game,
+              ("CACHE SAVE FAILED\n%d FILE%s NOT WRITTEN\fCHECK STORAGE ACCESS\nTHEN TRY SAVE AGAIN")
+                :format(failed, failed == 1 and "" or "S")))
+          elseif saved == 0 then
+            game.stack:push(TextBox.new(game, "CACHE ALREADY SAVED"))
+          else
+            game.stack:push(TextBox.new(game,
+              ("CACHE SAVED\n%d FILE%s\n%d IN RAM")
+                :format(saved, saved == 1 and "" or "S", before.files)))
+          end
+        end },
+        { label = "DROP", onSelect = function()
+          local dropped = VoxelMeshDisk.dropRam()
+          game.stack:push(TextBox.new(game,
+            ("RAM CACHE DROPPED\n%d FILE%s\fAREAS WILL LOAD\nAS NEEDED")
+              :format(dropped.files, dropped.files == 1 and "" or "S")))
+        end },
+      }, { tx = 10, ty = 0, tw = 10, onCancel = reopen }))
+    end,
+  }
+
+  local at = #out + 1
+  for i, item in ipairs(out) do
+    if tostring(item and item.label or "") == "SAVE" then at = i break end
   end
   table.insert(out, at, entry)
   return out
@@ -1028,6 +1120,11 @@ FreeMove.install()
 -- suppressed; on a 3D scene that legacy palette flicker reads as an intrusive
 -- display flash rather than feedback on the poisoned party member.
 PoisonFlash.install()
+
+-- Preserve Ditto's copied species after the engine's Transform animation.
+-- This is native Battle Art behaviour; Crystal Animated Sprites may add its
+-- own compatible marker but is no longer required for the transformation.
+TransformCompat.install()
 
 -- CamControl.install wires the battle-camera zoom (wheel / pinch) and the
 -- right-stick orbit: the inputs that steer the staged battle's rig. It is

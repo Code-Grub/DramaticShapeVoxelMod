@@ -148,6 +148,9 @@ T.check(VoxelMeshDisk.fingerprint(cacheMap, "full",
 T.eq(VoxelMeshDisk.fingerprint(cacheMap, "full",
        { { 0, -576, 320, 0 }, { 5000, 5000, 5100, 5100 } }, "terrain"),
      fingerprint, "off-ring survey neighbours do not create cache variants")
+T.eq(VoxelMeshDisk.fingerprint(cacheMap, "body", cacheMask, "terrain"),
+     VoxelMeshDisk.fingerprint(cacheMap, "body", nil, "terrain"),
+     "connection masks never create false body-only cache variants")
 T.eq(VoxelMeshDisk.DIRECTORY,
   "mod-derived/BATTLE_ART_VOXEL_FORK/static-mesh-cache-v2",
   "persistent static voxel data has its own versioned save tree")
@@ -294,6 +297,15 @@ T.eq(titleItems[4].label, "PRECACHE",
   "the title menu exposes the compact whole-game cache button before exit")
 T.eq(titleItems[5].label, "EXIT GAME",
   "adding the cache generator preserves the vanilla exit item")
+
+local startItems = Runtime.call("ui.start_menu.items",
+  function(_, got) return got end, { data = Data }, {
+    { label = "ITEM" }, { label = "SAVE" }, { label = "OPTION" },
+  })
+T.eq(startItems[2].label, "CACHE",
+  "the pause menu exposes explicit RAM cache SAVE/DROP before game SAVE")
+T.eq(startItems[3].label, "SAVE",
+  "adding CACHE preserves the ordinary save-game item")
 
 local freshPipelineOptions = {}
 T.eq(VoxelState.seedOptions(freshPipelineOptions), true,
@@ -2737,6 +2749,14 @@ end
 T.eq(Art.speciesFor({ mon = { species = "DITTO" },
                       __crystalTransformed = "MEW" }), "MEW",
   "Crystal v1.5's Transform marker wins while Battle Art captures the card")
+local nativeDitto = { mon = { species = "DITTO" }, sprite = {} }
+local TransformCompat = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require(
+  "TransformCompat")
+T.check(TransformCompat.mark(nativeDitto,
+          { mon = { species = "PIDGEY" } }),
+  "base Battle Art records Ditto's copied species without Crystal installed")
+T.eq(Art.speciesFor(nativeDitto), "PIDGEY",
+  "Battle Art keeps selecting the transformed species on later frames")
 T.eq(Art.speciesFor({ mon = { species = "DITTO" } }), "DITTO",
   "ordinary battlers still resolve their own species")
 

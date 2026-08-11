@@ -52,7 +52,8 @@ local function sameScalarList(a, b)
 end
 
 local function clean(value)
-  return tostring(value or "-"):gsub("[\t\r\n]", " ")
+  local cleaned = tostring(value or "-"):gsub("[\t\r\n]", " ")
+  return cleaned
 end
 
 local function loadLedger()

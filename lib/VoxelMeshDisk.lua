@@ -23,6 +23,9 @@ do
 end
 
 local Disk = {}
+local ramFiles, sessionActive = {}, false
+local ramDirty, ramRejected = {}, {}
+local ramBytes = 0
 
 Disk.CACHE_REVISION = 2
 Disk.DIRECTORY = "mod-derived/BATTLE_ART_VOXEL_FORK/static-mesh-cache-v2"
@@ -104,6 +107,10 @@ end
 
 function Disk.fingerprint(map, slot, masks, kind)
   map = StaticGeometry.source(map) or map
+  -- BODY emits only the map's playable rectangle. Connection masks suppress
+  -- the border ring of FULL meshes and cannot alter BODY vertices, so letting
+  -- survey/title-screen mask discovery enter this key creates false variants.
+  if slot == "body" then masks = nil end
   local def, tileset = map.def or {}, map.tileset or {}
   local parts = {
     "rev", tostring(Disk.CACHE_REVISION),
@@ -138,14 +145,98 @@ local function pathFor(map, slot, kind)
   return Disk.DIRECTORY .. "/" .. safeId(map.id) .. "." .. suffix .. ".bavc"
 end
 
-local function remove(path)
-  if love and love.filesystem and love.filesystem.remove then
-    pcall(love.filesystem.remove, path)
-  end
+-- Forget a broken/session-stale container without touching persistent storage.
+-- Gameplay is deliberately RAM-only; CACHE -> SAVE is the sole runtime path
+-- which writes the canonical disk cache.
+local function discard(path, rejected)
+  local held = ramFiles[path]
+  if held then ramBytes = math.max(0, ramBytes - #held) end
+  ramFiles[path] = nil
+  ramDirty[path] = nil
+  if rejected then ramRejected[path] = true end
 end
 
 local function header(fp)
   return MAGIC .. u32(FORMAT) .. u32(#fp) .. fp
+end
+
+-- CONTINUE may preload the compressed BAVC containers. They remain compressed
+-- here (~745 MiB for the current full world rather than ~2.7 GiB of vertices)
+-- and are decoded into temporary ByteData only when a map is uploaded.
+function Disk.ramPlan()
+  if not available() then return {}, 0 end
+  local names, bytes = {}, 0
+  local ok, listed = pcall(love.filesystem.getDirectoryItems, Disk.DIRECTORY)
+  if not ok then return names, bytes end
+  for _, name in ipairs(listed or {}) do
+    if name:sub(-5) == ".bavc" then
+      local path = Disk.DIRECTORY .. "/" .. name
+      local info = love.filesystem.getInfo(path)
+      if info and info.type == "file" then
+        names[#names + 1] = name
+        bytes = bytes + (info.size or 0)
+      end
+    end
+  end
+  table.sort(names)
+  return names, bytes
+end
+
+function Disk.beginSession()
+  sessionActive = true
+end
+
+function Disk.beginPrecache()
+  ramFiles, ramDirty, ramRejected = {}, {}, {}
+  ramBytes = 0
+  sessionActive = false
+  collectgarbage("collect")
+end
+
+function Disk.loadIntoRam(name)
+  if not sessionActive or type(name) ~= "string"
+     or name:find("/", 1, true) or name:sub(-5) ~= ".bavc" then
+    return false, 0
+  end
+  local path = Disk.DIRECTORY .. "/" .. name
+  local prior = ramFiles[path]
+  if prior then return true, #prior end
+  local ok, blob = pcall(love.filesystem.read, path)
+  if not ok or type(blob) ~= "string" then return false, 0 end
+  ramFiles[path] = blob
+  ramBytes = ramBytes + #blob
+  return true, #blob
+end
+
+function Disk.ramReady(names)
+  if not sessionActive then return false end
+  for _, name in ipairs(names or {}) do
+    if not ramFiles[Disk.DIRECTORY .. "/" .. name] then return false end
+  end
+  return true
+end
+
+function Disk.ramStats()
+  local files, dirty, dirtyBytes = 0, 0, 0
+  for _ in pairs(ramFiles) do files = files + 1 end
+  for path in pairs(ramDirty) do
+    dirty = dirty + 1
+    dirtyBytes = dirtyBytes + #(ramFiles[path] or "")
+  end
+  return { enabled = sessionActive, files = files, bytes = ramBytes,
+           dirty = dirty, dirtyBytes = dirtyBytes }
+end
+
+-- DROP abandons both the whole-world preload and any unsaved generated
+-- containers. Already-uploaded current/neighbor meshes remain alive; future
+-- requests repopulate this table lazily from disk or freshly generated data.
+function Disk.dropRam()
+  local stats = Disk.ramStats()
+  ramFiles, ramDirty, ramRejected = {}, {}, {}
+  ramBytes = 0
+  sessionActive = true
+  collectgarbage("collect")
+  return stats
 end
 
 local FP_LABEL = {
@@ -271,8 +362,19 @@ local function streamRecord(blob, pos)
   local chunks = readU32(blob, pos + 4)
   if not chunks or chunks > 65536 then return nil end
   pos = pos + 8
-  local expected, decoded = n * 6 * 4, {}
+  local expected = n * 6 * 4
   if chunks ~= (expected > 0 and math.ceil(expected / RAW_CHUNK) or 0) then
+    return nil
+  end
+  if expected == 0 then return { n = n }, pos end
+  -- Allocate the final stable buffer once. The old loader decompressed into a
+  -- table of Lua strings and table.concat made a second full-size copy; a
+  -- Forest-sized mesh briefly occupied ~172 MiB before upload, and an FFI
+  -- pointer into that Lua string was then carried across cooperative yields.
+  local data = love.data.newByteData(expected)
+  local dataPtr = ffi.cast("uint8_t*", data:getFFIPointer())
+  local function fail()
+    if data and data.release then pcall(data.release, data) end
     return nil
   end
   local total = 0
@@ -282,31 +384,44 @@ local function streamRecord(blob, pos)
     if not rawBytes or rawBytes > RAW_CHUNK
        or total + rawBytes > expected
        or not packedBytes or packedBytes > #blob - pos - 7 then
-      return nil
+      return fail()
     end
     local first = pos + 8
     local packed = blob:sub(first, first + packedBytes - 1)
-    local ok, raw = pcall(love.data.decompress, "string", "lz4", packed)
-    if not ok or type(raw) ~= "string" or #raw ~= rawBytes then return nil end
-    decoded[#decoded + 1] = raw
+    local ok, raw = pcall(love.data.decompress, "data", "lz4", packed)
+    if not ok or not raw or type(raw.getSize) ~= "function"
+       or raw:getSize() ~= rawBytes then
+      if raw and raw.release then pcall(raw.release, raw) end
+      return fail()
+    end
+    ffi.copy(dataPtr + total, raw:getFFIPointer(), rawBytes)
+    if raw.release then pcall(raw.release, raw) end
     total = total + rawBytes
     pos = first + packedBytes
     Budget.check()
   end
-  if total ~= expected or (expected == 0 and chunks ~= 0) then return nil end
-  local raw = table.concat(decoded)
-  return { n = n, blob = raw, offset = 0 }, pos
+  if total ~= expected or (expected == 0 and chunks ~= 0) then return fail() end
+  return { n = n, data = data, ptr = dataPtr }, pos
 end
 
 local function readValidated(path, fp, map)
   if not available() then return nil end
-  local ok, blob = pcall(love.filesystem.read, path)
-  if not ok or not blob then return nil end
+  local blob = ramFiles[path]
+  if not blob then
+    if sessionActive and ramRejected[path] then return nil end
+    local ok, loaded = pcall(love.filesystem.read, path)
+    if not ok or not loaded then return nil end
+    blob = loaded
+    if sessionActive then
+      ramFiles[path] = blob
+      ramBytes = ramBytes + #blob
+    end
+  end
   local pos, actual = parseHeader(blob, fp)
   if not pos then
     reportMismatch(map, path, actual, fp,
                    actual and nil or "invalid BAVC header/format")
-    remove(path)
+    discard(path, true)
     return nil
   end
   return blob, pos
@@ -319,9 +434,10 @@ function Disk.loadTerrain(map, slot, masks)
   local blob, pos = readValidated(path, fp, map)
   if not blob then return nil end
   local terrain, nextPos = streamRecord(blob, pos)
-  local water, finalPos = nextPos and streamRecord(blob, nextPos) or nil
+  local water, finalPos
+  if nextPos then water, finalPos = streamRecord(blob, nextPos) end
   if not terrain or not water or finalPos ~= #blob + 1 then
-    remove(path)
+    discard(path, true)
     return nil
   end
   return { terrain = terrain, water = water }
@@ -341,22 +457,24 @@ function Disk.loadAux(map)
   local blob, pos = readValidated(path, fp, map)
   if not blob then return nil end
   local grass, p2 = streamRecord(blob, pos)
-  local flowers, p3 = p2 and streamRecord(blob, p2) or nil
+  local flowers, p3
+  if p2 then flowers, p3 = streamRecord(blob, p2) end
   local count = p3 and readU32(blob, p3) or nil
   if not grass or not flowers or not count or count > 1024 then
-    remove(path); return nil
+    discard(path, true); return nil
   end
   pos = p3 + 4
   local figures = {}
   for _ = 1, count do
     local stream, nextPos = streamRecord(blob, pos)
-    local meta, finalPos = nextPos and float4(blob, nextPos) or nil
-    if not stream or not meta then remove(path); return nil end
+    local meta, finalPos
+    if nextPos then meta, finalPos = float4(blob, nextPos) end
+    if not stream or not meta then discard(path, true); return nil end
     stream.wx, stream.wz, stream.y, stream.w = meta[1], meta[2], meta[3], meta[4]
     figures[#figures + 1] = stream
     pos = finalPos
   end
-  if pos ~= #blob + 1 then remove(path); return nil end
+  if pos ~= #blob + 1 then discard(path, true); return nil end
   return { grass = grass, flowers = flowers, figures = figures }
 end
 
@@ -385,8 +503,48 @@ local function writeChunked(file, ptr, n)
   return true
 end
 
+local function writePersistent(path, blob)
+  local ok, err = pcall(function()
+    assert(love.filesystem.createDirectory(Disk.DIRECTORY))
+    local file = assert(love.filesystem.newFile(path, "w"))
+    local wrote, writeErr = pcall(write, file, blob)
+    file:close()
+    if not wrote then error(writeErr, 0) end
+  end)
+  return ok, ok and nil or tostring(err)
+end
+
+local function remember(path, blob, dirty)
+  local prior = ramFiles[path]
+  if prior then ramBytes = math.max(0, ramBytes - #prior) end
+  ramFiles[path] = blob
+  ramBytes = ramBytes + #blob
+  ramDirty[path] = dirty and true or nil
+  ramRejected[path] = nil
+end
+
+local function encoded(fp, writer)
+  local parts = {}
+  local sink = {}
+  function sink:write(bytes)
+    parts[#parts + 1] = bytes
+    return true
+  end
+  write(sink, header(fp))
+  writer(sink)
+  return table.concat(parts)
+end
+
 local function writeFile(path, fp, writer)
   if not available() then return false end
+  if sessionActive then
+    local ok, blob = pcall(encoded, fp, writer)
+    if not ok or type(blob) ~= "string" then return false end
+    remember(path, blob, true)
+    return true
+  end
+  -- The title-screen whole-world generator streams directly to disk, avoiding
+  -- an additional full-container Lua string beside its large raw mesh.
   local ok = pcall(function()
     assert(love.filesystem.createDirectory(Disk.DIRECTORY))
     local file = assert(love.filesystem.newFile(path, "w"))
@@ -397,8 +555,36 @@ local function writeFile(path, fp, writer)
     file:close()
     if not wrote then error(err, 0) end
   end)
-  if not ok then remove(path) end
   return ok
+end
+
+-- Explicit pause-menu commit. Successful files become clean RAM entries;
+-- failures remain dirty so granting storage permission and selecting SAVE
+-- again retries exactly the unsaved set.
+function Disk.saveRamToDisk()
+  if not available() then return false, 0, 0, { "cache API unavailable" } end
+  local paths = {}
+  for path in pairs(ramDirty) do paths[#paths + 1] = path end
+  table.sort(paths)
+  local saved, failures, errors = 0, 0, {}
+  for _, path in ipairs(paths) do
+    local blob = ramFiles[path]
+    local ok, err
+    if blob then
+      ok, err = writePersistent(path, blob)
+    else
+      ok, err = false, "missing RAM data"
+    end
+    if ok then
+      ramDirty[path] = nil
+      saved = saved + 1
+    else
+      failures = failures + 1
+      errors[#errors + 1] = path .. ": " .. tostring(err or "missing RAM data")
+    end
+    Budget.check()
+  end
+  return failures == 0, saved, failures, errors
 end
 
 function Disk.saveTerrain(map, slot, masks, terrain, water)

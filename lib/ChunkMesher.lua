@@ -229,14 +229,11 @@ local function newSink()
 end
 
 -- Upload one cached/fresh raw stream through the same sliced path used by the
--- FFI sink. Cached records point into an immutable Lua string; fresh records
--- own an FFI buffer. Both remain alive through this call.
+-- FFI sink. Cached records own a stable ByteData allocation; fresh records own
+-- an FFI buffer. Both remain alive through this call.
 local function meshFromRaw(record)
   if not (record and record.n and record.n > 0 and ffi) then return nil end
   local bytes = record.ptr and ffi.cast("const uint8_t*", record.ptr) or nil
-  if not bytes and record.blob then
-    bytes = ffi.cast("const uint8_t*", record.blob) + (record.offset or 0)
-  end
   if not bytes then return nil end
   local ok, mesh = pcall(function()
     local result = love.graphics.newMesh(Voxel3D.FORMAT, record.n,
@@ -254,6 +251,12 @@ local function meshFromRaw(record)
     end
     return result
   end)
+  -- setVertices has copied every slice into the Mesh. Release the potentially
+  -- huge decompressed cache buffer immediately instead of waiting for GC.
+  if record.data and record.data.release then
+    pcall(record.data.release, record.data)
+    record.data, record.ptr = nil, nil
+  end
   return ok and mesh or nil
 end
 

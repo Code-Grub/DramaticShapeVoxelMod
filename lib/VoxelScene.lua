@@ -405,6 +405,7 @@ end
 local neighborhood = { map = nil, count = 0, rows = {} }
 local cachedMasks = {}
 local nbMeshBuf, nbWaterBuf = {}, {}
+local lastCompleteCanvas, lastCompleteW, lastCompleteH = nil, 0, 0
 
 local function neighborhoodChanged(state)
   local nbs = state.neighbors or {}
@@ -487,18 +488,37 @@ function VoxelScene.prefetch(state)
     terrain, water = ChunkMesher.pair(state.map, true)
   end
   local nbs = state.neighbors or {}
+  local ready = terrain ~= nil
   for i, nb in ipairs(nbs) do
     ChunkMesher.request(nb.map, true)
     nbMeshBuf[i], nbWaterBuf[i] = ChunkMesher.pair(nb.map, true)
     if not nbMeshBuf[i] then
       nbMeshBuf[i], nbWaterBuf[i] = ChunkMesher.pair(nb.map, false)
     end
+    if not nbMeshBuf[i] then ready = false end
   end
   for i = #nbs + 1, #nbMeshBuf do
     nbMeshBuf[i], nbWaterBuf[i] = nil, nil
   end
-  Voxel.ready = terrain ~= nil
-  return terrain, nbMeshBuf, water, nbWaterBuf
+  Voxel.ready = ready
+  return terrain, nbMeshBuf, water, nbWaterBuf, ready
+end
+
+local function heldFrame(w, h)
+  if not (lastCompleteCanvas and lastCompleteW == w and lastCompleteH == h) then
+    return nil
+  end
+  local ok, cw, ch = pcall(lastCompleteCanvas.getDimensions,
+                            lastCompleteCanvas)
+  if not ok or cw ~= w or ch ~= h then
+    lastCompleteCanvas, lastCompleteW, lastCompleteH = nil, 0, 0
+    return nil
+  end
+  return lastCompleteCanvas
+end
+
+function VoxelScene.invalidate()
+  lastCompleteCanvas, lastCompleteW, lastCompleteH = nil, 0, 0
 end
 
 -- Capture every entity's pose for this frame. pose() advances the hop /
@@ -928,8 +948,14 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   -- still falls back to the engine's 2D path; an in-flight healthy build stays
   -- black so flat tiles are never exposed immediately before the voxels land.
   -- Voxel.ready also holds the camera tween at flat until terrain exists.
-  local terrain, nbMesh, water, nbWater = VoxelScene.prefetch(state)
-  if not terrain then return nil end
+  local terrain, nbMesh, water, nbWater, neighborhoodReady =
+    VoxelScene.prefetch(state)
+  if not neighborhoodReady then
+    -- The FULL mesh already suppresses its ring beneath every connected map.
+    -- Drawing before those BODY meshes arrive exposes literal holes around the
+    -- perimeter. Keep the last complete frame instead and switch atomically.
+    return heldFrame(w, h), true
+  end
 
   local cam = state.camera
   local cx, cy = cam.x + vw / 2, cam.y + vh / 2
@@ -1147,7 +1173,11 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
                  ShadowMap.snug(Mat4.translate(nb.ox, 0, nb.oy)))
   end
 
-  return Voxel3D.endScene()
+  local finished = Voxel3D.endScene()
+  if finished then
+    lastCompleteCanvas, lastCompleteW, lastCompleteH = finished, w, h
+  end
+  return finished, false
 end
 
 return VoxelScene

@@ -418,6 +418,15 @@ function AnimatedBattleArt.finish(battle)
   restore(battle.player)
 end
 
+-- Transform has already put the target's ROM picture on the battler. Drop the
+-- old Ditto playback state without restore(); the next update may claim the
+-- copied species' atlas, or deliberately leave that transformed ROM fallback.
+function AnimatedBattleArt.abandonForTransform(battler)
+  if not battler then return false end
+  states[battler] = nil
+  return true
+end
+
 function AnimatedBattleArt.invalidate()
   loaded, loadOrder = {}, {}
   trainerStates = setmetatable({}, { __mode = "k" })

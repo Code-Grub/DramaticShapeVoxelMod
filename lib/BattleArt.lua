@@ -123,14 +123,23 @@ local function shinyPrefix(side)
   return BattleArt.prefersModded() and "shiny/" or ""
 end
 
--- Transform does not rewrite mon.species. Crystal Animated Sprites v1.5
--- records the copied shape here so its animation loop and other sprite mods
--- can coexist. Honour that record when BATTLE ART owns the final picture too,
--- otherwise our per-frame apply would turn a transformed Ditto back into
--- Ditto as soon as its billboard texture was captured.
+-- Transform does not rewrite mon.species. Our engine hook records the copied
+-- shape independently; Crystal Animated Sprites v1.5 publishes its own marker,
+-- which remains supported when that mod is installed.
 function BattleArt.speciesFor(battler)
-  return battler and (battler.__crystalTransformed
+  return battler and (battler.__battleArtTransformed
+                      or battler.__crystalTransformed
                       or (battler.mon and battler.mon.species)) or nil
+end
+
+-- Called only after the engine has installed the copied ROM picture. Forget
+-- our old ownership without restoring Ditto over that picture: if the selected
+-- collection lacks the copied species, the engine's transformed art must stay.
+function BattleArt.markTransformed(battler, species)
+  if not (battler and species) then return false end
+  original[battler] = nil
+  battler.__battleArtTransformed = species
+  return true
 end
 
 local function pathFor(species, side)
