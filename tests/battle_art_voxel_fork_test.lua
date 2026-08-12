@@ -634,6 +634,8 @@ T.eq(frontFlipRow.value(), "BATTLE ART",
   "existing saves retain Battle Art's player-front mirror by default")
 T.eq(hookedByLabel["HUD COLOR"].value(), "COLOR",
   "fresh installs retain the forks' original black and coloured HUD")
+T.eq(hookedByLabel["BOSS BG"].value(), "ON",
+  "true boss encounter plates are enabled independently by default")
 T.eq(hookedByLabel.SHADOWS.value(), "ON",
   "real cast shadows remain on by default")
 
@@ -646,6 +648,177 @@ T.check(Backplates.spritesUnlit(),
   "ARENA FILL: WHITE forces ROM and authored cards through UNLIT")
 T.check(type(Voxel.unlitShader) == "function",
   "UNLIT has a dedicated true-colour shader rather than a tint multiplier")
+Backplates.arenaFill:sync("GEN6")
+T.check(Backplates.arenaGen6() and Backplates.spritesUnlit(),
+  "ARENA FILL: GEN6 selects a flat plate and true-colour cards")
+local Gen6 = modExports.lib.require("Gen6Backdrop")
+do
+  local x, y, scale = Voxel.coverRect(800, 800, 480, 800)
+  T.check(math.abs(y) < 1e-9 and math.abs(800 * scale - 800) < 1e-9,
+    "a portrait GEN6 plate fills the viewport from top to bottom")
+  T.check(x < 0 and 800 * scale > 480,
+    "portrait cover crops equal excess from the image's sides")
+
+  x, y, scale = Voxel.coverRect(800, 800, 2400, 900)
+  T.check(math.abs(x) < 1e-9 and math.abs(800 * scale - 2400) < 1e-9,
+    "an ultrawide GEN6 plate fills the viewport from left to right")
+  T.check(math.abs(y) < 1e-9 and 800 * scale > 900,
+    "ultrawide cover preserves the plate's top edge and crops only below")
+
+  x, y, scale = Voxel.coverRect(800, 800, 1600, 1600)
+  T.check(math.abs(x) < 1e-9 and math.abs(y) < 1e-9
+          and math.abs(scale - 2) < 1e-9,
+    "a matching aspect ratio fills exactly without crop or letterbox")
+  T.check(type(Voxel.backdropShader) == "function"
+          and Voxel.BACKDROP_BLUR_RADIUS > 0
+          and Voxel.BACKDROP_BLUR_RADIUS < 1,
+    "GEN6 plates use a subtle sub-texel defocus rather than blurring sprites")
+end
+for route = 1, 25 do
+  T.check(Gen6.fileFor("ROUTE_" .. route, "day") ~= nil,
+    "GEN6 maps Route " .. route)
+end
+T.eq(Gen6.fileFor("ROUTE_2", "dawn"), "route2dawn.jpg",
+  "Route 2 receives its location-specific dawn plate")
+T.eq(Gen6.fileFor("ROUTE_2", "day"), "route2day.jpg",
+  "Route 2 keeps its location-specific day plate")
+T.eq(Gen6.fileFor("ROUTE_2", "dusk"), "route2dusk.jpg",
+  "Route 2 receives its location-specific dusk plate")
+T.eq(Gen6.fileFor("ROUTE_2", "night"), "route2night.jpg",
+  "Route 2 keeps its location-specific night plate")
+T.eq(Gen6.fileFor("ROUTE_5", "dawn"), "route5dawn.png",
+  "Route 5 receives its dedicated dawn plate")
+T.eq(Gen6.fileFor("ROUTE_5", "night"), "route5night.png",
+  "Route 5 receives its dedicated night plate")
+T.eq(Gen6.fileFor("ROUTE_24", "day"), "bridgesday.jpg",
+  "Route 24 retains the actual bridge family")
+T.eq(Gen6.fileFor("ROUTE_25", "dusk"), "fencesdusk.png",
+  "Route 25 uses the recolored fences family rather than bridge art")
+T.eq(Gen6.fileFor("CINNABAR_ISLAND", "night",
+                  { dramaticShapeFishing = true }), "cinnabarisland.jpg",
+  "every Cinnabar Island battle keeps the island identity")
+T.eq(Gen6.fileFor("CINNABAR_ISLAND", "day",
+                  { dramaticShapeSurfing = true }), "cinnabarisland.jpg",
+  "Cinnabar surfing cannot be replaced by the generic ocean")
+T.eq(Gen6.fileFor("SAFARI_ZONE_EAST", "day",
+                  { dramaticShapeFishing = true }), "safariwater.jpg",
+  "Safari fishing uses the dedicated forest-water bank")
+T.eq(Gen6.fileFor("SAFARI_ZONE_WEST", "day",
+                  { dramaticShapeSurfing = true }), "safariwater.jpg",
+  "Safari surfing uses the dedicated forest-water bank")
+T.eq(Gen6.fileFor({ id = "ROUTE_5", def = { outdoor = true } }, "day",
+                  { dramaticShapeFishing = true }), "safariwater.jpg",
+  "ordinary outdoor fishing uses the forest-water bank")
+T.eq(Gen6.fileFor("ROUTE_19", "day",
+                  { dramaticShapeFishing = true }), "route19.jpg",
+  "Route 19 fishing retains its normal route plate")
+T.eq(Gen6.fileFor("ROUTE_20", "day",
+                  { dramaticShapeFishing = true }), "ocean.jpg",
+  "Route 20 fishing retains its normal route plate")
+T.eq(Gen6.fileFor("ROUTE_21", "day",
+                  { dramaticShapeFishing = true }), "route21.jpg",
+  "Route 21 fishing retains its normal route plate")
+T.eq(Gen6.fileFor("ROUTE_19", "day",
+                  { dramaticShapeSurfing = true }), "ocean.jpg",
+  "Route 19 surfing uses the open-ocean plate")
+T.eq(Gen6.fileFor({ id = "ROUTE_5", def = { outdoor = true } }, "day",
+                  { dramaticShapeSurfing = true }), "shore.jpg",
+  "surfing on an ordinary outdoor river uses the shore plate")
+T.eq(Gen6.fileFor({ id = "CERULEAN_CAVE_1F",
+                    def = { tileset = "CAVERN" } }, "day",
+                  { dramaticShapeSurfing = true }), "seafoamislands.jpg",
+  "Cerulean Cave surfing uses the Seafoam water encounter plate")
+for _, floor in ipairs({
+  "CERULEAN_CAVE_1F", "CERULEAN_CAVE_2F", "CERULEAN_CAVE_B1F",
+}) do
+  T.eq(Gen6.fileFor({ id = floor, def = { tileset = "CAVERN" } }, "day",
+                    { dramaticShapeFishing = true }), "seafoamislands.jpg",
+    floor .. " fishing uses the Seafoam water encounter plate")
+end
+for _, floor in ipairs({
+  "SEAFOAM_ISLANDS_1F", "SEAFOAM_ISLANDS_B1F",
+  "SEAFOAM_ISLANDS_B2F", "SEAFOAM_ISLANDS_B3F",
+  "SEAFOAM_ISLANDS_B4F",
+}) do
+  T.eq(Gen6.fileFor({ id = floor, def = { tileset = "CAVERN" } }, "day",
+                    { dramaticShapeFishing = true }), "seafoamislands.jpg",
+    floor .. " fishing stays on the Seafoam cave plate")
+end
+T.eq(Gen6.fileFor({ id = "CERULEAN_GYM",
+                    def = { tileset = "GYM" } }, "day",
+                  { dramaticShapeSurfing = true }), nil,
+  "indoor Gym surfing does not borrow an outdoor shore or ocean")
+T.eq(Gen6.fileFor("ROCK_TUNNEL_1F", "day"), "tunnel.jpg",
+  "Rock Tunnel 1F uses the tunnel arena")
+T.eq(Gen6.fileFor("ROCK_TUNNEL_B1F", "night"), "tunnel.jpg",
+  "Rock Tunnel B1F uses the tunnel arena")
+T.eq(Gen6.fileFor("DIGLETTS_CAVE", "day"), "tunnel.jpg",
+  "Diglett's Cave uses the tunnel arena")
+T.eq(Gen6.fileFor("DIGLETTS_CAVE_ROUTE_2", "day"), "tunnel.jpg",
+  "the Route 2 Diglett's Cave entrance uses the tunnel arena")
+T.eq(Gen6.fileFor("DIGLETTS_CAVE_ROUTE_11", "day"), "tunnel.jpg",
+  "the Route 11 Diglett's Cave entrance uses the tunnel arena")
+T.eq(Gen6.fileFor("ROUTE_6", "day"), "grassyday.jpg",
+  "Route 6 retains the grassy family")
+T.eq(Gen6.fileFor("ROUTE_7", "night"), "fencesnight.png",
+  "Route 7 uses the time-aware fences family")
+for _, route in ipairs({ 7, 8, 11, 14, 15, 16 }) do
+  T.eq(Gen6.fileFor("ROUTE_" .. route, "dusk"), "fencesdusk.png",
+    "Route " .. route .. " uses the time-aware fences family")
+end
+T.eq(Gen6.fileFor("ROUTE_12", "day"), "route1213.jpg",
+  "Route 12 uses the shared Route 12/13 arena")
+T.eq(Gen6.fileFor("ROUTE_13", "night"), "route1213.jpg",
+  "Route 13 uses the shared Route 12/13 arena")
+T.eq(Gen6.fileFor("CERULEAN_CITY", "night", { oppClass = "OPP_RIVAL1" }),
+  "bridgesnight.jpg",
+  "Cerulean's third rival fight uses the time-aware Route 24 bridge art")
+T.eq(Gen6.fileFor("CERULEAN_CITY", "night", { oppClass = "OPP_BUG_CATCHER" }),
+  "citynight.jpg", "ordinary Cerulean trainers retain the city art")
+T.eq(Gen6.fileFor("CHAMPIONS_ROOM", "day", { oppClass = "OPP_RIVAL3" }),
+  nil, "the Champion trainer class is not mistaken for Cerulean Rival 3")
+T.eq(Gen6.fileFor("OAKS_LAB", "day"), "oakslab.jpg",
+  "Oak's Lab receives its interior arena")
+T.eq(Gen6.fileFor("SILPH_CO_11F", "day"), "silphco.jpg",
+  "every Silph floor shares the facility arena")
+T.eq(Gen6.fileFor("LORELEIS_ROOM", "day"), nil,
+  "boss-off Elite Four rooms retain their voxel arena")
+T.eq(Gen6.fileFor("VIRIDIAN_GYM", "day"), "viridiangym.png",
+  "ordinary Viridian Gym trainers use the dedicated dungeon plate")
+local commonGyms = {
+  PEWTER_GYM = "pewtergym.jpg", CERULEAN_GYM = "ceruleangym.jpg",
+  VERMILION_GYM = "vermiliongym.jpg", CELADON_GYM = "celadongym.jpg",
+  FUCHSIA_GYM = "fuchsiagym.jpg", CINNABAR_GYM = "cinnabargym.jpg",
+}
+for map, file in pairs(commonGyms) do
+  T.eq(Gen6.fileFor(map, "day"), file,
+    map .. " ordinary trainers and boss-off leader use the common room")
+end
+T.eq(Gen6.fileFor("SAFFRON_GYM", "day"), nil,
+  "ordinary Saffron Gym trainers retain the voxel arena")
+Gen6 = modExports.lib.require("BossBackdrop")
+T.eq(Gen6.fileFor("PEWTER_GYM", { oppClass = "OPP_BROCK" }),
+  "pewtergym.jpg", "a matching Gym Leader receives the boss override")
+T.eq(Gen6.fileFor("SAFFRON_GYM", { oppClass = "OPP_SABRINA" }),
+  "saffrongym.jpg", "Sabrina alone receives the Saffron boss plate")
+T.eq(Gen6.fileFor("SAFFRON_GYM", { oppClass = "OPP_CHANNELER" }), nil,
+  "a Saffron Gym trainer cannot claim Sabrina's boss plate")
+T.eq(Gen6.fileFor("ROUTE_2", { oppClass = "OPP_RIVAL1" }), nil,
+  "ordinary rival encounters retain their location background")
+T.eq(Gen6.fileFor("SILPH_CO_11F", { oppClass = "OPP_RIVAL3" }), nil,
+  "the Silph rival retains the Silph location background")
+T.eq(Gen6.fileFor("SILPH_CO_11F", { oppClass = "OPP_GIOVANNI" }),
+  "silphboss.jpg", "Silph Giovanni receives his office boss plate")
+T.eq(Gen6.fileFor("ROCKET_HIDEOUT_B4F", { oppClass = "OPP_GIOVANNI" }),
+  "rocketboss.jpg", "Rocket Hideout Giovanni uses the Rocket boss room")
+T.eq(Gen6.fileFor("VIRIDIAN_GYM", { oppClass = "OPP_GIOVANNI" }),
+  "viridianboss.png", "Viridian Giovanni receives his secret-lab boss plate")
+T.eq(Gen6.fileFor("POWER_PLANT",
+  { enemy = { mon = { species = "ZAPDOS" } } }), "zapdos.jpg",
+  "the canonical static Zapdos encounter receives its own plate")
+T.eq(Gen6.fileFor("ROUTE_10",
+  { enemy = { mon = { species = "ZAPDOS" } } }), nil,
+  "a party/modded Zapdos elsewhere cannot masquerade as the static boss")
 Backplates.arenaFill:sync("OFF")
 Backplates.spriteLight:sync("UNLIT")
 T.check(Backplates.spritesUnlit(),
@@ -2673,6 +2846,33 @@ T.check((px2 - px) * (ex2 - ex) < 0,
 T.check(math.abs(px2 - px) < 8 and math.abs(ex2 - ex) < 8,
   "neither is flung across the frame: the mons drift, they do not travel")
 
+-- A flat ARENA FILL is a 2D plate. Orbit, pitch and the automatic drift would
+-- move projected cards against that plate, so the solved opening pose is
+-- locked while the lens remains adjustable.
+BattleCam.poseLocked = true
+BattleCam.steerable = true
+BattleCam.orbit, BattleCam.orbitGoal = 0.7, 0.7
+BattleCam.pitch, BattleCam.pitchGoal = 0.6, 0.6
+BattleCam.zoom, BattleCam.zoomGoal = 1.25, 1.25
+BattleCam.t = BattleCam.PAN_PERIOD / 4
+local locked = BattleCam.rig(shot, 0)
+local canonical = BattleCam.rig(shot, 0, true)
+for i = 1, 3 do
+  T.check(math.abs(locked.eye[i] - canonical.eye[i]) < 1e-9,
+    "a flat arena keeps the solved camera eye despite stored pan and drift")
+  T.check(math.abs(locked.focus[i] - canonical.focus[i]) < 1e-9,
+    "a flat arena keeps the solved camera focus")
+end
+T.check(not BattleCam.dragOrbit(0.2) and not BattleCam.dragPitch(0.2),
+  "a flat arena rejects orbit and pitch input")
+local beforeZoom = BattleCam.zoomGoal
+T.check(BattleCam.stepZoom(1) and BattleCam.zoomGoal > beforeZoom,
+  "a flat arena still accepts lens zoom")
+T.check(locked.fov > canonical.fov,
+  "the locked pose applies its live zoom instead of hard-freezing the lens")
+BattleCam.poseLocked = false
+BattleCam.recentre()
+
 -- very slow: a quarter of the cycle is several seconds, and what it moves in
 -- one FRAME has to be imperceptible
 BattleCam.reset()
@@ -2827,6 +3027,89 @@ for value, label in pairs(expectedFrontPlayers) do
     end
   end
   T.eq(found, true, value .. " is exposed by PLAYER ANIM")
+end
+
+-- Flat ARENA FILL modes own only the scene behind the cards. Reproduce the
+-- texture-capture seam here: AnimatedBattleArt first installs the selected
+-- images, then sideTexture calls BattleArt.apply() once per side. That second
+-- call must never restore a ROM species or player portrait over the managed
+-- frame. Use the animated mode's single-image generations so this remains a
+-- fast identity test without decoding a full atlas; atlas and single-image
+-- playback share the same state/ownership path after frame selection.
+do
+  local Animated = modExports.lib.require("AnimatedBattleArt")
+  local savedFront, savedBack, savedNamed =
+    Art.generationFrontImage, Art.generationBackImage, Art.namedImage
+  local selectedEnemy, selectedPlayer, selectedTrainer = {}, {}, {}
+  Art.generationFrontImage = function() return selectedEnemy end
+  Art.generationBackImage = function() return selectedPlayer end
+  Art.namedImage = function(name, side)
+    if name == "player" and side == "back" then return selectedTrainer end
+    return savedNamed(name, side)
+  end
+
+  Art.setting:sync("animated")
+  Art.duplicateSetting:sync("battle_art")
+  Art.frontAnimationSetting:sync("gen1") -- animated-mode static front
+  Art.backAnimationSetting:sync("gen4")  -- animated-mode static back
+  Art.playerAnimationSetting:sync("png")
+  Art.viewSetting:sync("back")
+  local romFoe, romPlayer, romIntro = {}, {}, {}
+  local identityBattle = {
+    enemy = { mon = { species = "ABRA" }, sprite = romFoe },
+    player = { mon = { species = "ABRA" }, sprite = romPlayer },
+    showPlayerBack = true, playerBackPic = romIntro,
+  }
+  Animated.update(identityBattle, 1 / 60)
+  T.eq(identityBattle.enemy.sprite, selectedEnemy,
+    "ANIMATED installs the selected enemy collection before capture")
+  T.eq(identityBattle.player.sprite, selectedPlayer,
+    "ANIMATED installs the selected player collection before capture")
+  T.eq(identityBattle.playerBackPic, selectedTrainer,
+    "PLAYER ANIM installs the selected intro before capture")
+  for _, fill in ipairs({ "WHITE", "GEN6" }) do
+    Backplates.arenaFill:sync(fill)
+    Art.apply(identityBattle) -- exactly the call sideTexture makes
+    T.eq(identityBattle.enemy.sprite, selectedEnemy,
+      fill .. " capture preserves the selected animated-mode enemy image")
+    T.eq(identityBattle.player.sprite, selectedPlayer,
+      fill .. " capture preserves the selected animated-mode player image")
+    T.eq(identityBattle.playerBackPic, selectedTrainer,
+      fill .. " capture preserves the selected PLAYER ANIM image")
+  end
+
+  Animated.finish(identityBattle)
+  Art.generationFrontImage, Art.generationBackImage, Art.namedImage =
+    savedFront, savedBack, savedNamed
+  Backplates.arenaFill:sync("GEN6")
+end
+do
+  local savedImage, savedPlayer = Art.image, Art.playerTrainerImage
+  local selectedEnemy, selectedPlayer, selectedTrainer = {}, {}, {}
+  Art.image = function(_, side)
+    return side == "front" and selectedEnemy or selectedPlayer
+  end
+  Art.playerTrainerImage = function() return selectedTrainer end
+  Art.setting:sync("static")
+  Art.viewSetting:sync("back")
+  local identityBattle = {
+    enemy = { mon = { species = "ABRA" }, sprite = {} },
+    player = { mon = { species = "ABRA" }, sprite = {} },
+    showPlayerBack = true, playerBackPic = {},
+  }
+  for _, fill in ipairs({ "WHITE", "GEN6" }) do
+    Backplates.arenaFill:sync(fill)
+    Art.apply(identityBattle)
+    T.eq(identityBattle.enemy.sprite, selectedEnemy,
+      fill .. " capture preserves the selected STATIC enemy image")
+    T.eq(identityBattle.player.sprite, selectedPlayer,
+      fill .. " capture preserves the selected STATIC player image")
+    T.eq(identityBattle.playerBackPic, selectedTrainer,
+      fill .. " capture preserves the selected PLAYER ART image")
+  end
+  Art.image, Art.playerTrainerImage = savedImage, savedPlayer
+  Art.setting:sync("animated")
+  Backplates.arenaFill:sync("GEN6")
 end
 T.eq(Battles.flashing(nil), false, "no battle, no flash")
 T.eq(Battles.flashing({ fx = {}, frame = 0 }), false,

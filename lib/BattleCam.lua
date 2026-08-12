@@ -209,6 +209,12 @@ BattleCam.steerable = true
 -- from a fixed seat.
 BattleCam.still = false
 
+-- Hold the solved starting ORBIT and PITCH while leaving the lens live.
+-- Flat ARENA FILL plates need this: camera translation over a 2D image makes
+-- projected billboards appear to slide independently of their background,
+-- but zooming the complete composition remains safe and useful.
+BattleCam.poseLocked = false
+
 BattleCam.t = 0
 
 -- Only the DRIFT's phase, so every fight opens on the same breath. Where
@@ -310,7 +316,7 @@ end
 -- Both axes go through here, so the "nothing while BACK SPRITES holds the
 -- composition" rule and the two stops live in one place each.
 local function setAxis(key, goal)
-  if not BattleCam.steerable then return false end
+  if not BattleCam.steerable or BattleCam.poseLocked then return false end
   local was = BattleCam[key]
   BattleCam[key] = math.max(0, math.min(1, goal))
   return BattleCam[key] ~= was
@@ -429,6 +435,7 @@ end
 function BattleCam.frameH(arena)
   local base = BattleCam.rigFor(arena).frameH
   if BattleCam.still or not BattleCam.steerable then return base end
+  if BattleCam.poseLocked then return base * BattleCam.zoom end
   return base * BattleCam.zoom * BattleCam.spread(arena)
 end
 
@@ -482,11 +489,13 @@ function BattleCam.rig(arena, groundY, canonical)
   groundY = groundY or 0
   local R = BattleCam.rigFor(arena)
   local mx, mz = arena.mid[1], arena.mid[2]
-  -- VR asks for the same stillness for its own reason (see BattleCam.still)
-  local fixed = BattleCam.still or canonical
+  -- VR/canonical callers hard-fix the whole lens too. A flat ARENA FILL only
+  -- fixes the POSE: no drift/orbit/pitch, while its zoom remains live.
+  local hardFixed = BattleCam.still or canonical
+  local fixedPose = hardFixed or BattleCam.poseLocked
   -- and the steer is withheld a second way, on its own: BACK SPRITES holds
   -- the composition and the DRIFT still runs under it (see steerable)
-  local steered = (not fixed) and BattleCam.steerable
+  local steered = (not fixedPose) and BattleCam.steerable
 
   -- The drift, plus wherever the player has steered to. The steer is
   -- NEGATIVE because the rotation below runs the other way from the bearing
@@ -494,12 +503,12 @@ function BattleCam.rig(arena, groundY, canonical)
   -- arena's own axis, and the room the player has is all on the far side of
   -- that -- out toward square-on. (orbitRange measures exactly that room.)
   local steer = steered and -BattleCam.orbit * BattleCam.orbitRange(arena) or 0
-  local yaw = steer + (fixed and 0
+  local yaw = steer + (fixedPose and 0
               or BattleCam.PAN_YAW * phase(BattleCam.t, BattleCam.PAN_PERIOD))
   local c, s = math.cos(yaw), math.sin(yaw)
   -- the breath scales the whole offset, height included, so the eye moves
   -- along its own line to the arena and the pitch of the shot never changes
-  local k = fixed and 1
+  local k = fixedPose and 1
             or 1 + BattleCam.PAN_DOLLY
                    * phase(BattleCam.t, BattleCam.DOLLY_PERIOD)
   local dx = (R.side * c - R.back * s) * k
@@ -542,7 +551,7 @@ function BattleCam.rig(arena, groundY, canonical)
   -- instead would leave the picture the same size and only change its
   -- perspective -- which is what the dolly breath above is deliberately
   -- for, and is not what "zoom" means to anyone holding a wheel.
-  local frameH = fixed and R.frameH or BattleCam.frameH(arena)
+  local frameH = hardFixed and R.frameH or BattleCam.frameH(arena)
   return {
     eye = eye,
     focus = focus,

@@ -471,6 +471,19 @@ function BattleArt.apply(battle)
   BattleArt.applyTrainers(battle)
 end
 
+-- AnimatedBattleArt must begin from the engine-owned pictures, not from a
+-- static Battle Art image left by a live mode switch. Do this once before the
+-- animation manager claims the battlers; BattleArt.apply() may then run during
+-- texture capture without restoring the ROM sprite over the selected frame.
+function BattleArt.releaseSpeciesOverrides(battle)
+  if not battle then return end
+  for _, battler in ipairs({ battle.enemy, battle.player }) do
+    if battler and original[battler] then
+      battler.sprite, original[battler] = original[battler], nil
+    end
+  end
+end
+
 function BattleArt.isExternal(img) return external[img] and true or false end
 
 -- Crystal v1.4+ publishes an identity predicate for every decoded/generated

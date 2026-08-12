@@ -42,6 +42,8 @@ local BattleCam = V.require("BattleCam")
 local BattleBillboard = V.require("BattleBillboard")
 local DayNight = V.require("DayNight")
 local UiBackplates = V.require("UiBackplates")
+local Gen6Backdrop = V.require("Gen6Backdrop")
+local BossBackdrop = V.require("BossBackdrop")
 local AntiAlias = V.require("AntiAlias")
 local PaletteFX = require("src.render.PaletteFX")
 local Map = require("src.world.Map")
@@ -360,7 +362,7 @@ local function tickTiles()
   pcall(require("src.render.TileRenderer").tick)
 end
 
-function BattleScene.render(state, arena, textures, token)
+function BattleScene.render(state, arena, textures, token, battle)
   if not (state and state.map and arena) then return nil end
   if not Voxel3D.available() then return nil end
   tickTiles()
@@ -369,6 +371,20 @@ function BattleScene.render(state, arena, textures, token)
   -- another floor of the same cave or building (see BattleArena)
   local host = arena.map or state.map
   local neighbors = (host == state.map) and (state.neighbors or {}) or {}
+  local whiteFill = UiBackplates.arenaWhite()
+  local gen6Fill = UiBackplates.arenaGen6()
+  local gen6Image = gen6Fill and Gen6Backdrop.image(state.map, battle) or nil
+  -- Boss art is an encounter override, not an ARENA FILL collection.  It may
+  -- therefore sit above GEN6 now and GEN4/OPENART later, while OFF/WHITE keep
+  -- their established meanings. Use the actual battle map for identity even
+  -- when BattleArena stages the camera on an adjacent host floor.
+  local bossImage = UiBackplates.arenaArt()
+                    and UiBackplates.bossEnabled()
+                    and BossBackdrop.image(state.map, battle) or nil
+  local artImage = bossImage or gen6Image
+  -- A missing/corrupt optional plate fails open to the ordinary voxel arena,
+  -- never to an opaque black battle.
+  local flatFill = whiteFill or artImage ~= nil
 
   -- the hour's light reaches the arena exactly as it reaches free-roam: the
   -- shared rig follows the clock on an outdoor floor and stays at noon on an
@@ -386,10 +402,14 @@ function BattleScene.render(state, arena, textures, token)
   -- moving, and a shimmer on background windows would fight the mons
   Voxel3D.glassGlint = 0
 
-  -- shares the free-roam mode's request/evict bookkeeping, so a battle warms
-  -- exactly the meshes walking around would have and nothing extra
-  local terrain, nbMesh, water, nbWater = prefetchArena(state, host)
-  if not terrain then return nil end
+  -- A flat plate does not wait for or touch voxel meshes. The world arena
+  -- still shares free-roam's request/evict bookkeeping and warms nothing
+  -- extra; illustrated plates can therefore enter immediately on a cold map.
+  local terrain, nbMesh, water, nbWater
+  if not flatFill then
+    terrain, nbMesh, water, nbWater = prefetchArena(state, host)
+    if not terrain then return nil end
+  end
 
   local lx, ly, s, pw, ph = BattleScene.letterbox()
   if not (pw > 0 and ph > 0 and s > 0) then return nil end
@@ -417,8 +437,7 @@ function BattleScene.render(state, arena, textures, token)
   Voxel3D.viewProjection(cx, cy, vw, vh)
   local cards = monCards(arena, groundY, textures)
   Voxel3D.camera = nil
-  local whiteFill = UiBackplates.arenaWhite()
-  if whiteFill then
+  if flatFill then
     -- WHITE is a genuinely flat stage: there is no visible world receiver,
     -- and its cards must neither cast nor receive. Do not merely omit the
     -- cards from a newly built map; discard any map left by the preceding
@@ -469,11 +488,13 @@ function BattleScene.render(state, arena, textures, token)
     -- and skipping the terrain/water/grass/flower draws; the 2D attack
     -- animations and the menus composite on top afterwards, so they stay
     -- above the white too. Requires sprite light UNLIT (see UiBackplates).
-    local skyFill = whiteFill and { 1, 1, 1 } or sky
+    local skyFill = whiteFill and { 1, 1, 1 }
+                    or (artImage and { 0, 0, 0 } or sky)
     if not Voxel3D.beginScene(rw, rh, cx, cy, vw, vh, skyFill, "battle") then
       return
     end
-    if not whiteFill then
+    if artImage then Voxel3D.backdrop(artImage) end
+    if not flatFill then
     Voxel3D.draw(terrain, atlasFor(host), nil)
     for i, nb in ipairs(neighbors) do
       Voxel3D.draw(nbMesh[i], atlasFor(nb.map),
@@ -557,7 +578,7 @@ function BattleScene.render(state, arena, textures, token)
     -- gives them, measured against THIS camera's pitch rather than the
     -- orbit's -- there is no character here for them to overdraw, but the
     -- pull is also what keeps a tuft from z-fighting the floor it stands on
-    if not whiteFill then
+    if not flatFill then
     local pull = VoxelScene.pull(math.max(pitch, 0.05))
     Voxel3D.draw(ChunkMesher.grass(host), atlasFor(host), nil, pull)
     for _, nb in ipairs(neighbors) do

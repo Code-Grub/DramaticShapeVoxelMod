@@ -84,6 +84,7 @@ local TiltShift = V.require("TiltShift")
 local ChunkMesher = V.require("ChunkMesher")
 local VoxelPrecache = V.require("VoxelPrecache")
 local VoxelLoadingVeil = V.require("VoxelLoadingVeil")
+local VoxelTransitionGate = V.require("VoxelTransitionGate")
 local VoxelPrecacheScreen = V.require("VoxelPrecacheScreen")
 local VoxelCacheRamScreen = V.require("VoxelCacheRamScreen")
 local VoxelMeshDisk = V.require("VoxelMeshDisk")
@@ -212,6 +213,10 @@ mod.content.render_pipelines:register("voxel", {
     -- would fight anyone who changed one deliberately.
     applyFull(level)
     Voxel.update(dt, level)
+    local transitionGame = require("src.core.Game")
+    local transitionWorld = transitionGame and transitionGame.overworld
+    VoxelTransitionGate.update(dt, Voxel.active() and Voxel3D.available(),
+      transitionWorld and transitionWorld.map)
     -- the first-person head, on the same tick: its blend in and out of the
     -- orbit, the mouse capture lifecycle, and the frame's stick-rate look.
     -- Unconditional like Voxel.update, because the blend has to keep easing
@@ -271,22 +276,36 @@ mod.content.render_pipelines:register("voxel", {
     local rw, rh = AntiAlias.expand(sw, sh)
     local canvas, waiting = VoxelScene.render(ctx.state, rw, rh,
                                               ctx.vw, ctx.vh, ctx.paletteFor)
+    local map = ctx.state and ctx.state.map
     if not canvas then
-      local map = ctx.state and ctx.state.map
       local generating = map and not ChunkMesher.slotKnown(map, false)
       if waiting or generating then
+        VoxelTransitionGate.observe(map, false)
         -- A nil world would expose the engine's ordinary 2D renderer. Keep a
         -- cold boot/door transition opaque until the requested FULL voxel mesh
         -- has actually landed, then reveal the first finished 3D frame.
         return VoxelLoadingVeil.get(sw, sh)
       end
+      -- A genuine renderer failure must fail open instead of trapping the
+      -- player behind an eternal modal cover.
+      VoxelTransitionGate.cancel(map)
       return nil                    -- genuine build/driver failure: safe 2D
     end
     if waiting then
       -- The canvas is the last wholly rendered neighbourhood. Do not composite
       -- the new area's field FX over that old camera; reveal both together once
       -- all connected BODY meshes are ready.
+      VoxelTransitionGate.observe(map, false)
+      if VoxelTransitionGate.blocking(map) then
+        return VoxelLoadingVeil.get(sw, sh)
+      end
+      -- Seamless route/city connections are intentionally not modal: retain
+      -- their last complete voxel frame instead of flashing a black cover.
       return AntiAlias.resolve(canvas, sw, sh, "world")
+    end
+    VoxelTransitionGate.observe(map, true)
+    if VoxelTransitionGate.blocking(map) then
+      return VoxelLoadingVeil.get(sw, sh)
     end
     if Voxel3D.beginOverlay() then
       -- the FX closures are ordinary 2D draws sized in DISPLAY pixels, and
@@ -542,11 +561,19 @@ local SETTINGS = {
     .. "ARENA FILL: WHITE always uses COLOR so the HUD remains visible.",
     when = function() return stagedBattles() end, full = true },
   { UiBackplates.arenaFill,
-    "WHITE draws a solid white layer in front of the whole voxel world, "
-    .. "with only the mons, their attack animations and the menus above it "
-    .. "-- the step between the OG battle and the full 3D one. Forces SPRITE "
-    .. "LIGHT: UNLIT so the sprites stay flat and true-colour with no night "
-    .. "tint (as in the traditional games).",
+    "WHITE draws a solid white layer in front of the voxel world. GEN6 "
+    .. "selects a flat illustrated background by city, route, cave or "
+    .. "story location and follows DAWN/DAY/DUSK/NIGHT where variants exist. "
+    .. "Both fill and crop to every window shape, softly defocus the plate, "
+    .. "lock the battle camera's starting pose while retaining zoom, keep only "
+    .. "mons, attacks and menus above it, and force SPRITE LIGHT: UNLIT.",
+    when = function() return stagedBattles() end, full = true },
+  { UiBackplates.bossBg,
+    "Independently replace the selected illustrated location plate for true "
+    .. "Gym Leader, Elite Four, Champion and static legendary encounters. "
+    .. "Rival battles continue to use Oak's Lab, Route 2, Route 24, SS Anne, "
+    .. "Pokemon Tower or Silph Co art. This row has no effect with ARENA "
+    .. "FILL: OFF or WHITE.",
     when = function() return stagedBattles() end, full = true },
   { UiBackplates.textboxFill,
     "WHITE keeps the latest build's opaque paper. HALF draws translucent "
@@ -1114,6 +1141,7 @@ OverworldBattle.install()
 -- file argues the whole arrangement.
 FirstPerson.install()
 FreeMove.install()
+VoxelTransitionGate.install()
 
 -- Field poison still ticks every fourth step and retains its sound, damage,
 -- faint messages and blackout.  Only the engine's full-screen dark pulse is
@@ -1247,7 +1275,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.8.2"
+mod.exports.version = "1.8.3"
 mod.exports.battlePresentation = BattlePresentation.export()
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.8.3 — Illustrated battle arenas
+
+- Added the optional GEN6 location-background collection and an independent
+  BOSS BG layer for Gym Leaders, Giovanni, the League, and static legendaries.
+- Added map-, encounter-, activity-, and time-of-day-aware background routing,
+  including shore/ocean/fishing scenes and voxel fallbacks for unmatched rooms.
+- Added cover-fit, soft background focus, and a locked flat-arena camera that
+  preserves battle-art placement across portrait, square, and widescreen views.
+- Preserved animated/static battle-art selection while flat arenas are active.
+- Added a short voxel-ready blackout for Continue, Fly, and real warps; it is
+  visual only, starts with the transition, and never affects seamless borders.
+- Expanded package tooling and collection contracts for local JPG/PNG/WebP
+  arena artwork without committing private image assets.
+
 ## 1.8.2 — Session RAM cache
 
 ### Added

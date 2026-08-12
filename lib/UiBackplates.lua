@@ -5,12 +5,9 @@
 --      bright (UNLIT). UNLIT keeps them readable on the white arena fill (B);
 --      SHADED is the default OG look and is also supported on white.
 --
---   B) ARENA FILL    WHITE / OFF       -- a solid white rendering layer in
---      front of the whole voxel world, with only the mons, their attack
---      animations and the menus above it. Hides the 3D terrain while keeping
---      the animated sprites -- the middle step between the OG battle and the
---      full voxel one. Works with SHADED or UNLIT sprites (UNLIT just keeps
---      the cards brighter on white).
+--   B) ARENA FILL    OFF / WHITE / GEN6 -- either the voxel arena, a solid
+--      white stage, or a location-aware illustrated plate. BOSS BG is an
+--      independent override within illustrated collections.
 --
 --   A) TEXTBOX FILL  WHITE / HALF / BLACK / OFF
 --      Controls the engine's own battle-box paper at draw time. Because the
@@ -40,7 +37,7 @@ UiBackplates.spriteLight = ModSetting.new("spriteLight", "SPRITE LIGHT",
 -- the traditional games -- so the sprites draw flat and true-colour
 -- regardless of the SPRITE LIGHT setting.
 function UiBackplates.spritesUnlit()
-  if UiBackplates.arenaWhite() then return true end
+  if UiBackplates.arenaWhite() or UiBackplates.arenaArt() then return true end
   return UiBackplates.spriteLight:get() == "UNLIT"
 end
 
@@ -68,13 +65,36 @@ end
 -- ------- B) ARENA FILL -------
 
 UiBackplates.arenaFill = ModSetting.new("arenaFill", "ARENA FILL",
-  { "OFF", "WHITE" }, { "OFF", "WHITE" })
+  { "OFF", "WHITE", "GEN6" }, { "OFF", "WHITE", "GEN6" })
 
 -- Whether to draw the solid white layer over the voxel world. Decoupled from
 -- sprite light: it works with SHADED cards too (they just read a little
 -- dimmer on white), so WHITE is offered independently of UNLIT.
 function UiBackplates.arenaWhite()
   return UiBackplates.arenaFill:get() == "WHITE"
+end
+
+function UiBackplates.arenaGen6()
+  return UiBackplates.arenaFill:get() == "GEN6"
+end
+
+-- Every illustrated collection is a flat plate.  Keeping this generic makes
+-- the independent boss layer work when GEN4/OPENART are added later without
+-- teaching the camera and lighting code every collection name.
+function UiBackplates.arenaArt()
+  local value = UiBackplates.arenaFill:get()
+  return value ~= "OFF" and value ~= "WHITE"
+end
+
+UiBackplates.bossBg = ModSetting.new("bossBg", "BOSS BG",
+  { "ON", "OFF" }, { "ON", "OFF" })
+
+function UiBackplates.bossEnabled()
+  return UiBackplates.bossBg:get() == "ON"
+end
+
+function UiBackplates.arenaFlat()
+  return UiBackplates.arenaWhite() or UiBackplates.arenaArt()
 end
 
 -- ------- A) TEXTBOX FILL -------

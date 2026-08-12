@@ -538,6 +538,13 @@ function OverworldBattle.begin(state, battle)
                           state.player.surfing)
   if not (ok and arena) then return false end
 
+  -- Preserve encounter provenance while the overworld still owns it. Fishing
+  -- clears its pose before pushBattle(), so newWild's hooked option is stamped
+  -- by the constructor hook below; surfing is still live on the player here.
+  if battle then
+    battle.dramaticShapeSurfing = state.player.surfing and true or false
+  end
+
   -- the fight is staged from here on, so the layout it is composed for is not
   -- optional any more (see forceOG)
   OverworldBattle.forceOG()
@@ -615,6 +622,11 @@ function OverworldBattle.update(dt)
   -- per frame rather than latched at battle start: the row is reachable
   -- from the mod manager's page mid-session.
   BattleCam.steerable = not OverworldBattle.backPinned()
+  -- WHITE and illustrated collections are flat rather than navigable world.
+  -- Keep the camera at the solved opening pose so projected cards cannot
+  -- drift or pan away from the art. BattleCam deliberately leaves only its
+  -- lens zoom active under this lock.
+  BattleCam.poseLocked = V.require("UiBackplates").arenaFlat()
   -- the right stick, read as a rate before the rig is built from it: the
   -- wheel, the keys, the mouse and a drag all arrive as events and have
   -- already landed, but a stick is a HELD position and only a tick can
@@ -636,7 +648,7 @@ function OverworldBattle.update(dt)
   if not okTex then textures = nil end
   session.token = (session.token or 0) + 1
   local ok, shot = pcall(BattleScene.render, session.state, session.arena,
-                         textures, session.token)
+                         textures, session.token, session.battle)
   if not ok then
     -- One failure retires the arena for THIS battle and nothing else: the
     -- battle screen carries on as the engine's own, the free-roam pipeline
@@ -1240,6 +1252,17 @@ function OverworldBattle.install()
     local pokemon = OverworldBattle.isPokemonPic(self, img)
     local sealBottom = pokemon or OverworldBattle.pinnedPic(self, img)
     return BattlePics.filled(out, sealBottom)
+  end
+
+
+  if not BattleState.dramaticShapeEncounterKindHook then
+    local newWild = BattleState.newWild
+    function BattleState.newWild(game_, species, level, opts)
+      local battle = newWild(game_, species, level, opts)
+      battle.dramaticShapeFishing = opts and opts.hooked and true or false
+      return battle
+    end
+    BattleState.dramaticShapeEncounterKindHook = true
   end
 
   -- While a billboard texture is being rendered both pics are put in the same

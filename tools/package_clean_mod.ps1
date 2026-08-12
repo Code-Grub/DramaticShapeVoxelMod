@@ -46,9 +46,14 @@ $battleDirs = @(Get-ChildItem -LiteralPath $battleRoot -Recurse -Directory |
   ForEach-Object { (Relative-Path $_.FullName).TrimEnd('/') + '/' })
 $battleDirs += 'assets/battle/'
 
-# Keep contracts and future non-art metadata, but never ship local battle PNGs.
+# Keep contracts/non-art metadata plus the distributable location and boss
+# backdrop sets, while never shipping private BYO Pokemon/trainer collections.
 $battleFiles = @(Get-ChildItem -LiteralPath $battleRoot -Recurse -File -Force |
-  Where-Object { $_.Extension -ine '.png' } |
+  Where-Object {
+    $relative = Relative-Path $_.FullName
+    $_.Extension -notmatch '(?i)^\.(png|jpe?g|webp)$' -or
+    $relative -match '(?i)^assets/battle/front-static/(gen6|bosses)/'
+  } |
   ForEach-Object { Relative-Path $_.FullName })
 
 $entries = @($source + $battleDirs + $battleFiles | Sort-Object -Unique)
@@ -93,11 +98,13 @@ try {
 } finally {
   $checkArchive.Dispose()
 }
-$battlePngs = @($packed | Where-Object {
-  $_ -match '(?i)^assets/battle/.*\.png$'
+$privateBattleArt = @($packed | Where-Object {
+  $_ -match '(?i)^assets/battle/.*\.(png|jpe?g|webp)$' -and
+  $_ -notmatch '(?i)^assets/battle/front-static/(gen6|bosses)/'
 })
-if ($battlePngs.Count) {
-  throw "clean package unexpectedly contains battle PNGs: $($battlePngs -join ', ')"
+if ($privateBattleArt.Count) {
+  throw "clean package unexpectedly contains private battle art: " +
+    ($privateBattleArt -join ', ')
 }
 
 foreach ($required in @('manifest.json', 'main.lua', 'mod.card')) {
@@ -109,7 +116,7 @@ foreach ($required in @('manifest.json', 'main.lua', 'mod.card')) {
 [PSCustomObject]@{
   Path = $Output
   Entries = $packed.Count
-  BattlePngs = $battlePngs.Count
+  PrivateBattleArt = $privateBattleArt.Count
   BattleFolders = $battleDirs.Count
   Bytes = (Get-Item -LiteralPath $Output).Length
   SHA256 = (Get-FileHash -LiteralPath $Output -Algorithm SHA256).Hash

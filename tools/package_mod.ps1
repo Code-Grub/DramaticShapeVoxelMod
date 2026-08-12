@@ -42,7 +42,9 @@ $contracts = @(Get-ChildItem -LiteralPath (Join-Path $repo 'assets\battle') `
 # These files are deliberately ignored by Git, but a local test build should
 # include them. This bridges a clean public branch and private BYO artwork.
 $localArt = @(Get-ChildItem -LiteralPath (Join-Path $repo 'assets\battle') `
-  -Recurse -File -Filter '*.png' -ErrorAction SilentlyContinue | ForEach-Object {
+  -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
+    $_.Extension -match '(?i)^\.(png|jpe?g|webp)$'
+  } | ForEach-Object {
     $relative = Relative-Path $_.FullName
     # Authoring drafts may live beside a collection in a folder literally
     # named "backup". They are never runtime candidates and must not inflate
@@ -75,7 +77,7 @@ $entries = @(tar -tf $Output)
 [PSCustomObject]@{
   Path = $Output
   Entries = $entries.Count
-  LocalPngs = $localArt.Count
+  LocalImages = $localArt.Count
   Bytes = (Get-Item -LiteralPath $Output).Length
   SHA256 = (Get-FileHash -LiteralPath $Output -Algorithm SHA256).Hash
 }

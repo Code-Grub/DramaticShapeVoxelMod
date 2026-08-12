@@ -366,6 +366,7 @@ function AnimatedBattleArt.update(battle, dt)
     return
   end
   local mode = BattleArt.displayMode()
+  BattleArt.releaseSpeciesOverrides(battle)
   -- Restore a static PLAYER ART replacement before the animation manager
   -- captures the engine portrait, then leave managed animation frames alone.
   BattleArt.applyTrainers(battle)

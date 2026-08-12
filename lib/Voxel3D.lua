@@ -293,6 +293,7 @@ local SHADER = [[
 -- Each entry is nil = untried, false = unavailable.
 local shaders = { [false] = nil, [true] = nil }
 local unlitShader = nil       -- nil = untried, false = unavailable
+local backdropShader = nil    -- optional soft focus for low-res flat plates
 local activeShader = nil      -- the shader draws are currently sent to
 local sceneShader = nil       -- the lit variant this pass opened with
 local flattenColor = nil      -- tightly scoped hit-flash state for shader swaps
@@ -407,6 +408,40 @@ function Voxel3D.unlitShader()
     unlitShader = ok and sh or false
   end
   return unlitShader or nil
+end
+
+-- A small source-space Gaussian blur for illustrated battle plates. The
+-- source images are intentionally only 800x800; blurring in SOURCE texels
+-- means the softness grows with their enlargement and conceals that native
+-- resolution, while remaining subtle at 1:1. Compilation refusal is harmless:
+-- backdrop() simply keeps LOVE's ordinary linear-filtered draw.
+local BACKDROP_BLUR = [[
+  uniform vec2 texel;
+  uniform float radius;
+
+  vec4 effect(vec4 color, Image image, vec2 uv, vec2 screen) {
+    vec2 d = texel * radius;
+    vec4 sum = Texel(image, uv) * 4.0;
+    sum += Texel(image, uv + vec2( d.x, 0.0)) * 2.0;
+    sum += Texel(image, uv + vec2(-d.x, 0.0)) * 2.0;
+    sum += Texel(image, uv + vec2(0.0,  d.y)) * 2.0;
+    sum += Texel(image, uv + vec2(0.0, -d.y)) * 2.0;
+    sum += Texel(image, uv + vec2( d.x,  d.y));
+    sum += Texel(image, uv + vec2(-d.x,  d.y));
+    sum += Texel(image, uv + vec2( d.x, -d.y));
+    sum += Texel(image, uv + vec2(-d.x, -d.y));
+    return color * (sum / 16.0);
+  }
+]]
+
+Voxel3D.BACKDROP_BLUR_RADIUS = 0.70
+
+function Voxel3D.backdropShader()
+  if backdropShader == nil then
+    local ok, sh = pcall(love.graphics.newShader, BACKDROP_BLUR)
+    backdropShader = ok and sh or false
+  end
+  return backdropShader or nil
 end
 
 -- Whether the 3D path can run at all. False on a headless test run (no
@@ -1176,6 +1211,44 @@ function Voxel3D.lighting(on)
     activeShader = sceneShader
   end
   pcall(activeShader.send, activeShader, "lightOn", 1)
+end
+
+-- A top-anchored CSS-style `cover` rectangle for a plate: fill BOTH axes,
+-- centre horizontal overflow, and crop vertical overflow only from the
+-- bottom. The authored horizon and wall detail always remain visible.
+function Voxel3D.coverRect(iw, ih, cw, ch)
+  if not (iw and ih and cw and ch and iw > 0 and ih > 0
+          and cw > 0 and ch > 0) then return nil end
+  local scale = math.max(cw / iw, ch / ih)
+  return (cw - iw * scale) / 2, 0, scale
+end
+
+-- Paint an opaque 2D plate behind later scene geometry. The image uses a
+-- top-anchored "cover" fit so mixed source dimensions fill the ENTIRE battle
+-- viewport without letterboxing: portrait crops the sides, ultrawide keeps
+-- the top and crops only the lower foreground. Depth stays cleared: Pokemon cards drawn afterward still
+-- use their ordinary projected positions and depth relationship.
+function Voxel3D.backdrop(image)
+  if not (active and image and image.getDimensions) then return false end
+  local ok, iw, ih = pcall(image.getDimensions, image)
+  if not ok or not (iw and ih and iw > 0 and ih > 0) then return false end
+  local x, y, scale = Voxel3D.coverRect(iw, ih, canvasW, canvasH)
+  if not scale then return false end
+  local blur = Voxel3D.backdropShader()
+  love.graphics.setShader(blur)
+  if blur then
+    pcall(blur.send, blur, "texel", { 1 / iw, 1 / ih })
+    pcall(blur.send, blur, "radius", Voxel3D.BACKDROP_BLUR_RADIUS)
+  end
+  love.graphics.setDepthMode()
+  love.graphics.setColor(1, 1, 1, 1)
+  love.graphics.draw(image, x, y, 0, scale, scale)
+  love.graphics.setDepthMode("lequal", true)
+  if sceneShader then
+    love.graphics.setShader(sceneShader)
+    activeShader = sceneShader
+  end
+  return true
 end
 
 -- Project a world point to canvas pixels: returns (x, y, scale), or nil
