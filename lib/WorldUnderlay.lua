@@ -20,10 +20,15 @@ local HEIGHT = -4
 
 WorldUnderlay.setting = ModSetting.new(
   "worldFill", "WORLD FILL",
-  { "grass", "field", "soil", "water" },
-  { "GRASS", "FIELD", "SOIL", "WATER" })
+  { "dark", "grass", "field", "soil", "water" },
+  { "DARK", "GRASS", "FIELD", "SOIL", "WATER" })
 
 local COLORS = {
+  -- Matte dark grey, sampled from the inner perimeter / floor void of an
+  -- indoor Pokémon Center (the band between the green sky and the wooden
+  -- wall). Chosen as the default so holes and the void read as intentional
+  -- negative space rather than a stray green seam.
+  dark  = {  72 / 255,  72 / 255,  72 / 255, 1 }, -- #484848
   -- Sampled from the light path/grass reference used by the tileset. Keeping
   -- the two surfaces distinct prevents green seams beneath cities and paths
   -- while making holes in grassy routes blend into their immediate ground.
@@ -33,11 +38,13 @@ local COLORS = {
   water = {  66 / 255,  55 / 255, 128 / 255, 1 }, -- #423780
 }
 
+local DEFAULT_FILL = "dark"
+
 local cachedMesh = nil
 local textures = {}
 
 function WorldUnderlay.selected()
-  return WorldUnderlay.setting:get() or "grass"
+  return WorldUnderlay.setting:get() or DEFAULT_FILL
 end
 
 -- Dense where the camera can inspect the curve, increasingly coarse after

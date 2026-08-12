@@ -230,18 +230,16 @@ end
 
 local function shinyDefFor(def, side)
   if not def or not def.image then return def end
-  -- Each generation owns its shiny child: `...-animated/gen3/shiny/name`,
-  -- matching the importer output and the static-generation resolver.
+  -- MODDED routes to the flat shiny folder (front-animated/shiny,
+  -- back-animated/shiny) so other mods / ROM own any missing sprite.
+  -- BATTLE ART keeps its existing generation-based routing untouched.
   local shiny = def.image:gsub(
-    "^(assets/battle/[^/]+%-animated/gen[1-5])/",
+    "^(assets/battle/(front|back)-animated)/gen[1-5]/",
     "%1/shiny/")
   if shiny == def.image then return def end
   local path = V.mod.assets:path(shiny)
   local fs = love and love.filesystem
   if not (fs and fs.getInfo and fs.getInfo(path)) then
-    -- SHINY is ON but this species has no shiny atlas: do NOT fall back to the
-    -- normal generation's art (that is the very sprite we are hiding). Return
-    -- nil so updateBattler retains the ROM sprite instead.
     return nil
   end
   local copy = {}
@@ -258,15 +256,12 @@ local function definition(battler, side)
   local generation = setting:get()
   local collections = side == "back" and BACK_SETS or SETS
   local selected = collections[generation]
-  if BattleArt.prefersModded() and SHINY_SETS[generation] then
-    selected = SHINY_SETS[generation]
-  end
   local bySide = selected and key and selected[key]
   local def = bySide and bySide[side] or nil
-  -- MODDED compatibility (species only): prefer the shiny atlas. If it is
-  -- absent, resolution leaves the underlying mod-owned sprite in charge.
-  if def and BattleArt.prefersModded()
-     and selected ~= SHINY_SETS[generation] then
+  -- MODDED compatibility (species only): route to the flat shiny folder so
+  -- the underlying mod/ROM owns the sprite. Our normal gen art stays
+  -- suppressed instead of playing over it.
+  if def and BattleArt.prefersModded() then
     def = shinyDefFor(def, side)
   end
   return def

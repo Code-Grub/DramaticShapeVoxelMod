@@ -138,6 +138,8 @@ end
 local function shinyPrefix(side)
   -- species-only. Players can never be shiny, so this never consults player
   -- art; `side` remains part of the call contract for the folder resolvers.
+  -- MODDED routes to the flat shiny folder; BATTLE ART keeps fronts in the
+  -- generation-neutral front-static root (no shiny child for fronts).
   return BattleArt.prefersModded() and "shiny/" or ""
 end
 
@@ -157,7 +159,9 @@ end
 -- no generation selector of its own.
 local function generationFolder(generation, side)
   if BattleArt.prefersModded() then
-    return generation .. "/shiny"
+    -- MODDED routes straight to the flat shiny folder (no generation
+    -- segment), so other mods / ROM own any missing sprite.
+    return "shiny"
   end
   return generation
 end
