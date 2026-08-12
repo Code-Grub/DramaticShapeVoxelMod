@@ -8,6 +8,9 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 function Relative-Path([string]$FullName) {
   return $FullName.Substring($repo.Length + 1).Replace('\', '/')
 }
+function Test-ExcludedFolder([string]$Relative) {
+  return $Relative -match '(?i)(^|/)(_source|backup)(/|$)'
+}
 
 # Derive the package name from the mod's own manifest (id + version) so the
 # produced .zip matches what the in-game mod manager expects for auto-update:
@@ -37,13 +40,21 @@ foreach ($dir in @('data', 'lib', 'tools')) {
       $_.Extension -ine '.pyc' -and
       $_.FullName -notmatch '(?i)[\\/]__pycache__[\\/]'
     } |
-    ForEach-Object { Relative-Path $_.FullName }
+    ForEach-Object {
+      $relative = Relative-Path $_.FullName
+      if (-not (Test-ExcludedFolder $relative)) { $relative }
+    }
 }
 $source += @('CHANGELOG.md', 'main.lua', 'manifest.json', 'mod.card', 'README.md')
 
 $battleRoot = Join-Path $repo 'assets\battle'
 $battleDirs = @(Get-ChildItem -LiteralPath $battleRoot -Recurse -Directory |
-  ForEach-Object { (Relative-Path $_.FullName).TrimEnd('/') + '/' })
+  ForEach-Object {
+    $relative = Relative-Path $_.FullName
+    if (-not (Test-ExcludedFolder $relative)) {
+      $relative.TrimEnd('/') + '/'
+    }
+  })
 $battleDirs += 'assets/battle/'
 
 # Keep contracts/non-art metadata plus the distributable location and boss
@@ -51,8 +62,10 @@ $battleDirs += 'assets/battle/'
 $battleFiles = @(Get-ChildItem -LiteralPath $battleRoot -Recurse -File -Force |
   Where-Object {
     $relative = Relative-Path $_.FullName
-    $_.Extension -notmatch '(?i)^\.(png|jpe?g|webp)$' -or
-    $relative -match '(?i)^assets/battle/front-static/(gen6|bosses)/'
+    -not (Test-ExcludedFolder $relative) -and (
+      $_.Extension -notmatch '(?i)^\.(png|jpe?g|webp)$' -or
+      $relative -match '(?i)^assets/battle/front-static/(gen6|bosses)/'
+    )
   } |
   ForEach-Object { Relative-Path $_.FullName })
 
@@ -102,6 +115,9 @@ $privateBattleArt = @($packed | Where-Object {
   $_ -match '(?i)^assets/battle/.*\.(png|jpe?g|webp)$' -and
   $_ -notmatch '(?i)^assets/battle/front-static/(gen6|bosses)/'
 })
+if ($packed | Where-Object { Test-ExcludedFolder $_ }) {
+  throw "clean package unexpectedly contains an _source or backup folder"
+}
 if ($privateBattleArt.Count) {
   throw "clean package unexpectedly contains private battle art: " +
     ($privateBattleArt -join ', ')

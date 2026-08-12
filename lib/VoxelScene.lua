@@ -26,6 +26,7 @@ local Water = V.require("Water")
 local VoxelGrid = V.require("VoxelGrid")
 local DayNight = V.require("DayNight")
 local FirstPerson = V.require("FirstPerson")
+local WorldUnderlay = V.require("WorldUnderlay")
 local PaletteFX = require("src.render.PaletteFX")
 local Map = require("src.world.Map")
 
@@ -1042,6 +1043,10 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
     return nil
   end
 
+  -- One material-coloured plane below the whole loaded neighborhood closes
+  -- literal terrain holes without obscuring a single valid world fragment.
+  -- Drawn before terrain, depth alone decides where it remains visible.
+  WorldUnderlay.draw(state, cx, cy)
   Voxel3D.draw(terrain, atlasFor(state.map), nil)
   for i, nb in ipairs(state.neighbors or {}) do
     Voxel3D.draw(nbMesh[i], atlasFor(nb.map),

@@ -590,7 +590,7 @@ end
 Pipelines.setLevel("voxel", 2)
 local hookedRows = Runtime.call("ui.options.rows", function(_, r) return r end,
                                { data = Data }, { { id = "text_speed" } })
-T.eq(#hookedRows, 16,
+T.eq(#hookedRows, 18,
   "the options hook added the upstream and visible Battle Art settings")
 local hookedByLabel = {}
 for _, row in ipairs(hookedRows) do hookedByLabel[row.label] = row end
@@ -636,12 +636,18 @@ T.eq(hookedByLabel["HUD COLOR"].value(), "COLOR",
   "fresh installs retain the forks' original black and coloured HUD")
 T.eq(hookedByLabel["BOSS BG"].value(), "ON",
   "true boss encounter plates are enabled independently by default")
+T.eq(hookedByLabel["BG Y-OFFSET"].value(), "0 PX",
+  "illustrated backgrounds start at the authored top edge")
 T.eq(hookedByLabel.SHADOWS.value(), "ON",
   "real cast shadows remain on by default")
 
 do
 local Backplates = modExports.lib.require("UiBackplates")
 local Voxel = modExports.lib.require("Voxel3D")
+T.eq(#Backplates.backdropOffset.values, 21,
+  "BG Y-OFFSET exposes every ten-pixel step from 0 through 200")
+T.eq(Backplates.backdropOffset.values[21], 200,
+  "BG Y-OFFSET includes the requested 200-pixel lower crop")
 Backplates.spriteLight:sync("SHADED")
 Backplates.arenaFill:sync("WHITE")
 T.check(Backplates.spritesUnlit(),
@@ -652,6 +658,29 @@ Backplates.arenaFill:sync("GEN6")
 T.check(Backplates.arenaGen6() and Backplates.spritesUnlit(),
   "ARENA FILL: GEN6 selects a flat plate and true-colour cards")
 local Gen6 = modExports.lib.require("Gen6Backdrop")
+local WorldUnderlay = modExports.lib.require("WorldUnderlay")
+T.eq(hookedByLabel["WORLD FILL"].value(), "GRASS",
+  "WORLD FILL defaults to one stable green across map transitions")
+T.eq(#WorldUnderlay.setting.values, 4,
+  "WORLD FILL exposes grass, field, soil and water")
+T.eq(WorldUnderlay.setting.values[3], "soil",
+  "WORLD FILL offers the sampled mountain soil")
+T.eq(WorldUnderlay.COLORS.field[1], 223 / 255,
+  "field holes use the sampled pale path color")
+T.eq(WorldUnderlay.COLORS.field[2], 216 / 255,
+  "the sampled field color retains its warm green channel")
+T.eq(WorldUnderlay.COLORS.grass[1], 139 / 255,
+  "grass holes use the sampled bright route green")
+T.eq(WorldUnderlay.COLORS.grass[2], 197 / 255,
+  "the sampled grass green retains its dominant channel")
+T.eq(WorldUnderlay.COLORS.soil[1], 119 / 255,
+  "soil uses the sampled mountain brown")
+T.eq(WorldUnderlay.COLORS.water[3], 128 / 255,
+  "water uses the sampled blue-purple channel")
+T.check(WorldUnderlay.HEIGHT < -2,
+  "the cover lies below both ordinary ground and recessed water")
+T.check(WorldUnderlay.RANGE >= 32768,
+  "the camera-relative fill reaches beyond the renderer's practical horizon")
 do
   local x, y, scale = Voxel.coverRect(800, 800, 480, 800)
   T.check(math.abs(y) < 1e-9 and math.abs(800 * scale - 800) < 1e-9,
@@ -664,6 +693,30 @@ do
     "an ultrawide GEN6 plate fills the viewport from left to right")
   T.check(math.abs(y) < 1e-9 and 800 * scale > 900,
     "ultrawide cover preserves the plate's top edge and crops only below")
+
+  local _, shiftedY, shiftedScale, crop =
+    Voxel.coverRect(800, 800, 2400, 900, 200)
+  T.eq(crop, 200,
+    "BG Y-OFFSET selects authored source pixels rather than display pixels")
+  T.eq(shiftedY, -200 * shiftedScale,
+    "the selected crop moves lower floor art into a wide viewport")
+
+  local _, clampedY, _, clampedCrop =
+    Voxel.coverRect(800, 800, 1600, 1600, 200)
+  T.eq(clampedCrop, 0,
+    "BG Y-OFFSET clamps away when the full image height is already visible")
+  T.eq(clampedY, 0, "a clamped offset never uncovers the canvas")
+
+  local nx, ny, nsx, nsy =
+    Voxel.backdropTransform(800, 800, 0, shiftedY, shiftedScale, false)
+  local mx, my, msx, msy =
+    Voxel.backdropTransform(800, 800, 0, shiftedY, shiftedScale, true)
+  T.eq(nx, mx, "Metal keeps the ordinary horizontal backdrop placement")
+  T.eq(nsx, msx, "Metal keeps the ordinary horizontal backdrop scale")
+  T.eq(ny, shiftedY, "ordinary rendering uses the requested top-origin crop")
+  T.eq(my + 800 * msy, shiftedY,
+    "Metal's inverted quad resolves to the same requested top-origin crop")
+  T.eq(nsy, -nsy, "Metal flips only the final vertical image transform")
 
   x, y, scale = Voxel.coverRect(800, 800, 1600, 1600)
   T.check(math.abs(x) < 1e-9 and math.abs(y) < 1e-9
@@ -2846,9 +2899,9 @@ T.check((px2 - px) * (ex2 - ex) < 0,
 T.check(math.abs(px2 - px) < 8 and math.abs(ex2 - ex) < 8,
   "neither is flung across the frame: the mons drift, they do not travel")
 
--- A flat ARENA FILL is a 2D plate. Orbit, pitch and the automatic drift would
--- move projected cards against that plate, so the solved opening pose is
--- locked while the lens remains adjustable.
+-- A fixed-pose caller can still hold orbit, pitch and automatic drift while
+-- leaving the lens adjustable. ARENA FILL no longer invokes this facility:
+-- WHITE and GEN6 intentionally keep the ordinary panning camera.
 BattleCam.poseLocked = true
 BattleCam.steerable = true
 BattleCam.orbit, BattleCam.orbitGoal = 0.7, 0.7
@@ -2959,6 +3012,33 @@ T.eq(Art.speciesFor(nativeDitto), "PIDGEY",
   "Battle Art keeps selecting the transformed species on later frames")
 T.eq(Art.speciesFor({ mon = { species = "DITTO" } }), "DITTO",
   "ordinary battlers still resolve their own species")
+T.eq(Art.speciesAlias(152), "CHIKORITA",
+  "numeric National Dex ids resolve beyond the original Kanto roster")
+T.eq(Art.speciesAlias("0252"), "TREECKO",
+  "zero-padded numeric strings resolve to their canonical species name")
+T.eq(Art.speciesAlias("#386"), "DEOXYS",
+  "hash-prefixed National Dex ids resolve through the complete Gen 3 roster")
+T.eq(Art.speciesFor({ mon = { species = 152 } }), "CHIKORITA",
+  "numeric species supplied by another mod are normalized before art lookup")
+T.eq(Art.slug(386), "deoxys",
+  "static filename slugs support the complete first 386 species")
+T.eq(Art.staticSpeciesRelativePath(252, "front"),
+  "assets/battle/front-static/treecko.png",
+  "bring-your-own static fronts resolve post-Kanto numeric species directly")
+T.eq(Art.generationRelativePath(252, "gen3", "back"),
+  "assets/battle/back-static/gen3/treecko.png",
+  "normal static backs resolve post-Kanto species inside the selected generation")
+Art.duplicateSetting:sync("modded")
+T.eq(Art.staticSpeciesRelativePath(386, "front"),
+  "assets/battle/front-static/shiny/deoxys.png",
+  "bring-your-own shiny static fronts retain their flat override folder")
+T.eq(Art.generationRelativePath(386, "gen4", "back"),
+  "assets/battle/back-static/gen4/shiny/deoxys.png",
+  "shiny static backs use the generated generation/shiny folder layout")
+T.eq(Art.generationRelativePath(152, "gen2", "front"),
+  "assets/battle/front-animated/gen2/shiny/chikorita.png",
+  "single-frame shiny front fallback uses the generation/shiny layout")
+Art.duplicateSetting:sync("battle_art")
 
 Art.viewSetting:sync("front")
 Art.frontFlipSetting:sync("battle_art")

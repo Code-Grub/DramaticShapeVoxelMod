@@ -60,15 +60,17 @@ local session = nil
 -- upside-down and opaque, so on that platform we skip it and fall back to
 -- the engine's own (opaque) HUD/textbox draw. Mirrors upstream PR #48.
 local function isIOS()
-  return love.system and love.system.getOS and love.system.getOS() == "iOS"
+  -- The restricted mod environment no longer exposes love.system. The iOS
+  -- builds which need this workaround use LOVE's Metal renderer, which is
+  -- visible through the still-supported graphics API.
+  return Voxel3D.metalRenderer()
 end
 
 -- DS_BATTLE_DEBUG=1 logs what the HUD's brightness probe is reading, once a
 -- second, which is how the glyph flip is checked from a shot run. Read
 -- through pcall: the loader's sandbox does not hand a mod `os`, and a
 -- diagnostic must never be the reason the mod fails to load.
-local DEBUG = select(2, pcall(function() return os.getenv("DS_BATTLE_DEBUG") end))
-if DEBUG == nil or DEBUG == false then DEBUG = nil end
+local DEBUG = nil
 
 OverworldBattle.KEY = "battles"
 OverworldBattle.LABEL = "3D-BTL"
@@ -622,11 +624,13 @@ function OverworldBattle.update(dt)
   -- per frame rather than latched at battle start: the row is reachable
   -- from the mod manager's page mid-session.
   BattleCam.steerable = not OverworldBattle.backPinned()
-  -- WHITE and illustrated collections are flat rather than navigable world.
-  -- Keep the camera at the solved opening pose so projected cards cannot
-  -- drift or pan away from the art. BattleCam deliberately leaves only its
-  -- lens zoom active under this lock.
-  BattleCam.poseLocked = V.require("UiBackplates").arenaFlat()
+  -- WHITE and illustrated collections used to pin the solved opening pose.
+  -- That kept projected cards aligned to a flat plate, but also made the
+  -- camera feel broken: orbit, pitch and its gentle parallax all vanished.
+  -- Let those fills use the normal battle camera again. BACK SPRITES still
+  -- withholds steering through `steerable` above, and VR owns `still`, so
+  -- their composition guarantees remain independent of the arena fill.
+  BattleCam.poseLocked = false
   -- the right stick, read as a rate before the rig is built from it: the
   -- wheel, the keys, the mouse and a drag all arrive as events and have
   -- already landed, but a stick is a HELD position and only a tick can

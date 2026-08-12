@@ -4,6 +4,7 @@ local V = ...
 
 local ModSetting = V.require("ModSetting")
 local BattleArt = {}
+local SPECIES_BY_DEX = V.data("battle_species_dex_386")
 
 BattleArt.setting = ModSetting.new("battleArt", "BATTLE ART",
   { "static", "animated", "rom" }, { "STATIC", "ANIMATED", "ROM" }, 2)
@@ -104,7 +105,24 @@ local metrics = setmetatable({}, { __mode = "k" })
 local original = setmetatable({}, { __mode = "k" })
 local trainerOriginal = setmetatable({}, { __mode = "k" })
 
+local function speciesAlias(species)
+  local number
+  if type(species) == "number" then
+    number = species
+  elseif type(species) == "string" then
+    -- Accept common mod-facing numeric spellings without confusing named
+    -- forms (DEOXYS_D etc.) with Pokédex identifiers.
+    number = tonumber(species:match("^#?0*(%d+)$"))
+  end
+  if number and number % 1 == 0 then
+    return SPECIES_BY_DEX[number] or species
+  end
+  return species
+end
+BattleArt.speciesAlias = speciesAlias
+
 local function slug(species)
+  species = speciesAlias(species)
   local s = tostring(species or ""):lower()
   s = s:gsub("♀", "-f"):gsub("♂", "-m")
   s = s:gsub("['’%.]", "")
@@ -127,10 +145,42 @@ end
 -- shape independently; Crystal Animated Sprites v1.5 publishes its own marker,
 -- which remains supported when that mod is installed.
 function BattleArt.speciesFor(battler)
-  return battler and (battler.__battleArtTransformed
-                      or battler.__crystalTransformed
-                      or (battler.mon and battler.mon.species)) or nil
+  local species = battler and (battler.__battleArtTransformed
+                               or battler.__crystalTransformed
+                               or (battler.mon and battler.mon.species)) or nil
+  return speciesAlias(species)
 end
+
+-- Generation collections keep their shiny overrides inside the selected
+-- generation (`gen3/shiny`), not in a parallel `shiny/gen3` tree. Flat
+-- front-static species art remains the deliberate exception because it has
+-- no generation selector of its own.
+local function generationFolder(generation, side)
+  if BattleArt.prefersModded() then
+    return generation .. "/shiny"
+  end
+  return generation
+end
+
+local function generationRelativePath(species, generation, side)
+  if not tostring(generation or ""):match("^gen[1-5]$") then return nil end
+  local kind = side == "back" and "back-static" or "front-animated"
+  return ("assets/battle/%s/%s/%s.png"):format(
+    kind, generationFolder(generation, side), slug(species))
+end
+BattleArt.generationRelativePath = generationRelativePath
+
+local function staticSpeciesRelativePath(species, side)
+  if side == "back" then
+    return generationRelativePath(
+      species, BattleArt.backAnimationSetting:get(), "back")
+  end
+  -- Static fronts are deliberately bring-your-own and generation-neutral.
+  -- Their only optional child is the flat shiny override folder.
+  return ("assets/battle/front-static/%s%s.png"):format(
+    shinyPrefix("front"), slug(species))
+end
+BattleArt.staticSpeciesRelativePath = staticSpeciesRelativePath
 
 -- Called only after the engine has installed the copied ROM picture. Forget
 -- our old ownership without restoring Ditto over that picture: if the selected
@@ -138,7 +188,7 @@ end
 function BattleArt.markTransformed(battler, species)
   if not (battler and species) then return false end
   original[battler] = nil
-  battler.__battleArtTransformed = species
+  battler.__battleArtTransformed = speciesAlias(species)
   return true
 end
 
@@ -149,17 +199,9 @@ local function pathFor(species, side)
   -- Keep the folder and setting stable while that decoder is added; an
   -- unrecognised atlas must never appear as one giant sprite sheet.
   if mode == "animated" then return nil end
-  local rel
-  if side == "back" then
-    -- STATIC never consults an atlas. In particular, GEN 5 means the ordinary
-    -- PNG at back-static/gen5 here; only AnimatedBattleArt may resolve the
-    -- similarly named animated generation.
-    rel = ("assets/battle/back-static/%s%s/%s.png"):format(
-      shinyPrefix(side), BattleArt.backAnimationSetting:get(), slug(species))
-  else
-    rel = ("assets/battle/front-static/%s%s.png"):format(
-      shinyPrefix(side), slug(species))
-  end
+  -- STATIC never consults an atlas. In particular, a Gen 5 back means the
+  -- ordinary PNG at back-static/gen5; only AnimatedBattleArt decodes atlases.
+  local rel = staticSpeciesRelativePath(species, side)
   local path = V.mod.assets:path(rel)
   local fs = love and love.filesystem
   if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
@@ -319,9 +361,8 @@ end
 -- pixel metrics as BATTLE ART: STATIC, but live in generation subfolders so
 -- switching the selector does not require renaming or replacing files.
 function BattleArt.generationBackImage(species, generation)
-  if not tostring(generation or ""):match("^gen[1-5]$") then return nil end
-  local rel = ("assets/battle/back-static/%s%s/%s.png"):format(
-    shinyPrefix("back"), generation, slug(species))
+  local rel = generationRelativePath(species, generation, "back")
+  if not rel then return nil end
   local path = V.mod.assets:path(rel)
   local fs = love and love.filesystem
   if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
@@ -334,13 +375,11 @@ end
 -- image; no metadata or timing sidecar is involved.
 function BattleArt.generationFrontImage(species, generation)
   if not tostring(generation or ""):match("^gen[1-5]$") then return nil end
-  -- Shiny-compatible: when FRONT SHINY is on, the shinyPrefix prepends
-  -- "shiny/", pointing at assets/battle/front-animated/shiny/<gen>/<slug>.png
-  -- (sibling of the generation folders, matching the animated shiny layout).
+  -- Shiny-compatible: MODDED selects the generation's own shiny child folder
+  -- (`front-animated/<gen>/shiny/<slug>.png`).
   -- A missing shiny file falls through to ROM -- the normal generation's
   -- animated atlas is intentionally NOT used here so MODDED suppresses it.
-  local rel = ("assets/battle/front-animated/%s%s/%s.png"):format(
-    shinyPrefix("front"), generation, slug(species))
+  local rel = generationRelativePath(species, generation, "front")
   local path = V.mod.assets:path(rel)
   local fs = love and love.filesystem
   if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end

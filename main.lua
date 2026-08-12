@@ -91,6 +91,7 @@ local VoxelMeshDisk = V.require("VoxelMeshDisk")
 local StaticGeometry = V.require("StaticGeometry")
 local VoxelGrid = V.require("VoxelGrid")
 local WorldCurve = V.require("WorldCurve")
+local WorldUnderlay = V.require("WorldUnderlay")
 local OverworldBattle = V.require("OverworldBattle")
 local BattlePresentation = V.require("BattlePresentation")
 local BattleArt = V.require("BattleArt")
@@ -281,10 +282,15 @@ mod.content.render_pipelines:register("voxel", {
       local generating = map and not ChunkMesher.slotKnown(map, false)
       if waiting or generating then
         VoxelTransitionGate.observe(map, false)
-        -- A nil world would expose the engine's ordinary 2D renderer. Keep a
-        -- cold boot/door transition opaque until the requested FULL voxel mesh
-        -- has actually landed, then reveal the first finished 3D frame.
-        return VoxelLoadingVeil.get(sw, sh)
+        -- Only an explicitly qualified Continue/travel gate may cover the
+        -- world. Ordinary doors and first-time route loads fail open to the
+        -- engine renderer while their voxels build instead of inventing an
+        -- unrelated black transition. The gate itself also has a hard ceiling,
+        -- so a failed neighbour/cache record cannot soft-lock a save here.
+        if VoxelTransitionGate.blocking(map) then
+          return VoxelLoadingVeil.get(sw, sh)
+        end
+        return nil
       end
       -- A genuine renderer failure must fail open instead of trapping the
       -- player behind an eternal modal cover.
@@ -453,6 +459,11 @@ local SETTINGS = {
   { VoxelGrid.setting, "One-pixel wireframe along every voxel edge." },
   { WorldCurve.setting,
     "Bend the world down over the horizon, Animal Crossing style." },
+  { WorldUnderlay.setting,
+    "Choose the solid world beneath terrain holes and beyond every map edge: "
+    .. "GRASS, FIELD, SOIL or WATER. The fill follows the camera beyond the "
+    .. "visible horizon and does not switch color between routes.",
+    full = true },
   { Water.setting,
     "Reflections on water. FULL adds screen-space reflections of the "
     .. "shoreline, the trees and the buildings behind it; SKY is the sky, "
@@ -565,8 +576,16 @@ local SETTINGS = {
     .. "selects a flat illustrated background by city, route, cave or "
     .. "story location and follows DAWN/DAY/DUSK/NIGHT where variants exist. "
     .. "Both fill and crop to every window shape, softly defocus the plate, "
-    .. "lock the battle camera's starting pose while retaining zoom, keep only "
+    .. "retain the normal battle camera, keep only "
     .. "mons, attacks and menus above it, and force SPRITE LIGHT: UNLIT.",
+    when = function() return stagedBattles() end, full = true },
+  { UiBackplates.backdropOffset,
+    "Choose how far down into an illustrated background its top crop begins, "
+    .. "from 0 to 200 source-image pixels. Larger values reveal lower floor "
+    .. "detail in wide windows and are safely clamped when no vertical crop "
+    .. "is available. This affects GEN6 and enabled boss backgrounds.",
+    -- Keep it visible beside ARENA FILL so a player can prepare the crop
+    -- before entering GEN6 or enabling an illustrated boss override.
     when = function() return stagedBattles() end, full = true },
   { UiBackplates.bossBg,
     "Independently replace the selected illustrated location plate for true "
@@ -1275,7 +1294,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.8.3"
+mod.exports.version = "1.8.4"
 mod.exports.battlePresentation = BattlePresentation.export()
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout

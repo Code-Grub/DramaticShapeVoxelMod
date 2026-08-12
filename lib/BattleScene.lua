@@ -493,7 +493,9 @@ function BattleScene.render(state, arena, textures, token, battle)
     if not Voxel3D.beginScene(rw, rh, cx, cy, vw, vh, skyFill, "battle") then
       return
     end
-    if artImage then Voxel3D.backdrop(artImage) end
+    if artImage then
+      Voxel3D.backdrop(artImage, UiBackplates.backdropOffsetPixels())
+    end
     if not flatFill then
     Voxel3D.draw(terrain, atlasFor(host), nil)
     for i, nb in ipairs(neighbors) do

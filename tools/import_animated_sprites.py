@@ -13,6 +13,7 @@ Default sources:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import math
 import re
 import time
@@ -109,7 +110,8 @@ def download_gen4(base: str, number: int) -> bytes:
 
 def convert(raw: bytes, destination: Path, columns: int = 16,
             max_dimension: int = 2048, *, coalesce: bool = False,
-            minimum_duration: int = 0) -> dict:
+            minimum_duration: int = 0, resample_duration: int = 0,
+            collapse_cycles: bool = False) -> dict:
     with Image.open(BytesIO(raw)) as gif:
         frames, durations = [], []
         for frame in ImageSequence.Iterator(gif):
@@ -130,6 +132,42 @@ def convert(raw: bytes, destination: Path, columns: int = 16,
                 durations.append(duration)
     if minimum_duration > 0:
         durations = [max(minimum_duration, duration) for duration in durations]
+    if resample_duration > 0 and frames:
+        sampled_frames, sampled_durations = [], []
+        elapsed = 0
+        for frame, duration in zip(frames, durations):
+            elapsed += duration
+            if elapsed >= resample_duration:
+                sampled_frames.append(frame)
+                sampled_durations.append(elapsed)
+                elapsed = 0
+        if elapsed:
+            if sampled_durations:
+                sampled_durations[-1] += elapsed
+            else:
+                sampled_frames.append(frames[-1])
+                sampled_durations.append(elapsed)
+        frames, durations = sampled_frames, sampled_durations
+    if collapse_cycles and len(frames) > 1:
+        # Find the smallest exact period in the complete visual+timing stream.
+        # Repeating the minimal period in the runtime is pixel- and time-
+        # equivalent to storing N identical periods in one atlas.
+        keys = [
+            (hashlib.blake2b(frame.tobytes(), digest_size=16).digest(), duration)
+            for frame, duration in zip(frames, durations)
+        ]
+        prefix = [0] * len(keys)
+        for index in range(1, len(keys)):
+            matched = prefix[index - 1]
+            while matched and keys[index] != keys[matched]:
+                matched = prefix[matched - 1]
+            if keys[index] == keys[matched]:
+                matched += 1
+            prefix[index] = matched
+        period = len(keys) - prefix[-1]
+        if period < len(keys) and len(keys) % period == 0:
+            frames = frames[:period]
+            durations = durations[:period]
     if not frames:
         raise ValueError("GIF contains no frames")
     width, height = frames[0].size
@@ -142,7 +180,9 @@ def convert(raw: bytes, destination: Path, columns: int = 16,
     while math.ceil(len(frames) / columns) * height > max_dimension:
         columns += 1
         if columns > max_columns or columns > len(frames):
-            raise ValueError("animation does not fit within one 2048px atlas")
+            raise ValueError(
+                f"animation does not fit within one {max_dimension}px atlas"
+            )
     rows = math.ceil(len(frames) / columns)
     sheet = Image.new("RGBA", (columns * width, rows * height))
     for index, frame in enumerate(frames):

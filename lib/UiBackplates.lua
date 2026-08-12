@@ -67,6 +67,22 @@ end
 UiBackplates.arenaFill = ModSetting.new("arenaFill", "ARENA FILL",
   { "OFF", "WHITE", "GEN6" }, { "OFF", "WHITE", "GEN6" })
 
+-- How far down the authored plate to begin its top crop. The values are in
+-- source-image pixels (the bundled plates are 800px tall), so the same choice
+-- identifies the same part of the art on a phone, tablet or desktop window.
+-- Voxel3D clamps it whenever an aspect ratio leaves less crop available.
+local offsetValues, offsetLabels = {}, {}
+for px = 0, 200, 10 do
+  offsetValues[#offsetValues + 1] = px
+  offsetLabels[#offsetLabels + 1] = px .. " PX"
+end
+UiBackplates.backdropOffset = ModSetting.new(
+  "backdropOffset", "BG Y-OFFSET", offsetValues, offsetLabels)
+
+function UiBackplates.backdropOffsetPixels()
+  return tonumber(UiBackplates.backdropOffset:get()) or 0
+end
+
 -- Whether to draw the solid white layer over the voxel world. Decoupled from
 -- sprite light: it works with SHADED cards too (they just read a little
 -- dimmer on white), so WHITE is offered independently of UNLIT.

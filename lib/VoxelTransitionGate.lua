@@ -1,12 +1,16 @@
 -- Visual blackout for destination loads which cannot safely reveal a partly
--- generated voxel scene.  Seamless overworld connections deliberately do not
--- use it: only Continue/boot, a real warp (doors, stairs, caves), and Fly arm
--- the gate.
+-- generated voxel scene. Ordinary doors, stairs, caves and map connections do
+-- not use it: only Continue/boot and explicit travel moves (Fly, Teleport, Dig
+-- and Escape Rope) arm the gate.
 
 local V = ...
 
 local Gate = {
   HOLD_SECONDS = 0.5,
+  -- A corrupt cache record, unsupported neighbour or driver failure must never
+  -- turn a presentation effect into a soft lock. Healthy builds normally clear
+  -- in a fraction of this; after the ceiling the engine's 2D world is safer.
+  MAX_SECONDS = 20,
 }
 
 local active = false
@@ -15,11 +19,10 @@ local targetId = nil
 local ready = false
 local elapsed = 0
 
-function Gate.qualifies(opts, hadMap)
-  if opts and opts.seamless then return false end
+function Gate.qualifies(opts, arrival)
   local via = opts and opts.via
-  return via == "boot" or via == "fly" or via == "warp"
-         or (via == nil and hadMap)
+  return via == "boot" or via == "fly"
+         or arrival == "fly" or arrival == "teleport"
 end
 
 local function voxelEnabled()
@@ -41,11 +44,9 @@ end
 -- object exists. Bind that object at setMap without restarting the clock.
 function Gate.bind(destination)
   if not destination then return end
-  if active and targetId == destination.id then
+  if active and tostring(targetId) == tostring(destination.id) then
     map = destination
-    return
   end
-  Gate.arm(destination)
 end
 
 function Gate.cancel(destination)
@@ -69,6 +70,10 @@ function Gate.update(dt, enabled, destination)
     return
   end
   elapsed = elapsed + math.max(0, dt or 0)
+  if elapsed >= Gate.MAX_SECONDS then
+    Gate.cancel()
+    return
+  end
   if ready and elapsed >= Gate.HOLD_SECONDS then
     Gate.cancel()
   end
@@ -86,7 +91,10 @@ function Gate.install()
 
   local startWarpTo = OverworldState.startWarpTo
   function OverworldState:startWarpTo(mapId, x, y, facing, onDone, opts)
-    if voxelEnabled() and Gate.qualifies(opts, self.map ~= nil) then
+    -- startWarpTo consumes and clears arriveWarp, so inspect it before the
+    -- engine call. Dig, Teleport and Escape Rope all arrive as "teleport".
+    local arrival = self.arriveWarp
+    if voxelEnabled() and Gate.qualifies(opts, arrival) then
       Gate.arm(mapId)
     end
     return startWarpTo(self, mapId, x, y, facing, onDone, opts)
@@ -94,9 +102,12 @@ function Gate.install()
 
   local setMap = OverworldState.setMap
   function OverworldState:setMap(mapId, x, y, facing, opts)
-    local hadMap = self.map ~= nil
+    local boot = voxelEnabled() and Gate.qualifies(opts, nil)
+    if boot then Gate.arm(mapId) end
     local result = setMap(self, mapId, x, y, facing, opts)
-    if voxelEnabled() and Gate.qualifies(opts, hadMap) then Gate.bind(self.map) end
+    -- A travel move was armed by startWarpTo; boot was armed just above.
+    -- bind() deliberately ignores every unrelated ordinary destination.
+    if voxelEnabled() then Gate.bind(self.map) end
     return result
   end
 

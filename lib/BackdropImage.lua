@@ -10,16 +10,9 @@ function BackdropImage.load(folder, file)
   if cache[rel] ~= nil then return cache[rel] or nil end
   local made
   local ok = pcall(function()
-    local fs = love and love.filesystem
-    local bytes = V.mod:read(rel)
-    if type(bytes) == "string" and fs and fs.newFileData then
-      local fileData = fs.newFileData(bytes, file)
-      made = love.graphics.newImage(love.image.newImageData(fileData))
-    else
-      local path = V.mod.assets:path(rel)
-      if not (fs and fs.getInfo and fs.getInfo(path)) then return end
-      made = love.graphics.newImage(love.image.newImageData(path))
-    end
+    -- The public asset facade owns path scoping and image construction. Raw
+    -- love.filesystem access is unavailable to sandboxed mods going forward.
+    made = V.mod.assets:image(rel)
     made:setFilter("linear", "linear")
     made:setWrap("clamp", "clamp")
   end)

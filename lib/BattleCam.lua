@@ -210,9 +210,8 @@ BattleCam.steerable = true
 BattleCam.still = false
 
 -- Hold the solved starting ORBIT and PITCH while leaving the lens live.
--- Flat ARENA FILL plates need this: camera translation over a 2D image makes
--- projected billboards appear to slide independently of their background,
--- but zooming the complete composition remains safe and useful.
+-- This remains available to fixed-pose callers, but ARENA FILL no longer
+-- enables it: WHITE and GEN6 deliberately retain the normal steer and drift.
 BattleCam.poseLocked = false
 
 BattleCam.t = 0
@@ -489,8 +488,8 @@ function BattleCam.rig(arena, groundY, canonical)
   groundY = groundY or 0
   local R = BattleCam.rigFor(arena)
   local mx, mz = arena.mid[1], arena.mid[2]
-  -- VR/canonical callers hard-fix the whole lens too. A flat ARENA FILL only
-  -- fixes the POSE: no drift/orbit/pitch, while its zoom remains live.
+  -- VR/canonical callers hard-fix the whole lens too. A fixed-pose caller
+  -- suppresses drift/orbit/pitch while leaving its zoom live.
   local hardFixed = BattleCam.still or canonical
   local fixedPose = hardFixed or BattleCam.poseLocked
   -- and the steer is withheld a second way, on its own: BACK SPRITES holds

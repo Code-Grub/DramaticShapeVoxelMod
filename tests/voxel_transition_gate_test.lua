@@ -11,9 +11,12 @@ local Gate = chunk({ require = function() error("not needed by pure test") end }
 local destination = {}
 
 assert(Gate.qualifies({ via = "boot" }, false))
-assert(Gate.qualifies({ via = "warp" }, true))
-assert(Gate.qualifies({ via = "fly" }, true))
-assert(not Gate.qualifies({ via = "connection", seamless = true }, true))
+assert(Gate.qualifies({ via = "fly" }, nil))
+assert(Gate.qualifies(nil, "fly"))
+assert(Gate.qualifies(nil, "teleport"))
+assert(not Gate.qualifies({ via = "warp" }, nil))
+assert(not Gate.qualifies(nil, nil))
+assert(not Gate.qualifies({ via = "connection", seamless = true }, nil))
 
 Gate.arm("DESTINATION")
 assert(Gate.blocking(nil))
@@ -33,5 +36,13 @@ assert(Gate.blocking(destination), "unfinished voxels revealed after timer elaps
 Gate.observe(destination, true)
 Gate.update(0, true, destination)
 assert(not Gate.blocking(destination), "late voxels did not reveal immediately")
+
+Gate._reset()
+Gate.bind(destination)
+assert(not Gate.blocking(destination), "ordinary setMap must not arm the gate")
+
+Gate.arm("BROKEN_DESTINATION")
+Gate.update(Gate.MAX_SECONDS, true, nil)
+assert(not Gate.blocking(nil), "failed destination trapped the player forever")
 
 print("voxel transition gate: ok")

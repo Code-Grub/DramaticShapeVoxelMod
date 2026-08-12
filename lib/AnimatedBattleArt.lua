@@ -17,6 +17,12 @@ local BACK_SETS = {
   gen3 = V.data("animated_battle_backs_gen3"),
   gen5 = SETS.gen5,
 }
+local SHINY_SETS = {
+  gen2 = V.data("animated_battle_sprites_gen2_shiny"),
+  gen3 = V.data("animated_battle_sprites_gen3_shiny"),
+  gen4 = V.data("animated_battle_sprites_gen4_shiny"),
+  gen5 = V.data("animated_battle_sprites_gen5_shiny"),
+}
 -- Gen 1 fronts are ordinary single-frame PNGs. Later generations retain the
 -- atlas decoder and timing metadata they have always used.
 local FRONT_SOURCE_KIND = {
@@ -224,9 +230,11 @@ end
 
 local function shinyDefFor(def, side)
   if not def or not def.image then return def end
-  -- Prepend shiny/ into the animated folder: front-animated -> front-animated/shiny
-  local shiny = def.image:gsub("^(assets/battle/(front|back)-animated)/",
-                               "%1/shiny/")
+  -- Each generation owns its shiny child: `...-animated/gen3/shiny/name`,
+  -- matching the importer output and the static-generation resolver.
+  local shiny = def.image:gsub(
+    "^(assets/battle/[^/]+%-animated/gen[1-5])/",
+    "%1/shiny/")
   if shiny == def.image then return def end
   local path = V.mod.assets:path(shiny)
   local fs = love and love.filesystem
@@ -244,16 +252,21 @@ end
 
 local function definition(battler, side)
   local species = BattleArt.speciesFor(battler)
-  local key = species and tostring(species):upper()
+  local key = species and tostring(BattleArt.speciesAlias(species)):upper()
   local setting = side == "back" and BattleArt.backAnimationSetting
                                   or BattleArt.frontAnimationSetting
+  local generation = setting:get()
   local collections = side == "back" and BACK_SETS or SETS
-  local selected = collections[setting:get()]
+  local selected = collections[generation]
+  if BattleArt.prefersModded() and SHINY_SETS[generation] then
+    selected = SHINY_SETS[generation]
+  end
   local bySide = selected and key and selected[key]
   local def = bySide and bySide[side] or nil
   -- MODDED compatibility (species only): prefer the shiny atlas. If it is
   -- absent, resolution leaves the underlying mod-owned sprite in charge.
-  if def and BattleArt.prefersModded() then
+  if def and BattleArt.prefersModded()
+     and selected ~= SHINY_SETS[generation] then
     def = shinyDefFor(def, side)
   end
   return def

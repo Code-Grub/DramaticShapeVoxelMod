@@ -1,10 +1,9 @@
 # Generation 2 animated front sprites
 
-Source reference: [Pokémon Crystal animated sprites — Blue Moon Falls](https://bluemoonfalls.com/images/sprites/crystal/normal/)
+Run `python tools/import_crystal_extended_normal_sprites.py --root .` to
+preserve the established Kanto collection and import Crystal animated fronts
+#152-#251. Raw APNG sources are retained in the packaging-excluded `_source`
+folder so interrupted imports can resume safely.
 
-```powershell
-python tools/import_animated_sprites.py --set gen2 --root .
-```
-
-Generated atlases are ignored by Git and are not covered by the mod's MIT
-license. Verify that you have the right to use and distribute them.
+Generated artwork is ignored by Git and is not covered by the mod's MIT
+license. Verify that you have the right to use and distribute it.

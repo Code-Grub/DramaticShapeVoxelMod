@@ -7,6 +7,9 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 function Relative-Path([string]$FullName) {
   return $FullName.Substring($repo.Length + 1).Replace('\', '/')
 }
+function Test-ExcludedFolder([string]$Relative) {
+  return $Relative -match '(?i)(^|/)(_source|backup)(/|$)'
+}
 
 # Derive the package name from the mod's own manifest (id + version) so the
 # produced .zip matches what the in-game mod manager expects for auto-update:
@@ -30,13 +33,15 @@ $source = @()
 foreach ($dir in @('data', 'lib')) {
   $source += Get-ChildItem -LiteralPath (Join-Path $repo $dir) -Recurse -File |
     ForEach-Object {
-      Relative-Path $_.FullName
+      $relative = Relative-Path $_.FullName
+      if (-not (Test-ExcludedFolder $relative)) { $relative }
     }
 }
 $source += @('CHANGELOG.md', 'main.lua', 'manifest.json', 'mod.card', 'README.md')
 $contracts = @(Get-ChildItem -LiteralPath (Join-Path $repo 'assets\battle') `
   -Recurse -File -Filter 'README.md' | ForEach-Object {
-    Relative-Path $_.FullName
+    $relative = Relative-Path $_.FullName
+    if (-not (Test-ExcludedFolder $relative)) { $relative }
   })
 
 # These files are deliberately ignored by Git, but a local test build should
@@ -49,7 +54,7 @@ $localArt = @(Get-ChildItem -LiteralPath (Join-Path $repo 'assets\battle') `
     # Authoring drafts may live beside a collection in a folder literally
     # named "backup". They are never runtime candidates and must not inflate
     # or leak into the private test package.
-    if ($relative -notmatch '(?i)(^|/)backup(/|$)') { $relative }
+    if (-not (Test-ExcludedFolder $relative)) { $relative }
   })
 $files = @($source + $contracts + $localArt | Sort-Object -Unique)
 if (-not $files.Count) { throw "no package files found" }
@@ -74,6 +79,9 @@ try {
 }
 
 $entries = @(tar -tf $Output)
+if ($entries | Where-Object { Test-ExcludedFolder $_ }) {
+  throw "package unexpectedly contains an _source or backup folder"
+}
 [PSCustomObject]@{
   Path = $Output
   Entries = $entries.Count

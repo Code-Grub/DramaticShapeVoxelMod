@@ -7,8 +7,10 @@ for example `https://img.pokemondb.net/sprites/black-white/back-normal/pikachu.p
 
 ```powershell
 python tools/import_black_white_static_back_sprites.py --root .
+python tools/import_gen5_extended_normal_sprites.py --root .
 ```
 
-The importer writes the first 151 ordinary PNGs here. Artwork is ignored by
-Git and is not covered by the mod's MIT license. Verify that you have the
-right to use and distribute it.
+The first importer writes Kanto. The extension importer preserves those files
+and adds Chikorita through Deoxys. Artwork is ignored by Git and is not covered
+by the mod's MIT license. Verify that you have the right to use and distribute
+it.

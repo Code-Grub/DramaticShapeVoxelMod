@@ -9,8 +9,10 @@ From the repository root, run:
 
 ```powershell
 python tools/import_animated_sprites.py --set gen5 --root .
+python tools/import_gen5_extended_normal_sprites.py --root .
 ```
 
-The command generates both Gen 5 front and back atlases plus shared metadata.
+The first command imports Kanto. The extension command preserves those files
+and adds Chikorita through Deoxys to the front/back atlases and shared metadata.
 Generated artwork is ignored by Git and is not covered by the mod's MIT
 license. Verify that you have the right to use and distribute it.

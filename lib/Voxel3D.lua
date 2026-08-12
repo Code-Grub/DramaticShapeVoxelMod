@@ -444,6 +444,26 @@ function Voxel3D.backdropShader()
   return backdropShader or nil
 end
 
+-- Apple's Metal canvas path presents Image texture coordinates upside-down
+-- here (the same backend family that needs the HUD canvas workaround). Keep
+-- platform discovery inside the still-permitted graphics API: love.system is
+-- unavailable to sandboxed mods in the next engine release.
+function Voxel3D.metalRenderer()
+  if not (love and love.graphics and love.graphics.getRendererInfo) then
+    return false
+  end
+  local ok, name, version, vendor, device =
+    pcall(love.graphics.getRendererInfo)
+  if not ok then return false end
+  local info = table.concat({ tostring(name), tostring(version),
+                              tostring(vendor), tostring(device) }, " "):lower()
+  -- LÖVE may report either Metal directly or its OpenGL ES compatibility
+  -- renderer with an Apple vendor/device string.
+  return info:find("metal", 1, true) ~= nil
+      or (info:find("apple", 1, true) ~= nil
+          and info:find("opengl es", 1, true) ~= nil)
+end
+
 -- Whether the 3D path can run at all. False on a headless test run (no
 -- love.graphics), without shader support, or where a depth canvas cannot be
 -- created -- every caller treats that as "stay on the 2D path".
@@ -1213,14 +1233,27 @@ function Voxel3D.lighting(on)
   pcall(activeShader.send, activeShader, "lightOn", 1)
 end
 
--- A top-anchored CSS-style `cover` rectangle for a plate: fill BOTH axes,
--- centre horizontal overflow, and crop vertical overflow only from the
--- bottom. The authored horizon and wall detail always remain visible.
-function Voxel3D.coverRect(iw, ih, cw, ch)
+-- A CSS-style `cover` rectangle for a plate: fill BOTH axes and centre its
+-- horizontal overflow. `topOffset` selects how many SOURCE-image pixels to
+-- crop from the top, clamped to the vertical overflow so it can never uncover
+-- the canvas. Zero preserves the original top-preferred presentation.
+function Voxel3D.coverRect(iw, ih, cw, ch, topOffset)
   if not (iw and ih and cw and ch and iw > 0 and ih > 0
           and cw > 0 and ch > 0) then return nil end
   local scale = math.max(cw / iw, ch / ih)
-  return (cw - iw * scale) / 2, 0, scale
+  local available = math.max(0, ih - ch / scale)
+  local crop = math.max(0, math.min(available, tonumber(topOffset) or 0))
+  return (cw - iw * scale) / 2, -crop * scale, scale, crop
+end
+
+-- Keep Metal's correction downstream of all screen-space placement. Apple's
+-- canvas path presents the image upside-down, so the negative scale cancels
+-- that backend flip around the complete image height. In particular, `y`
+-- remains the SAME top-origin crop calculated above; the user setting must
+-- never be negated or measured from the bottom on iOS.
+function Voxel3D.backdropTransform(iw, ih, x, y, scale, metal)
+  if metal then return x, y + ih * scale, scale, -scale end
+  return x, y, scale, scale
 end
 
 -- Paint an opaque 2D plate behind later scene geometry. The image uses a
@@ -1228,11 +1261,12 @@ end
 -- viewport without letterboxing: portrait crops the sides, ultrawide keeps
 -- the top and crops only the lower foreground. Depth stays cleared: Pokemon cards drawn afterward still
 -- use their ordinary projected positions and depth relationship.
-function Voxel3D.backdrop(image)
+function Voxel3D.backdrop(image, topOffset)
   if not (active and image and image.getDimensions) then return false end
   local ok, iw, ih = pcall(image.getDimensions, image)
   if not ok or not (iw and ih and iw > 0 and ih > 0) then return false end
-  local x, y, scale = Voxel3D.coverRect(iw, ih, canvasW, canvasH)
+  local x, y, scale = Voxel3D.coverRect(
+    iw, ih, canvasW, canvasH, topOffset)
   if not scale then return false end
   local blur = Voxel3D.backdropShader()
   love.graphics.setShader(blur)
@@ -1242,7 +1276,12 @@ function Voxel3D.backdrop(image)
   end
   love.graphics.setDepthMode()
   love.graphics.setColor(1, 1, 1, 1)
-  love.graphics.draw(image, x, y, 0, scale, scale)
+  -- One full-height plate has a simple, exact centre-independent Metal flip.
+  -- Applying it after cover/crop avoids asymmetric-band and inverted-offset
+  -- mistakes on iOS.
+  local dx, dy, sx, sy = Voxel3D.backdropTransform(
+    iw, ih, x, y, scale, Voxel3D.metalRenderer())
+  love.graphics.draw(image, dx, dy, 0, sx, sy)
   love.graphics.setDepthMode("lequal", true)
   if sceneShader then
     love.graphics.setShader(sceneShader)

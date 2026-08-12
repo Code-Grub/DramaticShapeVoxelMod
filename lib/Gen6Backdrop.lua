@@ -19,7 +19,7 @@ local function phase()
   return name
 end
 
-function Gen6Backdrop.fileFor(map, period, battle)
+function Gen6Backdrop.setFor(map, battle)
   local id = type(map) == "table" and map.id or map
   local fishing = battle and battle.dramaticShapeFishing
   local surfing = battle and battle.dramaticShapeSurfing
@@ -52,7 +52,7 @@ function Gen6Backdrop.fileFor(map, period, battle)
          and Map.isOutdoor(map.def) then
     setName = "shore"
   else
-    setName = encounter and encounter[battle.oppClass]
+    setName = encounter and battle and encounter[battle.oppClass]
               or (id and config.maps[id] or nil)
   end
   if not setName and type(map) == "table" and map.def then
@@ -61,6 +61,11 @@ function Gen6Backdrop.fileFor(map, period, battle)
     -- voxel arena rather than masquerading as Viridian Gym.
     setName = Map.isOutdoor(map.def) and "grassy" or nil
   end
+  return setName
+end
+
+function Gen6Backdrop.fileFor(map, period, battle)
+  local setName = Gen6Backdrop.setFor(map, battle)
   local set = setName and config.sets[setName] or nil
   if type(set) == "string" then return set end
   if type(set) ~= "table" then return nil end
