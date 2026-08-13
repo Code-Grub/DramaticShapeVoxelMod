@@ -65,7 +65,7 @@ end
 -- ------- B) ARENA FILL -------
 
 UiBackplates.arenaFill = ModSetting.new("arenaFill", "ARENA FILL",
-  { "OFF", "WHITE", "GEN6" }, { "OFF", "WHITE", "GEN6" })
+  { "OFF", "WHITE", "GEN6", "PNG" }, { "OFF", "WHITE", "GEN6", "PNG" })
 
 -- How far down the authored plate to begin its top crop. The values are in
 -- source-image pixels (the bundled plates are 800px tall), so the same choice
@@ -94,6 +94,10 @@ end
 
 function UiBackplates.arenaGen6()
   return UiBackplates.arenaFill:get() == "GEN6"
+end
+
+function UiBackplates.arenaPng()
+  return UiBackplates.arenaFill:get() == "PNG"
 end
 
 -- Every illustrated collection is a flat plate.  Keeping this generic makes

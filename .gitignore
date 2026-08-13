@@ -11,3 +11,5 @@ __pycache__/
 assets/battle/**
 !assets/battle/**/
 !assets/battle/**/README.md
+# Exception: the curated static arena backdrop shipped as a PNG arena option.
+!assets/battle/front-static/bosses/arena.png

@@ -43,6 +43,7 @@ local BattleBillboard = V.require("BattleBillboard")
 local DayNight = V.require("DayNight")
 local UiBackplates = V.require("UiBackplates")
 local Gen6Backdrop = V.require("Gen6Backdrop")
+local Images = V.require("BackdropImage")
 local BossBackdrop = V.require("BossBackdrop")
 local AntiAlias = V.require("AntiAlias")
 local PaletteFX = require("src.render.PaletteFX")
@@ -373,7 +374,9 @@ function BattleScene.render(state, arena, textures, token, battle)
   local neighbors = (host == state.map) and (state.neighbors or {}) or {}
   local whiteFill = UiBackplates.arenaWhite()
   local gen6Fill = UiBackplates.arenaGen6()
+  local pngFill = UiBackplates.arenaPng()
   local gen6Image = gen6Fill and Gen6Backdrop.image(state.map, battle) or nil
+  local pngImage = pngFill and Images.load("bosses", "arena.png") or nil
   -- Boss art is an encounter override, not an ARENA FILL collection.  It may
   -- therefore sit above GEN6 now and GEN4/OPENART later, while OFF/WHITE keep
   -- their established meanings. Use the actual battle map for identity even
@@ -381,7 +384,7 @@ function BattleScene.render(state, arena, textures, token, battle)
   local bossImage = UiBackplates.arenaArt()
                     and UiBackplates.bossEnabled()
                     and BossBackdrop.image(state.map, battle) or nil
-  local artImage = bossImage or gen6Image
+  local artImage = bossImage or pngImage or gen6Image
   -- A missing/corrupt optional plate fails open to the ordinary voxel arena,
   -- never to an opaque black battle.
   local flatFill = whiteFill or artImage ~= nil
