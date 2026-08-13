@@ -1,8 +1,10 @@
 -- One cheap, curved floor beneath the loaded voxel neighborhood.
 --
--- The terrain remains authoritative: this mesh is drawn first at Y=-4 with
+-- The terrain remains authoritative: this mesh is drawn first at Y=-20 with
 -- depth writes, so ordinary ground, recessed water and every structure cover
--- it naturally. Only literal holes expose it. Coarse tessellation is required
+-- it naturally. Only literal holes expose it -- and sitting 20 units down (not
+-- at foot level) the fill reads as a shaft dropping away through the hole
+-- rather than a flat puddle filling the gap. Coarse tessellation is required
 -- because V-CURVE bends vertices; one four-corner quad would remain two flat
 -- triangles between its corners.
 
@@ -20,7 +22,7 @@ local WorldUnderlay = {}
 
 local STEP = 32
 local RANGE = 32768
-local HEIGHT = -4
+local HEIGHT = -20
 
 WorldUnderlay.setting = ModSetting.new(
   "worldFill", "WORLD FILL",
