@@ -496,7 +496,7 @@ function VoxelScene.prefetch(state)
     if not nbMeshBuf[i] then
       nbMeshBuf[i], nbWaterBuf[i] = ChunkMesher.pair(nb.map, false)
     end
-    if not nbMeshBuf[i] then ready = false end
+    -- if not nbMeshBuf[i] then ready = false end
   end
   for i = #nbs + 1, #nbMeshBuf do
     nbMeshBuf[i], nbWaterBuf[i] = nil, nil
