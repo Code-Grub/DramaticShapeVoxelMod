@@ -8,9 +8,13 @@
 
 local V = ...
 
+local Map = require("src.world.Map")
+local TileRenderer = require("src.render.TileRenderer")
+
 local Voxel3D = V.require("Voxel3D")
 local Mat4 = V.require("Mat4")
 local ModSetting = V.require("ModSetting")
+local TerrainAtlas = V.require("TerrainAtlas")
 
 local WorldUnderlay = {}
 
@@ -20,22 +24,14 @@ local HEIGHT = -4
 
 WorldUnderlay.setting = ModSetting.new(
   "worldFill", "WORLD FILL",
-  { "dark", "grass", "field", "soil", "water" },
-  { "DARK", "GRASS", "FIELD", "SOIL", "WATER" })
+  { "dark" },
+  { "DARK" })
 
 local COLORS = {
-  -- Matte dark grey, sampled from the inner perimeter / floor void of an
-  -- indoor Pokémon Center (the band between the green sky and the wooden
-  -- wall). Chosen as the default so holes and the void read as intentional
-  -- negative space rather than a stray green seam.
-  dark  = {  72 / 255,  72 / 255,  72 / 255, 1 }, -- #484848
-  -- Sampled from the light path/grass reference used by the tileset. Keeping
-  -- the two surfaces distinct prevents green seams beneath cities and paths
-  -- while making holes in grassy routes blend into their immediate ground.
-  field = { 223 / 255, 216 / 255, 164 / 255, 1 }, -- #DFD8A4
-  grass = { 139 / 255, 197 / 255,  26 / 255, 1 }, -- #8BC51A
-  soil  = { 119 / 255,  78 / 255,  33 / 255, 1 }, -- #774E21
-  water = {  66 / 255,  55 / 255, 128 / 255, 1 }, -- #423780
+  -- Matte dark grey, #181818, sampled from the near-black void at the
+  -- player's entrance (the lower floor band in the indoor diorama). Chosen
+  -- as the default so holes and the void read as intentional negative space.
+  dark  = {  24 / 255,  24 / 255,  24 / 255, 1 }, -- #181818
 }
 
 local DEFAULT_FILL = "dark"
@@ -92,28 +88,52 @@ local function meshFor()
   return cachedMesh
 end
 
-local function textureFor(archetype)
-  if textures[archetype] then return textures[archetype] end
+local function colorKey(color)
+  return ("%.6f,%.6f,%.6f,%.6f"):format(
+    color[1] or 0, color[2] or 0, color[3] or 0, color[4] or 1)
+end
+
+local function textureFor(color)
+  local key = colorKey(color)
+  if textures[key] then return textures[key] end
   if not (love and love.image and love.image.newImageData
           and love.graphics and love.graphics.newImage) then return nil end
   local ok, texture = pcall(function()
     local data = love.image.newImageData(1, 1)
-    data:setPixel(0, 0, unpack(COLORS[archetype] or COLORS.field))
+    data:setPixel(0, 0, unpack(color))
     local image = love.graphics.newImage(data)
     image:setFilter("nearest", "nearest")
     return image
   end)
-  if ok then textures[archetype] = texture end
+  if ok then textures[key] = texture end
   return ok and texture or nil
 end
 
-function WorldUnderlay.draw(state, cx, cy)
-  if not state then return false end
+-- Resolve the underlay BEFORE Voxel3D.beginScene binds the scene shader/canvas.
+-- Outdoors keeps the explicit WORLD FILL material. Indoors instead follows the
+-- map's own border block, because the engine's three-block void ring is the
+-- authored room boundary and a perspective camera can see beyond it.
+function WorldUnderlay.resolve(state, colors)
+  local map = state and state.map
+  if map and map.def and not Map.isOutdoor(map.def) then
+    local borderId = TileRenderer.borderBlockFor(map)
+    if borderId == false then return { 0, 0, 0, 1 }, "indoor:black" end
+    local color = TerrainAtlas.borderBlockColor(map, colors, borderId)
+    if color then return color, "indoor:border:" .. tostring(borderId) end
+  end
   local material = WorldUnderlay.selected()
-  local mesh, texture = meshFor(), textureFor(material)
+  return COLORS[material] or COLORS[DEFAULT_FILL], "world:" .. tostring(material)
+end
+
+function WorldUnderlay.draw(state, cx, cy, resolvedColor)
+  if not state then return false end
+  local color = resolvedColor or COLORS[WorldUnderlay.selected()] or COLORS[DEFAULT_FILL]
+  local mesh, texture = meshFor(), textureFor(color)
   if not (mesh and texture) then return false end
   -- A clean material layer: no voxel-grid seams or accidental glass-mask
-  -- sampling. It still receives the same day tint and V-CURVE as terrain.
+  -- sampling. Drawn unlit so it never receives the sun's cast/self shadow
+  -- (the inner border must not drop a shadow onto the outer fill).
+  Voxel3D.lighting(false)
   Voxel3D.seams(false)
   Voxel3D.glass(false)
   -- The untextured plane follows the camera focus exactly. Its 65K-wide edge
@@ -122,6 +142,7 @@ function WorldUnderlay.draw(state, cx, cy)
   Voxel3D.draw(mesh, texture, Mat4.translate(cx or 0, 0, cy or 0))
   Voxel3D.glass(true)
   Voxel3D.seams(true)
+  Voxel3D.lighting(true)
   return true
 end
 

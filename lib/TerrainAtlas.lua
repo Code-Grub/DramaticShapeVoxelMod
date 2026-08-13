@@ -672,6 +672,66 @@ function TerrainAtlas.forMap(map, colors)
   return TerrainAtlas.animate(map, colors, base, baked) or base
 end
 
+-- Representative colour of one 4x4 border metatile AFTER the map's palette
+-- bake.  This is used by the distant indoor underlay: the engine's void is a
+-- border BLOCK, not a separately exposed RGB value, so the only faithful
+-- colour source is the same finished atlas the terrain itself samples.
+--
+-- The most frequent opaque texel is intentionally used rather than an average:
+-- an interior void block is mostly one background shade with a few edge/detail
+-- pixels.  Averaging those details would invent a colour that does not exist in
+-- the art and would leave a visible seam once the scene light multiplies it.
+local borderColorCache = setmetatable({}, { __mode = "k" })
+function TerrainAtlas.borderBlockColor(map, colors, blockId)
+  if not (map and map.tileset and blockId ~= nil) then return nil end
+  if blockId == false then return { 0, 0, 0, 1 } end
+
+  local atlas, baked = staticAtlas(map, colors)
+  if not atlas then return nil end
+  local perImage = borderColorCache[atlas]
+  if not perImage then
+    perImage = {}
+    borderColorCache[atlas] = perImage
+  end
+  if perImage[blockId] then return perImage[blockId] end
+
+  local block = map.tileset.blocks and map.tileset.blocks[blockId + 1]
+  if not block then return nil end
+  local data = baked or readback(atlas)
+  if not (data and data.getPixel) then return nil end
+
+  local perRow = map.tileset.tilesPerRow or 16
+  local counts, bestKey, bestCount, bestLum = {}, nil, -1, math.huge
+  for _, tile in ipairs(block) do
+    local sx, sy = (tile % perRow) * 8, math.floor(tile / perRow) * 8
+    for y = 0, 7 do
+      for x = 0, 7 do
+        local r, g, b, a = data:getPixel(sx + x, sy + y)
+        if a > 0 then
+          local R = math.floor(r * 255 + 0.5)
+          local G = math.floor(g * 255 + 0.5)
+          local B = math.floor(b * 255 + 0.5)
+          local key = R * 65536 + G * 256 + B
+          local n = (counts[key] or 0) + 1
+          counts[key] = n
+          local lum = R * 0.299 + G * 0.587 + B * 0.114
+          if n > bestCount or (n == bestCount and lum < bestLum) then
+            bestKey, bestCount, bestLum = key, n, lum
+          end
+        end
+      end
+    end
+  end
+  if not bestKey then return nil end
+
+  local R = math.floor(bestKey / 65536)
+  local G = math.floor(bestKey / 256) % 256
+  local B = bestKey % 256
+  local out = { R / 255, G / 255, B / 255, 1 }
+  perImage[blockId] = out
+  return out
+end
+
 -- The image a character model should texture from under an SGB palette.
 --
 -- In the 2D SGB modes, sprites are colorized by the screen-space
@@ -729,6 +789,7 @@ function TerrainAtlas.invalidate()
   cache = {}
   cacheData = {}
   attempts = {}
+  borderColorCache = setmetatable({}, { __mode = "k" })
   for _, entry in pairs(animated) do
     releaseAnimatedEntry(entry)
   end

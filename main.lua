@@ -460,9 +460,10 @@ local SETTINGS = {
   { WorldCurve.setting,
     "Bend the world down over the horizon, Animal Crossing style." },
   { WorldUnderlay.setting,
-    "Choose the solid world beneath terrain holes and beyond every map edge: "
-    .. "GRASS, FIELD, SOIL or WATER. The fill follows the camera beyond the "
-    .. "visible horizon and does not switch color between routes.",
+    "Choose the solid outdoor world beneath terrain holes and beyond map edges: "
+    .. "DARK, GRASS, FIELD, SOIL or WATER. Indoor horizons automatically match "
+    .. "the room's own border/void material so the finite map ring cannot reveal "
+    .. "a differently coloured infinite fill behind it.",
     full = true },
   { Water.setting,
     "Reflections on water. FULL adds screen-space reflections of the "
@@ -1294,7 +1295,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.8.5"
+mod.exports.version = "1.8.6"
 mod.exports.battlePresentation = BattlePresentation.export()
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout

@@ -1035,6 +1035,13 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   -- ground THIS camera sees (a no-op at blend zero): the orbit's fit
   -- reaches far north and barely south, which is right for every rung
   -- but a head free to face south.
+  -- Resolve the distant underlay while no scene shader is bound.  Indoors the
+  -- resolver samples the map's palette-baked border block; this makes the
+  -- infinite plane and the finite three-block engine void ring enter the same
+  -- lighting equation from the same base colour instead of meeting as, e.g.,
+  -- a grey ring against a green WORLD FILL horizon.
+  local underlayColor = WorldUnderlay.resolve(state, colorsFor(state.map))
+
   local shCx, shCy = FirstPerson.shadowCenter(cx, cy, vh)
   castShadows(state, terrain, nbMesh, posed, shCx, shCy, vw, vh, atlasFor,
               water, nbWater)
@@ -1046,7 +1053,7 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   -- One material-coloured plane below the whole loaded neighborhood closes
   -- literal terrain holes without obscuring a single valid world fragment.
   -- Drawn before terrain, depth alone decides where it remains visible.
-  WorldUnderlay.draw(state, cx, cy)
+  WorldUnderlay.draw(state, cx, cy, underlayColor)
   Voxel3D.draw(terrain, atlasFor(state.map), nil)
   for i, nb in ipairs(state.neighbors or {}) do
     Voxel3D.draw(nbMesh[i], atlasFor(nb.map),
