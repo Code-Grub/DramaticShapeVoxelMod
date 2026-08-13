@@ -71,8 +71,10 @@ UiBackplates.arenaFill = ModSetting.new("arenaFill", "ARENA FILL",
 -- source-image pixels (the bundled plates are 800px tall), so the same choice
 -- identifies the same part of the art on a phone, tablet or desktop window.
 -- Voxel3D clamps it whenever an aspect ratio leaves less crop available.
+-- Range spans -400..+400 (step 20): negative values let narrow/phone viewports
+-- reveal the TOP of the arena art, which the old positive-only range hid.
 local offsetValues, offsetLabels = {}, {}
-for px = 0, 200, 10 do
+for px = -400, 400, 20 do
   offsetValues[#offsetValues + 1] = px
   offsetLabels[#offsetLabels + 1] = px .. " PX"
 end

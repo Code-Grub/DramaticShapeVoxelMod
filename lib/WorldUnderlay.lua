@@ -28,10 +28,10 @@ WorldUnderlay.setting = ModSetting.new(
   { "DARK" })
 
 local COLORS = {
-  -- Matte dark grey, #181818, sampled from the near-black void at the
-  -- player's entrance (the lower floor band in the indoor diorama). Chosen
-  -- as the default so holes and the void read as intentional negative space.
-  dark  = {  24 / 255,  24 / 255,  24 / 255, 1 }, -- #181818
+  -- Dark teal/blue-green void fill, #00476D (RGB 0,71,109). Chosen over the
+  -- near-black #181818 after on-device comparison: reads as intentional
+  -- negative space against the voxel world without crushing to black.
+  dark  = {   0 / 255,  71 / 255, 109 / 255, 1 }, -- #00476D
 }
 
 local DEFAULT_FILL = "dark"
