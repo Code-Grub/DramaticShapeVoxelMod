@@ -56,6 +56,43 @@ T.eq(BattlePresentation.suppressed("hud"), false,
   "a broken replacement presenter leaves the native HUD visible")
 removeBroken()
 
+-- Presentation companions get a stable, read-only staged-battle descriptor
+-- instead of reaching through the exported module loader for implementation
+-- details. Its coordinates are copies, so consumers cannot move Battle Art's
+-- live shot by retaining or mutating them.
+local BattleStage = modExports.lib.require("BattleStage")
+local expectedBattle = {}
+local liveShot = { player = { 40, 90 }, enemy = { 130, 50 } }
+local stageExport = BattleStage.export({
+  ANCHOR = { player = { 26, 96 }, enemy = { 124, 56 } },
+  enabled = function() return true end,
+  battle = function() return expectedBattle end,
+  shot = function() return liveShot end,
+  backPinned = function() return true end,
+  animScale = function() return 1.25 end,
+})
+T.eq(stageExport.apiVersion, 1,
+  "the public staged-battle descriptor is versioned")
+T.eq(stageExport.enabled(), true,
+  "the staged-battle descriptor reports the feature setting")
+T.eq(stageExport.state({}), nil,
+  "a consumer cannot claim projection from a different battle")
+local stage = stageExport.state(expectedBattle)
+T.check(stage and stage.staged and stage.ready,
+  "the active staged battle publishes a ready projection")
+T.eq(stage.projectedAnchors.player[1], 26,
+  "a pinned player reports its authored UI anchor")
+T.eq(stage.projectedAnchors.enemy[1], 130,
+  "the enemy reports its live projected anchor")
+T.eq(stage.animationScale, 1.25,
+  "the animation transform reports Battle Art's live scale")
+T.check(stage.ownership.arena and stage.ownership.battlers
+    and stage.ownership.camera and stage.ownership.animationProjection,
+  "the descriptor declares the staged surfaces Battle Art owns")
+stage.projectedAnchors.enemy[1] = -1
+T.eq(liveShot.enemy[1], 130,
+  "published projection coordinates cannot mutate the live shot")
+
 -- The mod removes only the presentation flag created by field poison. The
 -- poison routine itself remains the engine's routine (wrapped in main.lua),
 -- so damage, timing, sound and faint handling are not reimplemented here.

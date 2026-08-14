@@ -94,6 +94,7 @@ local WorldCurve = V.require("WorldCurve")
 local WorldUnderlay = V.require("WorldUnderlay")
 local OverworldBattle = V.require("OverworldBattle")
 local BattlePresentation = V.require("BattlePresentation")
+local BattleStage = V.require("BattleStage")
 local BattleArt = V.require("BattleArt")
 local UiBackplates = V.require("UiBackplates")
 local BattleExit = V.require("BattleExit")
@@ -1307,6 +1308,7 @@ end)
 
 mod.exports.version = "1.8.8"
 mod.exports.battlePresentation = BattlePresentation.export()
+mod.exports.battleStage = BattleStage.export(OverworldBattle)
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout
 mod.exports.lib = V
