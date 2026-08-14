@@ -53,6 +53,15 @@ engine's own landing pipeline per cell crossed, so warps, encounters,
 ledges, gates and scripts all fire exactly as themselves. Step off the
 rung and the grid walk is back.
 
+## Game support
+
+Battle Art 1.9.0 supports Red, Blue, and Yellow. It intentionally declares
+Gen 1 only: Gold uses separate world, map, battle, script, and UI stacks, while
+this mod currently integrates directly with their Gen 1 counterparts. See
+[Why Battle Art is Gen 1-only today](docs/GEN1_GEN2_DIFFERENCES.md) for the
+confirmed blockers, reusable renderer components, and a suggested Gen 2
+porting plan.
+
 ## Controls
 
 Every key is free-roam only, and each one is also a row on the OPTIONS
