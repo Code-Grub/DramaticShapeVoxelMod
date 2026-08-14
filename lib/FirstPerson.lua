@@ -803,7 +803,18 @@ function FirstPerson.install()
         mouseHeld[button] = V.mod.input:press(game, mapped)
         return true
       end
-    elseif ev.phase == "released" or ev.phase == "cancelled" then
+    elseif ev.phase == "cancelled" then
+      -- Cancellation means the pointer as a whole was lost (focus change,
+      -- capture reset), not merely that ev.button came up.  Drop every
+      -- synthetic hold so a second mouse button cannot strand A or B down.
+      local claimed = hordeMouse(button, false)
+      for heldButton, token in pairs(mouseHeld) do
+        V.mod.input:release(token)
+        mouseHeld[heldButton] = nil
+        claimed = true
+      end
+      if claimed then return true end
+    elseif ev.phase == "released" then
       -- A release always reaches whoever owned the press, even if capture or
       -- the battle mode ended while the button was down.
       if not mouseHeld[button] and hordeMouse(button, false) then return true end
@@ -811,12 +822,6 @@ function FirstPerson.install()
         V.mod.input:release(mouseHeld[button])
         mouseHeld[button] = nil
         return true
-      end
-      if ev.phase == "cancelled" then
-        for heldButton, token in pairs(mouseHeld) do
-          V.mod.input:release(token)
-          mouseHeld[heldButton] = nil
-        end
       end
     end
     return next(game, ev)

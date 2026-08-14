@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **Current mod API compatibility.** The mod now boots inside the engine's
+  sandbox instead of reaching denied `love.filesystem`, FFI, or LOVE callback
+  surfaces. Mouse and touch camera input use the supported `input.pointer`
+  seam, with source-owned synthetic A/B holds that cannot strand on focus
+  loss. The manifest now targets Gen 1 explicitly and requires engine 0.1.87.
+- **Bounded voxel streaming.** A new `R.DIST` option defaults to a 32-cell
+  connected-map radius, with SHORT, FAR, and uncapped FULL choices. Far
+  connected maps no longer request meshes or submit terrain, figures,
+  reflections, or shadows until the player approaches them.
+- **Sandbox-safe mesh upload.** When FFI is unavailable, chunk vertices are
+  packed into bounded ByteData batches before GPU upload instead of creating
+  millions of per-vertex Lua tables. Legacy engines retain their existing FFI
+  and persistent disk-cache paths; sandboxed engines hide disk-cache actions
+  and keep diagnostics in memory.
+
 - **Mom heal flash removed.** Red's mom still heals the party, plays the
   recovery jingle, and finishes her dialogue, but her undersized 160x144 white
   screen flashes are skipped in the 3D overworld. Other fades are unchanged.

@@ -9,7 +9,7 @@
   "games": [
     "gen1"
   ],
-  "game_version": "0.0.0-dev || >=0.1.37 <2.0.0",
+  "game_version": "0.0.0-dev || >=0.1.87 <2.0.0",
   "priority": 100,
   "dependencies": [],
   "optional_dependencies": [],

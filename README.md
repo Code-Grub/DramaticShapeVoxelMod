@@ -90,6 +90,11 @@ on the world whether or not the free-roam camera is pitched over.
 
 ## Persistent voxel precache
 
+Persistent mesh precaching is available on legacy engines that expose the
+filesystem and FFI facilities it needs. Current sandboxed engines hide the
+PRECACHE and CACHE actions; they build meshes through bounded packed buffers
+in session memory instead, with **R.DIST: MEDIUM** limiting adjacent-map work.
+
 The title menu's **PRECACHE** item opens **GENERATE PRECACHE** before gameplay.
 It cooperatively prepares every persistent mesh variant the renderer can ask
 for, shows live progress and disk use, and remains cancellable with B. Running
