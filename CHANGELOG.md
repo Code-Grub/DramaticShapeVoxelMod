@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Provider-neutral shiny routing.** Battle Art now owns the canonical Gen 2
+  DV predicate instead of consulting Crystal Animated Sprites' image API.
+  `MODDED` sends only DV-confirmed shinies to the matching shiny collection or
+  override; ordinary Pokemon retain the selected normal generation. Explicit
+  HP DVs, when supplied by another mod, must match the value derived from the
+  Attack/Defense/Speed/Special low bits.
+
 ## 1.8.3 — Illustrated battle arenas
 
 - Added the optional GEN6 location-background collection and an independent

@@ -71,7 +71,7 @@ menu.
 | the **PLAYER ANIM** options row | PNG / GEN 1–5 / ASH / GARY / RED / ASH FRONT / MISTY FRONT / BROCK FRONT / BULMA FRONT / GARY FRONT / ROM — choose a static `player.png` or five-pose player intro while ANIMATED is selected |
 | the **ANIM FRONT GEN** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 — choose a single-frame Gen 1 compatibility set or an animated Gen 2–5 collection |
 | the **BACK ART SET** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 — STATIC always uses generation PNGs; ANIMATED uses Gen 3/5 atlases and Gen 1/2/4 PNGs |
-| the **DUPLICATE FIX** options row | BATTLE ART / MODDED — keep the selected Battle Art pictures in charge, or give installed sprite mods and shiny overrides priority; replaces both old SHINY FIX rows |
+| the **DUPLICATE FIX** options row | BATTLE ART / MODDED — keep the selected Battle Art pictures in charge, or use the Gen 2 DV formula to route actual shinies through matching shiny collections/overrides while ordinary Pokémon retain their normal selected art; replaces both old SHINY FIX rows |
 | the **PLAYER** options row | FRONT SPRITES / BACK SPRITES — supplied art is world-placed; a missing selected back uses the ROM's UI-attached pic |
 | the **FLIP FRONT SPRITE** options row | BATTLE ART / DEFAULT — mirror ordinary Battle Art on the player side, or preserve an already-oriented picture supplied by a sprite mod |
 | the **BACK PLACEMENT** options row | AUTO / WORLD / OG UI — use the mode-aware default or force every player back onto one layer |

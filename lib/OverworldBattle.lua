@@ -1090,12 +1090,11 @@ function OverworldBattle.install()
 
   local BattleState = require("src.battle.BattleState")
 
-  -- Crystal Animated Sprites advances by assigning battler.sprite after the
-  -- engine update. DUPLICATE FIX: BATTLE ART owns that same field, so retain
-  -- our already-selected frame when (and only when) Crystal's exported image
-  -- predicate confirms that its loop overwrote it. The optional dependency in
-  -- manifest.json makes this wrapper outermost even with Crystal v1.5's 980
-  -- priority. Engine effects and unknown sprite mods pass through untouched.
+  -- Shiny sprite mods advance by assigning battler.sprite after the engine
+  -- update. DUPLICATE FIX: BATTLE ART owns that same field, so retain our
+  -- already-selected frame for a DV-confirmed shiny without depending on a
+  -- particular mod's image-identity API. The unchanged-species guard leaves
+  -- Transform and other shape changes in charge.
   if not BattleState.dramaticShapeDuplicateFixHook then
     local innerUpdate = BattleState.update
     function BattleState:update(dt)
@@ -1110,12 +1109,12 @@ function OverworldBattle.install()
       local result = innerUpdate(self, dt)
       if not BattleArt.prefersModded() then
         if ownedEnemy and enemy and enemySpecies == BattleArt.speciesFor(enemy)
-           and BattleArt.isCrystalImage(enemy.sprite) then
+           and BattleArt.isShiny(enemy) and enemy.sprite ~= ownedEnemy then
           enemy.sprite = ownedEnemy
         end
         if ownedPlayer and player
            and playerSpecies == BattleArt.speciesFor(player)
-           and BattleArt.isCrystalImage(player.sprite) then
+           and BattleArt.isShiny(player) and player.sprite ~= ownedPlayer then
           player.sprite = ownedPlayer
         end
       end
@@ -1244,10 +1243,14 @@ function OverworldBattle.install()
     local out = innerPic(self, img)
     if not OverworldBattle.shot() then return out end
     -- Authored Battle Art PNGs already distinguish white paint from alpha.
-    -- Crystal Animated Sprites does too and publishes an identity predicate
-    -- for generated/transform frames. Do not reinterpret either one's holes.
+    -- A DV-confirmed shiny may be owned by any shiny sprite mod, so preserve
+    -- its authored transparency without asking that mod for image identity.
+    local shinyPic = (self.enemy and img == self.enemy.sprite
+                      and BattleArt.isShiny(self.enemy))
+                  or (self.player and img == self.player.sprite
+                      and BattleArt.isShiny(self.player))
     if BattleArt.isExternal(img) or BattleArt.isExternal(out)
-       or BattleArt.isCrystalImage(img) or BattleArt.isCrystalImage(out) then
+       or shinyPic then
       return out
     end
 

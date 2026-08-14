@@ -3012,6 +3012,47 @@ T.eq(Art.speciesFor(nativeDitto), "PIDGEY",
   "Battle Art keeps selecting the transformed species on later frames")
 T.eq(Art.speciesFor({ mon = { species = "DITTO" } }), "DITTO",
   "ordinary battlers still resolve their own species")
+T.check(Art.isShiny({ mon = { dvs = {
+  attack = 2, defense = 10, speed = 10, special = 10,
+} } }), "the Gen 2 formula accepts shiny Attack DV 2")
+T.check(Art.isShiny({ mon = { dvs = {
+  attack = 3, defense = 10, speed = 10, special = 10,
+} } }), "the Gen 2 formula accepts shiny Attack DV 3")
+T.check(Art.isShiny({ mon = { dvs = {
+  attack = 6, defense = 10, speed = 10, special = 10,
+} } }), "the Gen 2 formula accepts shiny Attack DV 6")
+T.check(Art.isShiny({ mon = { dvs = {
+  attack = 7, defense = 10, speed = 10, special = 10,
+} } }), "the Gen 2 formula accepts shiny Attack DV 7")
+T.check(Art.isShiny({ mon = { dvs = {
+  attack = 10, defense = 10, speed = 10, special = 10,
+} } }), "the Gen 2 formula accepts shiny Attack DV 10")
+T.check(Art.isShiny({ mon = { dvs = {
+  attack = 11, defense = 10, speed = 10, special = 10,
+} } }), "the Gen 2 formula accepts shiny Attack DV 11")
+T.check(Art.isShiny({ mon = { dvs = {
+  attack = 14, defense = 10, speed = 10, special = 10,
+} } }), "the Gen 2 formula accepts shiny Attack DV 14")
+T.check(Art.isShiny({ mon = { dvs = {
+  attack = 15, defense = 10, speed = 10, special = 10,
+} } }), "the Gen 2 formula accepts shiny Attack DV 15")
+T.check(Art.isShiny({ dvs = {
+  attack = 2, defense = 10, speed = 10, special = 10, hp = 0,
+} }), "an even shiny Attack DV derives HP DV 0")
+T.check(Art.isShiny({ dvs = {
+  attack = 3, defense = 10, speed = 10, special = 10, hp = 8,
+} }), "an odd shiny Attack DV derives HP DV 8")
+T.check(not Art.isShiny({ mon = { dvs = {
+  attack = 4, defense = 10, speed = 10, special = 10,
+} } }), "an Attack DV outside the Gen 2 set is ordinary")
+T.check(not Art.isShiny({ mon = { dvs = {
+  attack = 2, defense = 9, speed = 10, special = 10,
+} } }), "Defense, Speed and Special must each equal 10")
+T.check(not Art.isShiny({ mon = { dvs = {
+  attack = 3, defense = 10, speed = 10, special = 10, hp = 0,
+} } }), "a supplied HP DV must agree with the derived shiny HP DV")
+T.check(not Art.isShiny({ mon = { species = "POLIWAG" } }),
+  "a Pokemon without DVs is never guessed shiny from its species or art")
 T.eq(Art.speciesAlias(152), "CHIKORITA",
   "numeric National Dex ids resolve beyond the original Kanto roster")
 T.eq(Art.speciesAlias("0252"), "TREECKO",
@@ -3029,15 +3070,21 @@ T.eq(Art.generationRelativePath(252, "gen3", "back"),
   "assets/battle/back-static/gen3/treecko.png",
   "normal static backs resolve post-Kanto species inside the selected generation")
 Art.duplicateSetting:sync("modded")
-T.eq(Art.staticSpeciesRelativePath(386, "front"),
+T.eq(Art.staticSpeciesRelativePath(386, "front", true),
   "assets/battle/front-static/shiny/deoxys.png",
-  "bring-your-own shiny static fronts retain their flat override folder")
-T.eq(Art.generationRelativePath(386, "gen4", "back"),
+  "a DV-confirmed shiny static front uses the flat override folder")
+T.eq(Art.staticSpeciesRelativePath(386, "front", false),
+  "assets/battle/front-static/deoxys.png",
+  "MODDED does not send an ordinary Pokemon down the shiny path")
+T.eq(Art.generationRelativePath(386, "gen4", "back", true),
   "assets/battle/back-static/gen4/shiny/deoxys.png",
-  "shiny static backs use the generated generation/shiny folder layout")
-T.eq(Art.generationRelativePath(152, "gen2", "front"),
+  "a DV-confirmed shiny static back uses generation/shiny")
+T.eq(Art.generationRelativePath(152, "gen2", "front", true),
   "assets/battle/front-animated/gen2/shiny/chikorita.png",
-  "single-frame shiny front fallback uses the generation/shiny layout")
+  "a DV-confirmed shiny animated front uses generation/shiny")
+T.eq(Art.generationRelativePath(152, "gen2", "front", false),
+  "assets/battle/front-animated/gen2/chikorita.png",
+  "the same MODDED resolver keeps ordinary fronts in the normal generation")
 Art.duplicateSetting:sync("battle_art")
 
 Art.viewSetting:sync("front")
