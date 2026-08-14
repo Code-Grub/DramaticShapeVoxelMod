@@ -6,7 +6,7 @@
   sandbox instead of reaching denied `love.filesystem`, FFI, or LOVE callback
   surfaces. Mouse and touch camera input use the supported `input.pointer`
   seam, with source-owned synthetic A/B holds that cannot strand on focus
-  loss. The manifest now targets Gen 1 explicitly and requires engine 0.1.87.
+  loss. The manifest now targets Gen 1 explicitly and requires engine 0.1.69.
 - **Bounded voxel streaming.** A new `R.DIST` option defaults to a 32-cell
   connected-map radius, with SHORT, FAR, and uncapped FULL choices. Far
   connected maps no longer request meshes or submit terrain, figures,
