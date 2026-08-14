@@ -11,7 +11,7 @@ Version 1.9.0 supports Pokémon Red, Blue, and Yellow on Gen1Recomp `0.1.69` thr
 - First-person free look and analog movement while retaining the engine's collision, encounter, warp, ledge, and script behavior.
 - Battles staged over the current map with an over-the-shoulder camera, parallax, depth of field, configurable HUDs, and optional Gen 6-style backdrops.
 - Static or animated Pokémon art from Gen 1 through Gen 5 collections, trainer portraits, player intro art, native shiny detection, and safe ROM fallback.
-- Compatibility modes for [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX) sprites, Gen 3 Battle UI, the [Stadium 2 Importer](https://github.com/Deftones565/gen1recomp-mod-stadium2-importer), and Kanto First Person.
+- Compatibility with [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX) attack effects, Gen 3 Battle UI, the [Stadium 2 Importer](https://github.com/Deftones565/gen1recomp-mod-stadium2-importer), and Kanto First Person.
 - Two performance paths: persistent disk precaching on legacy engines and sandbox-safe bounded mesh streaming on current engines.
 
 ## Engine compatibility
@@ -115,7 +115,7 @@ Additional controls choose player front/back presentation, player-card mirroring
 `DUPLICATE FIX` separates sprite ownership from other mods:
 
 - `BATTLE ART` makes this mod own normal and shiny battle sprites. It evaluates the Gen 2 DV shiny formula itself and routes qualifying Pokémon to matching shiny assets without relying on Crystal or another shiny mod's API.
-- `MODDED` yields Pokémon sprite ownership to [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX) or the ROM while retaining Battle Art's arena and camera features.
+- `MODDED` yields Pokémon battler-picture ownership to another Pokémon sprite provider or the ROM while retaining Battle Art's arena and camera features. It does not control move or attack-effect sprites.
 
 Ditto Transform is tracked independently, so transformed art follows the species currently being presented. Missing, malformed, or unreadable assets fail open to the original ROM sprite instead of aborting the battle.
 
@@ -123,10 +123,11 @@ Ditto Transform is tracked independently, so transformed art follows the species
 
 - Gen 3 Battle UI automatically receives the HUD, text/menu, and panel surfaces when its revamped battle UI option is enabled. Unsupported scripted phases retain the native presentation.
 - The older Gen 1 Modern UI adapter is recognized when its experimental battle UI option is enabled.
-- The [Stadium 2 Importer](https://github.com/Deftones565/gen1recomp-mod-stadium2-importer) can provide Stadium 3D models through the staged-battle compatibility interface. This is the supported Stadium model path; it is separate from [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX), which supplies sprites.
+- [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX) can retain its Stadium move effects and announcer while Battle Art owns the staged arena, cards, and camera. Keep `3D-BTL: ON`; no `DUPLICATE FIX` setting is required because its attack-effect sprites are not Pokémon battler pictures.
+- The [Stadium 2 Importer](https://github.com/Deftones565/gen1recomp-mod-stadium2-importer) can provide Stadium 3D models through the staged-battle compatibility interface. This is the supported Stadium model path; it is separate from [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX), which supplies attack-effect sprites.
 - Effects mods can inspect the same read-only staged-battle descriptor rather than importing Battle Art internals.
 - `OFF/KFP` leaves the world underlay to Kanto First Person.
-- `MODDED` leaves species sprite drawing to [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX) or the ROM.
+- `MODDED` leaves Pokémon battler-picture drawing to another Pokémon sprite provider or the ROM.
 
 ## Persistent precache on `0.1.69–0.1.83`
 
@@ -202,7 +203,7 @@ local state = stage and stage.state(battle)
 
 API version 1 is observational and read-only. A staged session reports `staged = true`; `ready` becomes true when the first projected shot exists. Ready state includes copied player/enemy anchors, sprite placement, animation scale, layer transform, and ownership declarations for the arena, battlers, trainers, camera, HUD, transitions, and animation projection. Consumers can align effects or yield competing presentation without retaining live internal tables.
 
-For Stadium 3D models, use the [Stadium 2 Importer](https://github.com/Deftones565/gen1recomp-mod-stadium2-importer), which integrates through this staged-battle interface. [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX) uses sprites instead and should use `DUPLICATE FIX: MODDED` so Battle Art does not draw another species card over them.
+For Stadium 3D models, use the [Stadium 2 Importer](https://github.com/Deftones565/gen1recomp-mod-stadium2-importer), which integrates through this staged-battle interface. [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX) replaces attack effects instead of Pokémon battler pictures, so it does not require `DUPLICATE FIX: MODDED`.
 
 ## Gen 2 status
 
