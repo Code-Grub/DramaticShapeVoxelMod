@@ -16,6 +16,9 @@
 - Removed the named Crystal load-order dependency and transformed-species
   marker fallback. Battle Art now owns both DV detection and Transform species
   tracking without calling or reading another sprite mod.
+- Animated shiny player backs now use their generated shiny metadata instead
+  of combining a shiny atlas with the normal atlas geometry. This prevents ROM
+  fallback and corrupted frame fragments for species such as Krabby and Zubat.
 
 ## 1.8.3 — Illustrated battle arenas
 

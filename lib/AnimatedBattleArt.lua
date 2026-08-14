@@ -228,25 +228,6 @@ local function restore(battler)
   states[battler] = nil
 end
 
-local function shinyDefFor(def, side)
-  if not def or not def.image then return def end
-  -- The shiny atlas is the selected generation's child. This branch is
-  -- reached only for a DV-confirmed shiny while BATTLE ART owns its routing.
-  local shiny = def.image:gsub(
-    "^(assets/battle/[^/]+%-animated/gen[1-5])/",
-    "%1/shiny/")
-  if shiny == def.image then return def end
-  local path = V.mod.assets:path(shiny)
-  local fs = love and love.filesystem
-  if not (fs and fs.getInfo and fs.getInfo(path)) then
-    return nil
-  end
-  local copy = {}
-  for k, v in pairs(def) do copy[k] = v end
-  copy.image = shiny
-  return copy
-end
-
 local function definition(battler, side)
   local species = BattleArt.speciesFor(battler)
   local key = species and tostring(BattleArt.speciesAlias(species)):upper()
@@ -260,19 +241,16 @@ local function definition(battler, side)
   -- Returning no definition restores/leaves that provider's battler image.
   if detectedShiny and BattleArt.prefersModded() then return nil end
   local shiny = detectedShiny and BattleArt.ownsShinyArt()
-  if shiny and side == "front" and SHINY_SETS[generation] then
+  -- Shiny front AND back atlases have independent geometry and timing. Never
+  -- rewrite only the normal definition's filename: e.g. Gen 5 Krabby changes
+  -- from a 55x43 / 73-frame normal back to a 56x56 / 18-frame shiny back.
+  if shiny and SHINY_SETS[generation] then
     selected = SHINY_SETS[generation]
   end
   local bySide = selected and key and selected[key]
-  local def = bySide and bySide[side] or nil
-  -- A generated shiny definition is used when available. Animated backs do
-  -- not have a parallel definition table, so rewrite their selected normal
-  -- definition to the generation's shiny child and yield on a miss.
-  if def and shiny and selected ~= SHINY_SETS[generation] then
-    def = shinyDefFor(def, side)
-  end
-  return def
+  return bySide and bySide[side] or nil
 end
+AnimatedBattleArt.definitionFor = definition
 
 local function updateBattler(battler, side, dt, mode)
   if not battler then return end

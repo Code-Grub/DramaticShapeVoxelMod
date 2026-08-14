@@ -3064,6 +3064,22 @@ T.check(not Art.isShiny({ mon = { dvs = {
 } } }), "a supplied HP DV must agree with the derived shiny HP DV")
 T.check(not Art.isShiny({ mon = { species = "POLIWAG" } }),
   "a Pokemon without DVs is never guessed shiny from its species or art")
+do
+  local Animated = modExports.lib.require("AnimatedBattleArt")
+  local shinyKrabby = { mon = { species = "KRABBY", dvs = {
+    attack = 15, defense = 10, speed = 10, special = 10, hp = 8,
+  } } }
+  Art.duplicateSetting:sync("battle_art")
+  Art.backAnimationSetting:sync("gen5")
+  local def = Animated.definitionFor(shinyKrabby, "back")
+  T.eq(def and def.image,
+    "assets/battle/back-animated/gen5/shiny/krabby.png",
+    "a shiny Gen 5 player back uses the shiny atlas definition")
+  T.eq(def and def.width, 56,
+    "the shiny player back keeps its own atlas geometry")
+  T.eq(def and def.frames, 18,
+    "the shiny player back keeps its own frame count")
+end
 T.eq(Art.speciesAlias(152), "CHIKORITA",
   "numeric National Dex ids resolve beyond the original Kanto roster")
 T.eq(Art.speciesAlias("0252"), "TREECKO",
