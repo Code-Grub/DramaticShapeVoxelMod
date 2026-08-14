@@ -37,9 +37,9 @@ BattleArt.playerAnimationSetting = ModSetting.new(
     "ASH FRONT", "MISTY FRONT", "BROCK FRONT", "BULMA FRONT", "GARY FRONT", "ROM" }, 9)
 -- One owner for species pictures. BATTLE ART keeps this mod's selected front
 -- and back collections in charge, including its imported shiny children.
--- MODDED is the old FRONT/BACK SHINY FIX: ON behaviour: a DV-confirmed shiny
--- is left to the underlying sprite supplied by another mod (or the ROM), while
--- ordinary Pokemon keep the selected normal Battle Art.
+-- MODDED leaves every Pokemon picture to the underlying sprite provider (or
+-- the ROM), whether the Pokemon is ordinary or shiny. Battle Art still stages
+-- and captures that provider's result; it does not install a species image.
 -- Trainers are people rather than battlers, so this never affects trainer art.
 BattleArt.duplicateSetting = ModSetting.new(
   "duplicateFix", "DUPLICATE FIX",
@@ -59,8 +59,12 @@ function BattleArt.prefersModded()
   return BattleArt.duplicateSetting:get() == "modded"
 end
 
-function BattleArt.ownsShinyArt()
+function BattleArt.ownsSpeciesArt()
   return not BattleArt.prefersModded()
+end
+
+function BattleArt.ownsShinyArt()
+  return BattleArt.ownsSpeciesArt()
 end
 
 -- Gen 1 already stores the four DVs Gen 2 uses for shininess. Own that
@@ -381,8 +385,8 @@ local function prepare(path, mode)
 end
 
 function BattleArt.image(species, side, battler)
+  if not BattleArt.ownsSpeciesArt() then return nil end
   local shiny = BattleArt.isShiny(battler)
-  if shiny and BattleArt.prefersModded() then return nil end
   local path = pathFor(species, side, shiny)
   local image = path and prepare(path, displayMode()) or nil
   -- Authored static species fronts preserve their illustration brightness in
@@ -399,8 +403,8 @@ end
 -- pixel metrics as BATTLE ART: STATIC, but live in generation subfolders so
 -- switching the selector does not require renaming or replacing files.
 function BattleArt.generationBackImage(species, generation, battler)
+  if not BattleArt.ownsSpeciesArt() then return nil end
   local shiny = BattleArt.isShiny(battler)
-  if shiny and BattleArt.prefersModded() then return nil end
   local rel = generationRelativePath(
     species, generation, "back", shiny)
   if not rel then return nil end
@@ -418,9 +422,9 @@ function BattleArt.generationFrontImage(species, generation, battler)
   if not tostring(generation or ""):match("^gen[1-5]$") then return nil end
   -- Shiny-compatible: BATTLE ART selects the generation's shiny child folder
   -- (`front-animated/<gen>/shiny/<slug>.png`).
-  -- MODDED leaves a DV-confirmed shiny to another sprite mod or the ROM.
+  -- MODDED leaves every species image to another sprite mod or the ROM.
+  if not BattleArt.ownsSpeciesArt() then return nil end
   local shiny = BattleArt.isShiny(battler)
-  if shiny and BattleArt.prefersModded() then return nil end
   local rel = generationRelativePath(
     species, generation, "front", shiny)
   local path = V.mod.assets:path(rel)

@@ -229,6 +229,9 @@ local function restore(battler)
 end
 
 local function definition(battler, side)
+  -- MODDED owns presentation, not Pokemon art: capture the image selected by
+  -- the provider chain (or ROM) without installing any Battle Art frame.
+  if not BattleArt.ownsSpeciesArt() then return nil end
   local species = BattleArt.speciesFor(battler)
   local key = species and tostring(BattleArt.speciesAlias(species)):upper()
   local setting = side == "back" and BattleArt.backAnimationSetting
@@ -237,9 +240,6 @@ local function definition(battler, side)
   local collections = side == "back" and BACK_SETS or SETS
   local selected = collections[generation]
   local detectedShiny = BattleArt.isShiny(battler)
-  -- MODDED means another sprite provider (or the ROM) owns shiny pictures.
-  -- Returning no definition restores/leaves that provider's battler image.
-  if detectedShiny and BattleArt.prefersModded() then return nil end
   local shiny = detectedShiny and BattleArt.ownsShinyArt()
   -- Shiny front AND back atlases have independent geometry and timing. Never
   -- rewrite only the normal definition's filename: e.g. Gen 5 Krabby changes

@@ -9,10 +9,10 @@
 - **Provider-neutral shiny routing.** Battle Art now owns the canonical Gen 2
   DV predicate instead of consulting Crystal Animated Sprites' image API.
   `BATTLE ART` sends only DV-confirmed shinies to its matching imported shiny
-  collection or override; `MODDED` leaves those shinies to another provider or
-  the ROM. Ordinary Pokemon retain the selected normal generation. Explicit
-  HP DVs, when supplied by another mod, must match the value derived from the
-  Attack/Defense/Speed/Special low bits.
+  collection or override. `MODDED` installs no species art at all, leaving both
+  ordinary and shiny Pokemon on both sides to another provider or the ROM.
+  Explicit HP DVs, when supplied by another mod, must match the value derived
+  from the Attack/Defense/Speed/Special low bits.
 - Removed the named Crystal load-order dependency and transformed-species
   marker fallback. Battle Art now owns both DV detection and Transform species
   tracking without calling or reading another sprite mod.

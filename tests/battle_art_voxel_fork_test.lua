@@ -3115,12 +3115,32 @@ T.eq(Art.generationRelativePath(152, "gen2", "front", false),
   "assets/battle/front-animated/gen2/chikorita.png",
   "the same BATTLE ART resolver keeps ordinary fronts in the normal generation")
 Art.duplicateSetting:sync("modded")
+T.eq(Art.ownsSpeciesArt(), false,
+  "MODDED gives all Pokemon pictures to the provider chain")
 T.eq(Art.ownsShinyArt(), false,
   "MODDED leaves shiny pictures to another provider or the ROM")
 do
+  local Animated = modExports.lib.require("AnimatedBattleArt")
+  local routedOrdinary = { mon = { species = "BLASTOISE", dvs = {
+    attack = 9, defense = 8, speed = 7, special = 6, hp = 0,
+  } } }
   local routedShiny = { mon = { species = "DEOXYS", dvs = {
     attack = 15, defense = 10, speed = 10, special = 10, hp = 8,
   } } }
+  T.eq(Art.image("BLASTOISE", "front", routedOrdinary), nil,
+    "MODDED does not replace a provider's ordinary static front")
+  T.eq(Art.generationBackImage("BLASTOISE", "gen3", routedOrdinary), nil,
+    "MODDED does not install an ordinary Battle Art player back")
+  T.eq(Art.generationFrontImage("BLASTOISE", "gen3", routedOrdinary), nil,
+    "MODDED does not install an ordinary Battle Art opponent front")
+  Art.frontAnimationSetting:sync("gen3")
+  Art.backAnimationSetting:sync("gen3")
+  T.eq(Animated.definitionFor(routedOrdinary, "front"), nil,
+    "MODDED mutes ordinary animated opponent definitions")
+  T.eq(Animated.definitionFor(routedOrdinary, "back"), nil,
+    "MODDED mutes ordinary animated player definitions")
+  T.eq(Animated.definitionFor(routedShiny, "front"), nil,
+    "MODDED mutes shiny animated opponent definitions")
   T.eq(Art.image("DEOXYS", "front", routedShiny), nil,
     "MODDED does not replace another provider's shiny static picture")
   T.eq(Art.generationBackImage("DEOXYS", "gen4", routedShiny), nil,

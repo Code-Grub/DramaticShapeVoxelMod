@@ -537,9 +537,9 @@ local SETTINGS = {
   { BattleArt.duplicateSetting,
     "Choose who owns Pokemon pictures when another sprite mod is installed. "
     .. "BATTLE ART keeps this mod's selected front and back collections on "
-    .. "top. MODDED uses the Gen 2 DV formula to route actual shinies through "
-    .. "the matching shiny collection or override while ordinary Pokemon keep "
-    .. "their selected normal art. This replaces both old FRONT SHINY FIX and "
+    .. "top, including its DV-routed shiny collections. MODDED installs no "
+    .. "Pokemon art and captures the pictures chosen by another sprite mod "
+    .. "or the ROM on both sides. This replaces both old FRONT SHINY FIX and "
     .. "BACK SHINY FIX rows.",
     when = function() return stagedBattles() end, full = true },
   { BattleArt.viewSetting,
