@@ -467,7 +467,7 @@ local SETTINGS = {
     "Bend the world down over the horizon, Animal Crossing style." },
   { WorldUnderlay.setting,
     "Choose the solid outdoor world beneath terrain holes and beyond map edges: "
-    .. "DARK, GRASS, FIELD, SOIL or WATER. Indoor horizons automatically match "
+    .. "CYAN or BLACK. Indoor horizons automatically match "
     .. "the room's own border/void material so the finite map ring cannot reveal "
     .. "a differently coloured infinite fill behind it.",
     full = true },
@@ -1306,7 +1306,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.8.8"
+mod.exports.version = "1.8.9"
 mod.exports.battlePresentation = BattlePresentation.export()
 mod.exports.battleStage = BattleStage.export(OverworldBattle)
 -- exposed so a companion mod can pin its own tiles' shapes or read the

@@ -338,7 +338,10 @@ local function updateStaticFront(battler, generation, mode)
 end
 
 local function updateFront(battler, generation, dt, mode)
-  if FRONT_SOURCE_KIND[generation] == "static" then
+  -- GEN 2 is normally atlas-driven, but later species can be supplied as
+  -- ordinary PNGs when no animation metadata exists for them.
+  if FRONT_SOURCE_KIND[generation] == "static"
+      or (generation == "gen2" and not definition(battler, "front")) then
     updateStaticFront(battler, generation, mode)
   else
     updateBattler(battler, "front", dt, mode)

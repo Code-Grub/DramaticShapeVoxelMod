@@ -26,17 +26,15 @@ local HEIGHT = -20
 
 WorldUnderlay.setting = ModSetting.new(
   "worldFill", "WORLD FILL",
-  { "dark" },
-  { "DARK" })
+  { "cyan", "black" },
+  { "CYAN", "BLACK" })
 
 local COLORS = {
-  -- Dark teal/blue-green void fill, #00476D (RGB 0,71,109). Chosen over the
-  -- near-black #181818 after on-device comparison: reads as intentional
-  -- negative space against the voxel world without crushing to black.
-  dark  = {   0 / 255,  71 / 255, 109 / 255, 1 }, -- #00476D
+  cyan  = {   0 / 255,  71 / 255, 109 / 255, 1 }, -- #00476D
+  black = {  24 / 255,  24 / 255,  24 / 255, 1 }, -- #181818
 }
 
-local DEFAULT_FILL = "dark"
+local DEFAULT_FILL = "cyan"
 
 local cachedMesh = nil
 local textures = {}

@@ -710,24 +710,26 @@ T.check(Backplates.arenaGen6() and Backplates.spritesUnlit(),
   "ARENA FILL: GEN6 selects a flat plate and true-colour cards")
 local Gen6 = modExports.lib.require("Gen6Backdrop")
 local WorldUnderlay = modExports.lib.require("WorldUnderlay")
-T.eq(hookedByLabel["WORLD FILL"].value(), "GRASS",
-  "WORLD FILL defaults to one stable green across map transitions")
-T.eq(#WorldUnderlay.setting.values, 4,
-  "WORLD FILL exposes grass, field, soil and water")
-T.eq(WorldUnderlay.setting.values[3], "soil",
-  "WORLD FILL offers the sampled mountain soil")
-T.eq(WorldUnderlay.COLORS.field[1], 223 / 255,
-  "field holes use the sampled pale path color")
-T.eq(WorldUnderlay.COLORS.field[2], 216 / 255,
-  "the sampled field color retains its warm green channel")
-T.eq(WorldUnderlay.COLORS.grass[1], 139 / 255,
-  "grass holes use the sampled bright route green")
-T.eq(WorldUnderlay.COLORS.grass[2], 197 / 255,
-  "the sampled grass green retains its dominant channel")
-T.eq(WorldUnderlay.COLORS.soil[1], 119 / 255,
-  "soil uses the sampled mountain brown")
-T.eq(WorldUnderlay.COLORS.water[3], 128 / 255,
-  "water uses the sampled blue-purple channel")
+T.eq(hookedByLabel["WORLD FILL"].value(), "CYAN",
+  "WORLD FILL defaults to the established cyan underlay")
+T.eq(#WorldUnderlay.setting.values, 2,
+  "WORLD FILL exposes only cyan and black")
+T.eq(WorldUnderlay.setting.values[1], "cyan",
+  "WORLD FILL stores cyan as its first and default choice")
+T.eq(WorldUnderlay.setting.values[2], "black",
+  "WORLD FILL offers a separate black choice")
+T.eq(WorldUnderlay.COLORS.cyan[1], 0,
+  "cyan keeps its zero red channel")
+T.eq(WorldUnderlay.COLORS.cyan[2], 71 / 255,
+  "cyan keeps the established blue-green fill")
+T.eq(WorldUnderlay.COLORS.cyan[3], 109 / 255,
+  "cyan keeps the established blue channel")
+T.eq(WorldUnderlay.COLORS.black[1], 24 / 255,
+  "black restores the 1.8.6 near-black red channel")
+T.eq(WorldUnderlay.COLORS.black[2], 24 / 255,
+  "black restores the 1.8.6 near-black green channel")
+T.eq(WorldUnderlay.COLORS.black[3], 24 / 255,
+  "black restores the 1.8.6 near-black blue channel")
 T.check(WorldUnderlay.HEIGHT < -2,
   "the cover lies below both ordinary ground and recessed water")
 T.check(WorldUnderlay.RANGE >= 32768,
@@ -3325,6 +3327,43 @@ do
   Art.generationFrontImage, Art.generationBackImage, Art.namedImage =
     savedFront, savedBack, savedNamed
   Backplates.arenaFill:sync("GEN6")
+end
+-- GEN 2 keeps atlas playback for species with metadata, while later species
+-- can use a plain PNG (including the shiny subfolder) from the same collection.
+do
+  local Animated = modExports.lib.require("AnimatedBattleArt")
+  local savedFront = Art.generationFrontImage
+  local selectedNormal, selectedShiny = {}, {}
+  local calls = {}
+  Art.generationFrontImage = function(species, generation, battler)
+    calls[#calls + 1] = { species, generation, battler }
+    return Art.isShiny(battler) and selectedShiny or selectedNormal
+  end
+
+  Art.setting:sync("animated")
+  Art.duplicateSetting:sync("battle_art")
+  Art.frontAnimationSetting:sync("gen2")
+  Art.viewSetting:sync("back")
+  local normal = { mon = { species = "TREECKO" }, sprite = {} }
+  local shiny = { mon = { species = "DEOXYS", dvs = {
+    attack = 15, defense = 10, speed = 10, special = 10, hp = 8,
+  } }, sprite = {} }
+  local battle = { enemy = normal }
+  Animated.update(battle, 1 / 60)
+  T.eq(normal.sprite, selectedNormal,
+    "GEN 2 front falls back to a static PNG without atlas metadata")
+  T.eq(calls[1][1], "TREECKO", "GEN 2 static fallback preserves species")
+  T.eq(calls[1][2], "gen2", "GEN 2 static fallback preserves collection")
+
+  Animated.finish(battle)
+  battle.enemy = shiny
+  Animated.update(battle, 1 / 60)
+  T.eq(shiny.sprite, selectedShiny,
+    "GEN 2 static front fallback passes shiny battlers to shiny routing")
+  T.eq(calls[2][3], shiny, "GEN 2 static fallback preserves shiny battler")
+
+  Animated.finish(battle)
+  Art.generationFrontImage = savedFront
 end
 do
   local savedImage, savedPlayer = Art.image, Art.playerTrainerImage
