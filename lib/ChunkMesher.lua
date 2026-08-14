@@ -161,6 +161,64 @@ end
 
 local TRI_ORDER = { 1, 2, 3, 1, 3, 4 }
 
+-- Sandboxed engines no longer expose FFI to mod-authored chunks. LOVE's own
+-- binary packer still gives newMesh the same tightly packed six-float stream,
+-- without the historical fallback's table per vertex and million-table heap
+-- pressure on large routes. Strings are folded into moderate chunks as they
+-- are emitted, then uploaded cooperatively just like the FFI path.
+local PACKED_VERTEX = "<" .. string.rep("f", 6 * 6)
+local PACKED_VERTEX_BYTES = 6 * 4
+local PACKED_QUADS_PER_CHUNK = 4096
+
+local function newPackedSink()
+  local chunks, parts, values = {}, {}, {}
+  local quads, n = 0, 0
+
+  local function flush()
+    if #parts == 0 then return end
+    chunks[#chunks + 1] = table.concat(parts)
+    parts = {}
+  end
+
+  return {
+    push = function(c, uv, shade)
+      local flat = type(shade) ~= "table"
+      local at = 1
+      for k = 1, 6 do
+        local i = TRI_ORDER[k]
+        local cc, t = c[i], uv[i]
+        values[at], values[at + 1], values[at + 2] = cc[1], cc[2], cc[3]
+        values[at + 3], values[at + 4] = t[1], t[2]
+        values[at + 5] = flat and shade or shade[i]
+        at = at + 6
+      end
+      parts[#parts + 1] = love.data.pack(
+        "string", PACKED_VERTEX, unpack(values, 1, 36))
+      quads, n = quads + 1, n + 6
+      if quads % PACKED_QUADS_PER_CHUNK == 0 then flush() end
+    end,
+    finish = function()
+      if n == 0 then return nil end
+      flush()
+      local ok, mesh = pcall(function()
+        local result = love.graphics.newMesh(Voxel3D.FORMAT, n,
+                                             "triangles", "static")
+        local first = 1
+        for _, chunk in ipairs(chunks) do
+          local data = love.data.newByteData(chunk)
+          result:setVertices(data, first)
+          first = first + math.floor(#chunk / PACKED_VERTEX_BYTES)
+          data:release()
+          Budget.check()
+        end
+        return result
+      end)
+      chunks, parts = {}, {}
+      return ok and mesh or nil
+    end,
+  }
+end
+
 local function newFfiSink()
   local cap = 4096 * 6
   local buf = ffi.new("float[?]", cap * 6)
@@ -224,6 +282,10 @@ local function newSink()
   if ffi and love and love.data and love.data.newByteData
      and love.graphics and love.graphics.newMesh then
     return newFfiSink()
+  end
+  if love and love.data and love.data.pack and love.data.newByteData
+     and love.graphics and love.graphics.newMesh then
+    return newPackedSink()
   end
   return newTableSink()
 end

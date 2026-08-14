@@ -92,6 +92,7 @@ local StaticGeometry = V.require("StaticGeometry")
 local VoxelGrid = V.require("VoxelGrid")
 local WorldCurve = V.require("WorldCurve")
 local WorldUnderlay = V.require("WorldUnderlay")
+local RenderDistance = V.require("RenderDistance")
 local OverworldBattle = V.require("OverworldBattle")
 local BattlePresentation = V.require("BattlePresentation")
 local BattleStage = V.require("BattleStage")
@@ -470,6 +471,12 @@ local SETTINGS = {
     .. "CYAN or BLACK. Indoor horizons automatically match "
     .. "the room's own border/void material so the finite map ring cannot reveal "
     .. "a differently coloured infinite fill behind it.",
+    full = true },
+  { RenderDistance.setting,
+    "Limit connected-map terrain, water, figures and characters outside the "
+    .. "camera neighborhood. MEDIUM is the balanced default for the current "
+    .. "sandboxed engine's pure-Lua mesh path; FULL preserves the uncapped "
+    .. "legacy draw distance.",
     full = true },
   { Water.setting,
     "Reflections on water. FULL adds screen-space reflections of the "

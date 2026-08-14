@@ -27,6 +27,7 @@ local VoxelGrid = V.require("VoxelGrid")
 local DayNight = V.require("DayNight")
 local FirstPerson = V.require("FirstPerson")
 local WorldUnderlay = V.require("WorldUnderlay")
+local RenderDistance = V.require("RenderDistance")
 local PaletteFX = require("src.render.PaletteFX")
 local Map = require("src.world.Map")
 
@@ -491,10 +492,14 @@ function VoxelScene.prefetch(state)
   local nbs = state.neighbors or {}
   local ready = terrain ~= nil
   for i, nb in ipairs(nbs) do
-    ChunkMesher.request(nb.map, true)
-    nbMeshBuf[i], nbWaterBuf[i] = ChunkMesher.pair(nb.map, true)
-    if not nbMeshBuf[i] then
-      nbMeshBuf[i], nbWaterBuf[i] = ChunkMesher.pair(nb.map, false)
+    if RenderDistance.neighbor(nb, state.player) then
+      ChunkMesher.request(nb.map, true)
+      nbMeshBuf[i], nbWaterBuf[i] = ChunkMesher.pair(nb.map, true)
+      if not nbMeshBuf[i] then
+        nbMeshBuf[i], nbWaterBuf[i] = ChunkMesher.pair(nb.map, false)
+      end
+    else
+      nbMeshBuf[i], nbWaterBuf[i] = nil, nil
     end
     -- if not nbMeshBuf[i] then ready = false end
   end
@@ -648,7 +653,8 @@ local function drawCast(state, posed, atlasFor)
   -- by this same function -- agrees with the frame to the pixel.
   local hideMe = FirstPerson.hidePlayer()
   for _, p in ipairs(posed) do
-    if not (p.isPlayer and hideMe) then
+    if not (p.isPlayer and hideMe)
+       and RenderDistance.point(p.px + 8, p.py + 8, state.player) then
       drawEntity(p.sprite, p.px, p.py, viewFacing(p), p.phase, p.flip, p.gh,
                  p.colors, p.lift)
     end
@@ -664,10 +670,12 @@ local function drawCast(state, posed, atlasFor)
                  ShadowMap.snug(caster))
   end)
   for _, nb in ipairs(state.neighbors or {}) do
-    eachFigure(nb.map, nb.ox, nb.oy, function(mesh, model, caster)
-      Voxel3D.draw(mesh, atlasFor(nb.map), model, figPull,
-                   ShadowMap.snug(caster))
-    end)
+    if RenderDistance.neighbor(nb, state.player) then
+      eachFigure(nb.map, nb.ox, nb.oy, function(mesh, model, caster)
+        Voxel3D.draw(mesh, atlasFor(nb.map), model, figPull,
+                     ShadowMap.snug(caster))
+      end)
+    end
   end
   -- and the seams are back on for the terrain art that follows: grass and
   -- flowers are the world's own drawing, not people
@@ -810,7 +818,7 @@ end
 -- redrawing the whole world from the sun would buy nothing -- which is
 -- most of a dialog, a menu, or any moment standing still.
 local sigBuf = {}
-local function shadowSignature(terrain, nbMesh, posed, cx, cy, vw, vh)
+local function shadowSignature(state, terrain, nbMesh, posed, cx, cy, vw, vh)
   local n = 0
   local function put(v)
     n = n + 1
@@ -837,11 +845,17 @@ local function shadowSignature(terrain, nbMesh, posed, cx, cy, vw, vh)
   -- spot re-fits and redraws exactly like a camera move ("" outside 1ST)
   put(FirstPerson.signature())
   put(tostring(terrain))
-  for i = 1, #nbMesh do put(tostring(nbMesh[i])) end
+  for i, nb in ipairs(state.neighbors or {}) do
+    if RenderDistance.neighbor(nb, state.player) then
+      put(tostring(nbMesh[i]))
+    end
+  end
   for _, p in ipairs(posed) do
-    put(p.sprite.def.image)
-    put(p.px); put(p.py); put(p.gh); put(p.lift or 0)
-    put(p.facing); put(p.phase); put(p.flip and 1 or 0)
+    if RenderDistance.point(p.px + 8, p.py + 8, state.player) then
+      put(p.sprite.def.image)
+      put(p.px); put(p.py); put(p.gh); put(p.lift or 0)
+      put(p.facing); put(p.phase); put(p.flip and 1 or 0)
+    end
   end
   for i = n + 1, #sigBuf do sigBuf[i] = nil end
   return table.concat(sigBuf, ",")
@@ -861,14 +875,16 @@ end
 local function castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh,
                            atlasFor, water, nbWater)
   if not ShadowMap.available() then return end
-  local sig = shadowSignature(terrain, nbMesh, posed, cx, cy, vw, vh)
+  local sig = shadowSignature(state, terrain, nbMesh, posed, cx, cy, vw, vh)
   if not ShadowMap.stale(sig) then return end
   if not ShadowMap.begin(cx, cy, vw, vh) then return end
 
   ShadowMap.draw(terrain, atlasFor(state.map), nil)
   for i, nb in ipairs(state.neighbors or {}) do
-    ShadowMap.draw(nbMesh[i], atlasFor(nb.map),
-                   Mat4.translate(nb.ox, 0, nb.oy))
+    if RenderDistance.neighbor(nb, state.player) then
+      ShadowMap.draw(nbMesh[i], atlasFor(nb.map),
+                     Mat4.translate(nb.ox, 0, nb.oy))
+    end
   end
   -- The water surface, which the terrain mesh no longer carries (it is its
   -- own reflective pass now -- see Water). The sun still has to see it, or
@@ -876,8 +892,10 @@ local function castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh,
   -- far plane answers for the surface a shoreline tree's shadow falls on.
   ShadowMap.draw(water, atlasFor(state.map), nil)
   for i, nb in ipairs(state.neighbors or {}) do
-    ShadowMap.draw(nbWater and nbWater[i], atlasFor(nb.map),
-                   Mat4.translate(nb.ox, 0, nb.oy))
+    if RenderDistance.neighbor(nb, state.player) then
+      ShadowMap.draw(nbWater and nbWater[i], atlasFor(nb.map),
+                     Mat4.translate(nb.ox, 0, nb.oy))
+    end
   end
   -- flower billboards live outside the terrain mesh (they draw after the
   -- characters, pulled -- see render), but the sun still sees them: a
@@ -888,8 +906,10 @@ local function castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh,
   ShadowMap.draw(ChunkMesher.flowers(state.map), atlasFor(state.map),
                  ShadowMap.snug(nil))
   for _, nb in ipairs(state.neighbors or {}) do
-    ShadowMap.draw(ChunkMesher.flowers(nb.map), atlasFor(nb.map),
-                   ShadowMap.snug(Mat4.translate(nb.ox, 0, nb.oy)))
+    if RenderDistance.neighbor(nb, state.player) then
+      ShadowMap.draw(ChunkMesher.flowers(nb.map), atlasFor(nb.map),
+                     ShadowMap.snug(Mat4.translate(nb.ox, 0, nb.oy)))
+    end
   end
   -- From here down it is the CAST, marked as such in the map (see
   -- ShadowMap.sprites) so water can decline them: everything the world casts
@@ -902,24 +922,28 @@ local function castShadows(state, terrain, nbMesh, posed, cx, cy, vw, vh,
     ShadowMap.draw(mesh, atlasFor(state.map), ShadowMap.snug(caster))
   end)
   for _, nb in ipairs(state.neighbors or {}) do
-    eachFigure(nb.map, nb.ox, nb.oy, function(mesh, _, caster)
-      ShadowMap.draw(mesh, atlasFor(nb.map), ShadowMap.snug(caster))
-    end)
+    if RenderDistance.neighbor(nb, state.player) then
+      eachFigure(nb.map, nb.ox, nb.oy, function(mesh, _, caster)
+        ShadowMap.draw(mesh, atlasFor(nb.map), ShadowMap.snug(caster))
+      end)
+    end
   end
   for _, p in ipairs(posed) do
-    local def = p.sprite.def
-    -- viewFacing, exactly as the camera draw picks it (see viewFacing for
-    -- why the two passes must agree): in first person the sun's card
-    -- swaps frame as the eye circles, which costs a redraw the signature
-    -- already charges for (FirstPerson.signature) and keeps a card from
-    -- fringing against a mirror-flipped record of itself
-    local frame, mirror = frameFor(def, viewFacing(p), p.phase, p.flip)
-    local mesh = SpriteBillboards.shadowQuad(def, frame)
-    if mesh then
-      ShadowMap.draw(mesh, p.sprite:resolveImage(),
-                     ShadowMap.snug(
-                       Voxel3D.casterMatrix(p.px, p.py, p.gh + (p.lift or 0),
-                                            mirror)))
+    if RenderDistance.point(p.px + 8, p.py + 8, state.player) then
+      local def = p.sprite.def
+      -- viewFacing, exactly as the camera draw picks it (see viewFacing for
+      -- why the two passes must agree): in first person the sun's card
+      -- swaps frame as the eye circles, which costs a redraw the signature
+      -- already charges for (FirstPerson.signature) and keeps a card from
+      -- fringing against a mirror-flipped record of itself
+      local frame, mirror = frameFor(def, viewFacing(p), p.phase, p.flip)
+      local mesh = SpriteBillboards.shadowQuad(def, frame)
+      if mesh then
+        ShadowMap.draw(mesh, p.sprite:resolveImage(),
+                       ShadowMap.snug(
+                         Voxel3D.casterMatrix(p.px, p.py, p.gh + (p.lift or 0),
+                                               mirror)))
+      end
     end
   end
   ShadowMap.sprites(false)
@@ -1056,8 +1080,10 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   WorldUnderlay.draw(state, cx, cy, underlayColor)
   Voxel3D.draw(terrain, atlasFor(state.map), nil)
   for i, nb in ipairs(state.neighbors or {}) do
-    Voxel3D.draw(nbMesh[i], atlasFor(nb.map),
-                 Mat4.translate(nb.ox, 0, nb.oy))
+    if RenderDistance.neighbor(nb, state.player) then
+      Voxel3D.draw(nbMesh[i], atlasFor(nb.map),
+                   Mat4.translate(nb.ox, 0, nb.oy))
+    end
   end
 
   -- Without a shadow map (headless, or a driver that could not make the
@@ -1070,8 +1096,10 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   if Shadows.enabled() and not Voxel3D.shadowsActive() then
     Voxel3D.beginShadows()
     for _, p in ipairs(posed) do
-      drawShadow(p.sprite, p.px, p.py, viewFacing(p), p.phase, p.flip, p.gh,
-                 p.lift)
+      if RenderDistance.point(p.px + 8, p.py + 8, state.player) then
+        drawShadow(p.sprite, p.px, p.py, viewFacing(p), p.phase, p.flip, p.gh,
+                   p.lift)
+      end
     end
     Voxel3D.endShadows()
   end
@@ -1099,7 +1127,7 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
     addWaterDraw(water, atlasFor(state.map), nil)
   end
   for i, nb in ipairs(state.neighbors or {}) do
-    if nbWater and nbWater[i] then
+    if RenderDistance.neighbor(nb, state.player) and nbWater and nbWater[i] then
       addWaterDraw(nbWater[i], atlasFor(nb.map),
                    Mat4.translate(nb.ox, 0, nb.oy))
     end
@@ -1161,8 +1189,10 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   local pull = VoxelScene.pull(math.max(Voxel.angle, 0.05))
   Voxel3D.draw(ChunkMesher.grass(state.map), atlasFor(state.map), nil, pull)
   for _, nb in ipairs(state.neighbors or {}) do
-    Voxel3D.draw(ChunkMesher.grass(nb.map), atlasFor(nb.map),
-                 Mat4.translate(nb.ox, 0, nb.oy), pull)
+    if RenderDistance.neighbor(nb, state.player) then
+      Voxel3D.draw(ChunkMesher.grass(nb.map), atlasFor(nb.map),
+                   Mat4.translate(nb.ox, 0, nb.oy), pull)
+    end
   end
   -- flower billboards: pulled like the characters and the grass, MINUS
   -- the depth of 8 world pixels along the view (8 sin a -- the camera
@@ -1180,9 +1210,11 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   Voxel3D.draw(ChunkMesher.flowers(state.map), atlasFor(state.map), nil,
                fpull, ShadowMap.snug(nil))
   for _, nb in ipairs(state.neighbors or {}) do
-    Voxel3D.draw(ChunkMesher.flowers(nb.map), atlasFor(nb.map),
-                 Mat4.translate(nb.ox, 0, nb.oy), fpull,
-                 ShadowMap.snug(Mat4.translate(nb.ox, 0, nb.oy)))
+    if RenderDistance.neighbor(nb, state.player) then
+      Voxel3D.draw(ChunkMesher.flowers(nb.map), atlasFor(nb.map),
+                   Mat4.translate(nb.ox, 0, nb.oy), fpull,
+                   ShadowMap.snug(Mat4.translate(nb.ox, 0, nb.oy)))
+    end
   end
 
   local finished = Voxel3D.endScene()
