@@ -67,6 +67,20 @@ T.eq(poisonState.unrelated, true, "suppressing the pulse changes no other state"
 T.check(require("src.world.OverworldController").dramaticShapePoisonFlashHook,
   "the poison visual wrapper is installed")
 
+do
+  local MomHealFlash = modExports.lib.require("MomHealFlash")
+  local momContext = { overworld = { map = { id = "REDS_HOUSE_1F" } } }
+  local otherContext = { overworld = { map = { id = "SILPH_CO_9F" } } }
+  T.eq(MomHealFlash.shouldSuppress(momContext, "white"), true,
+    "Mom's white healing fade is suppressed")
+  T.eq(MomHealFlash.shouldSuppress(momContext, "black"), false,
+    "ordinary fades in Red's house remain available")
+  T.eq(MomHealFlash.shouldSuppress(otherContext, "white"), false,
+    "white healing fades on other maps remain available")
+  T.check(require("src.script.Commands").dramaticShapeMomHealFlashHook,
+    "the Mom healing visual wrapper is installed")
+end
+
 -- Predictive area precaching follows the engine's warp/connection graph and
 -- deduplicates a destination reached both ways.  FIX_ROUTE is north of town
 -- and is also its only authored warp destination.

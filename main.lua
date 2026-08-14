@@ -105,6 +105,7 @@ local AntiAlias = V.require("AntiAlias")
 local FirstPerson = V.require("FirstPerson")
 local FreeMove = V.require("FreeMove")
 local PoisonFlash = V.require("PoisonFlash")
+local MomHealFlash = V.require("MomHealFlash")
 local TransformCompat = V.require("TransformCompat")
 
 -- `mods.loaded` is the first point at which every content mod has finished
@@ -1169,6 +1170,11 @@ VoxelTransitionGate.install()
 -- suppressed; on a 3D scene that legacy palette flicker reads as an intrusive
 -- display flash rather than feedback on the poisoned party member.
 PoisonFlash.install()
+
+-- Red's mom uses a pair of 160x144 white fades around her healing jingle.
+-- That legacy rectangle covers only part of a modern 3D viewport, so omit
+-- this one script's flashes while preserving its heal, music and dialogue.
+MomHealFlash.install()
 
 -- Preserve Ditto's copied species after the engine's Transform animation.
 -- This is native Battle Art behaviour; Crystal Animated Sprites may add its

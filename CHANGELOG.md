@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Mom heal flash removed.** Red's mom still heals the party, plays the
+  recovery jingle, and finishes her dialogue, but her undersized 160x144 white
+  screen flashes are skipped in the 3D overworld. Other fades are unchanged.
+
 - **Provider-neutral shiny routing.** Battle Art now owns the canonical Gen 2
   DV predicate instead of consulting Crystal Animated Sprites' image API.
   `MODDED` sends only DV-confirmed shinies to the matching shiny collection or
