@@ -808,6 +808,21 @@ T.eq(Gen6.fileFor("ROUTE_5", "dawn"), "route5dawn.png",
   "Route 5 receives its dedicated dawn plate")
 T.eq(Gen6.fileFor("ROUTE_5", "night"), "route5night.png",
   "Route 5 receives its dedicated night plate")
+do
+  local battle = {}
+  T.eq(Gen6.snapshot(battle, "dusk"), "dusk",
+    "a battle snapshots the time period at entry")
+  T.eq(Gen6.fileFor("ROUTE_2", nil, battle), "route2dusk.jpg",
+    "the implicit GEN6 period comes from the battle-entry snapshot")
+  T.eq(Gen6.snapshot(battle, "night"), "dusk",
+    "a later time-of-day change cannot replace the battle snapshot")
+  T.eq(Gen6.fileFor("ROUTE_2", nil, battle), "route2dusk.jpg",
+    "the GEN6 plate remains fixed for the rest of that battle")
+  local nextBattle = {}
+  Gen6.snapshot(nextBattle, "night")
+  T.eq(Gen6.fileFor("ROUTE_2", nil, nextBattle), "route2night.jpg",
+    "the next battle is free to select the new time period")
+end
 T.eq(Gen6.fileFor("ROUTE_24", "day"), "bridgesday.jpg",
   "Route 24 retains the actual bridge family")
 T.eq(Gen6.fileFor("ROUTE_25", "dusk"), "fencesdusk.png",

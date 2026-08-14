@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Stable GEN6 backgrounds during battle.** A staged fight now snapshots its
+  dawn/day/dusk/night background period when it begins. The world clock may
+  continue advancing, but the illustrated arena cannot switch pictures until
+  the next encounter chooses its own starting period.
+
 - **Kanto First Person underlay compatibility.** `WORLD FILL: OFF/KFP`
   suppresses Battle Art's infinite underlay plane, including the automatic
   indoor border fill, so KFP can own that background without competing layers.

@@ -7,6 +7,7 @@ local DayNight = V.require("DayNight")
 local Images = V.require("BackdropImage")
 local config = V.data("gen6_battle_backgrounds")
 local Gen6Backdrop = {}
+local PERIOD_FIELD = "dramaticShapeGen6Period"
 
 local function phase()
   local mix = DayNight.mix(DayNight.time())
@@ -64,12 +65,25 @@ function Gen6Backdrop.setFor(map, battle)
   return setName
 end
 
+-- A battle keeps the hour it entered with. BattleScene renders every frame,
+-- while CYCLE/SYNC continue advancing behind it; resolving phase() there made
+-- an illustrated arena jump abruptly from (for example) dusk to night during
+-- a long fight. Stamp the ordinary mutable BattleState alongside the existing
+-- fishing/surfing provenance, and never replace an established stamp.
+function Gen6Backdrop.snapshot(battle, period)
+  if type(battle) ~= "table" then return period or phase() end
+  if battle[PERIOD_FIELD] == nil then
+    battle[PERIOD_FIELD] = period or phase()
+  end
+  return battle[PERIOD_FIELD]
+end
+
 function Gen6Backdrop.fileFor(map, period, battle)
   local setName = Gen6Backdrop.setFor(map, battle)
   local set = setName and config.sets[setName] or nil
   if type(set) == "string" then return set end
   if type(set) ~= "table" then return nil end
-  period = period or phase()
+  period = period or Gen6Backdrop.snapshot(battle)
   return set[period] or set.day or set.dawn or set.dusk or set.night
 end
 
@@ -82,5 +96,6 @@ function Gen6Backdrop.clear()
 end
 
 Gen6Backdrop._phase = phase
+Gen6Backdrop.PERIOD_FIELD = PERIOD_FIELD
 
 return Gen6Backdrop

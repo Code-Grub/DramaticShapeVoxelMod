@@ -50,6 +50,7 @@ local TextboxStyle = V.require("TextboxStyle")
 local BattlePics = V.require("BattlePics")
 local BattleArt = V.require("BattleArt")
 local AnimatedBattleArt = V.require("AnimatedBattleArt")
+local Gen6Backdrop = V.require("Gen6Backdrop")
 local Voxel3D = V.require("Voxel3D")
 local ChunkMesher = V.require("ChunkMesher")
 
@@ -544,6 +545,7 @@ function OverworldBattle.begin(state, battle)
   -- by the constructor hook below; surfing is still live on the player here.
   if battle then
     battle.dramaticShapeSurfing = state.player.surfing and true or false
+    Gen6Backdrop.snapshot(battle)
   end
 
   -- the fight is staged from here on, so the layout it is composed for is not
@@ -565,7 +567,10 @@ function OverworldBattle.ensure(battle)
   if session then
     -- a battle pushed through the overworld reaches begin() before it is
     -- built far enough to draw; battle.started is where it is finished
-    if battle and not session.battle then session.battle = battle end
+    if battle and not session.battle then
+      session.battle = battle
+      Gen6Backdrop.snapshot(battle)
+    end
     return
   end
   local g = game()
@@ -638,7 +643,10 @@ function OverworldBattle.update(dt)
   BattleCam.update(dt)
   -- the battle only exists once it has been pushed; a session opened at
   -- pushBattle time has it, one opened from battle.started was handed it
-  session.battle = session.battle or (top ~= ow and top or nil)
+  if not session.battle and top ~= ow then
+    session.battle = top
+    Gen6Backdrop.snapshot(session.battle)
+  end
   AnimatedBattleArt.update(session.battle, dt)
   -- the world pass is hidden behind the battle, so mesh builds get the wide
   -- slice: nothing visible can hitch on them
