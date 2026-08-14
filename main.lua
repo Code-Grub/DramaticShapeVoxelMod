@@ -878,6 +878,10 @@ end)
 mod.hooks:wrap("ui.title_menu.items", function(next, game, items)
   local out = next(game, items)
   if type(out) ~= "table" then return out end
+  -- Current sandboxed engines intentionally deny the FFI/filesystem pair the
+  -- legacy BAVC cache uses. The renderer still has its cooperative pure-Lua
+  -- mesher; do not advertise a title action which can only say unavailable.
+  if not VoxelMeshDisk.available() then return out end
   for _, item in ipairs(out) do
     if tostring(item and item.label or "") == "CONTINUE"
         and type(item.onSelect) == "function" then
@@ -928,6 +932,7 @@ end)
 mod.hooks:wrap("ui.start_menu.items", function(next, game, items)
   local out = next(game, items)
   if type(out) ~= "table" then return out end
+  if not VoxelMeshDisk.available() then return out end
   for _, item in ipairs(out) do
     if tostring(item and item.label or "") == "CACHE" then return out end
   end

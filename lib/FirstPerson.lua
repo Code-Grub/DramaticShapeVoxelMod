@@ -749,21 +749,10 @@ function FirstPerson.install()
 
   -- ------- mouse
   --
-  -- love.mousemoved rather than a Game method, because the engine has no
-  -- Game:mousemoved to wrap -- the callback in the project's main.lua is
-  -- the one place relative counts arrive. Claimed only while captured;
-  -- pass-through otherwise, including the mouse-as-touch path.
-  do
-    local inner = love.mousemoved
-    love.mousemoved = function(x, y, dx, dy, istouch)
-      if captured and not istouch then
-        mouseDX = mouseDX + (dx or 0)
-        mouseDY = mouseDY + (dy or 0)
-        return
-      end
-      if inner then return inner(x, y, dx, dy, istouch) end
-    end
-  end
+  -- Current engines own every LOVE callback and expose uncaptured mouse/touch
+  -- traffic through input.pointer. Besides being reload-safe, this gives our
+  -- synthetic A/B presses their own source so releasing a click cannot clear
+  -- a keyboard, controller, or touch hold.
   -- While the mouse is captured there is no cursor to click UI with, so
   -- the buttons become GB buttons: left is A, right is B -- through the
   -- overlay's own press path, which a rebind can never detach. What WE
@@ -798,34 +787,40 @@ function FirstPerson.install()
     end
     return false
   end
-  do
-    local inner = love.mousepressed
-    love.mousepressed = function(x, y, button, istouch, presses)
-      if captured and not istouch and hordeMouse(button, true) then return end
-      if captured and not istouch and MOUSE_BTN[button] then
-        local Input = require("src.core.Input")
-        mouseHeld[button] = true
-        Input:overlayPressed(MOUSE_BTN[button])
-        return
-      end
-      if inner then return inner(x, y, button, istouch, presses) end
+  V.mod.hooks:wrap("input.pointer", function(next, game, ev)
+    if ev.source ~= "mouse" then return next(game, ev) end
+    if ev.phase == "moved" and captured then
+      mouseDX = mouseDX + (ev.dx or 0)
+      mouseDY = mouseDY + (ev.dy or 0)
+      return true
     end
-  end
-  do
-    local inner = love.mousereleased
-    love.mousereleased = function(x, y, button, istouch, presses)
-      -- a release always reaches whoever owns the press: the horde's
-      -- aim-hold has to let go even if the mode ended mid-click
-      if not mouseHeld[button] and hordeMouse(button, false) then return end
+
+    local button = ev.button
+    if ev.phase == "pressed" and captured then
+      if hordeMouse(button, true) then return true end
+      local mapped = MOUSE_BTN[button]
+      if mapped then
+        mouseHeld[button] = V.mod.input:press(game, mapped)
+        return true
+      end
+    elseif ev.phase == "released" or ev.phase == "cancelled" then
+      -- A release always reaches whoever owned the press, even if capture or
+      -- the battle mode ended while the button was down.
+      if not mouseHeld[button] and hordeMouse(button, false) then return true end
       if mouseHeld[button] then
-        local Input = require("src.core.Input")
+        V.mod.input:release(mouseHeld[button])
         mouseHeld[button] = nil
-        Input:overlayReleased(MOUSE_BTN[button])
-        return
+        return true
       end
-      if inner then return inner(x, y, button, istouch, presses) end
+      if ev.phase == "cancelled" then
+        for heldButton, token in pairs(mouseHeld) do
+          V.mod.input:release(token)
+          mouseHeld[heldButton] = nil
+        end
+      end
     end
-  end
+    return next(game, ev)
+  end, 100)
 
   -- ------- touch
   --

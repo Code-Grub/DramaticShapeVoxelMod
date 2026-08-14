@@ -243,17 +243,13 @@ local function pathFor(species, side, shiny)
   -- ordinary PNG at back-static/gen5; only AnimatedBattleArt decodes atlases.
   local rel = staticSpeciesRelativePath(species, side, shiny)
   local path = V.mod.assets:path(rel)
-  local fs = love and love.filesystem
-  if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
   return path, rel
 end
 
 local function staticPathFor(name, side)
   if BattleArt.setting:get() == "rom" then return nil end
-  local path = V.mod.assets:path(
+  return V.mod.assets:path(
     ("assets/battle/%s-static/%s.png"):format(side, name))
-  local fs = love and love.filesystem
-  return fs and fs.getInfo and fs.getInfo(path) and path or nil
 end
 
 local function rgbaKey(data, w, h)
@@ -409,8 +405,6 @@ function BattleArt.generationBackImage(species, generation, battler)
     species, generation, "back", shiny)
   if not rel then return nil end
   local path = V.mod.assets:path(rel)
-  local fs = love and love.filesystem
-  if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
   return prepare(path, displayMode())
 end
 
@@ -428,8 +422,6 @@ function BattleArt.generationFrontImage(species, generation, battler)
   local rel = generationRelativePath(
     species, generation, "front", shiny)
   local path = V.mod.assets:path(rel)
-  local fs = love and love.filesystem
-  if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
   return prepare(path, displayMode())
 end
 
@@ -448,8 +440,6 @@ function BattleArt.trainerImage(name)
   local rel = ("assets/battle/front-static/%s/%s.png"):format(
     generation, name)
   local path = V.mod.assets:path(rel)
-  local fs = love and love.filesystem
-  if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
   return prepare(path, displayMode())
 end
 
@@ -460,11 +450,9 @@ end
 function BattleArt.playerTrainerImage()
   local set = BattleArt.playerArtSetting:get()
   if set == "rom" then return nil end
-  local fs = love and love.filesystem
   local function load(name)
     local rel = "assets/battle/back-static/" .. name
     local path = V.mod.assets:path(rel)
-    if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end
     return prepare(path, displayMode())
   end
   if set == "png" then return load("player.png") end

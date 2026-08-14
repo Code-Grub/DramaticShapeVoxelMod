@@ -30,6 +30,12 @@ local Perf = {}
 
 local clock = (love and love.timer and love.timer.getTime) or os.clock
 
+-- Newer engines deliberately make love.filesystem throw when a mod touches
+-- it. Keep the old developer flag/report path on legacy engines, but never let
+-- probing that compatibility surface prevent the renderer from booting.
+local legacyFilesystem
+pcall(function() legacyFilesystem = love and love.filesystem end)
+
 -- Read through pcall: the loader's sandbox does not hand a mod `os`, and
 -- instrumentation must never be the reason the mod fails to load. Same
 -- shape as OverworldBattle's DS_BATTLE_DEBUG probe.
@@ -41,10 +47,10 @@ local function envFlag(name)
 end
 
 local function flagFile()
-  if not (love and love.filesystem and love.filesystem.getInfo) then
+  if not (legacyFilesystem and legacyFilesystem.getInfo) then
     return false
   end
-  local ok, info = pcall(love.filesystem.getInfo, "ds_perf.flag")
+  local ok, info = pcall(legacyFilesystem.getInfo, "ds_perf.flag")
   return ok and info ~= nil
 end
 
@@ -315,16 +321,16 @@ function Perf.toJson(meta)
   return table.concat(parts, "")
 end
 
--- Written through love.filesystem (the save directory) rather than io:
--- a driver run and an Android session both have one, and neither is
--- guaranteed a writable working directory.
+-- Legacy engines write through love.filesystem. Sandboxed engines omit that
+-- developer-only convenience and print the JSON, which keeps profiling usable
+-- without asking for unsafe filesystem access.
 function Perf.write(name, meta)
   local body = Perf.toJson(meta)
-  if love and love.filesystem then
-    pcall(love.filesystem.createDirectory, "ds_bench")
-    local ok = pcall(love.filesystem.write, "ds_bench/" .. name .. ".json", body)
+  if legacyFilesystem then
+    pcall(legacyFilesystem.createDirectory, "ds_bench")
+    local ok = pcall(legacyFilesystem.write, "ds_bench/" .. name .. ".json", body)
     if ok then
-      print("[perf] wrote " .. tostring(love.filesystem.getSaveDirectory())
+      print("[perf] wrote " .. tostring(legacyFilesystem.getSaveDirectory())
             .. "/ds_bench/" .. name .. ".json")
       return true
     end

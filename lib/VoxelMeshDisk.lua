@@ -27,6 +27,13 @@ local ramFiles, sessionActive = {}, false
 local ramDirty, ramRejected = {}, {}
 local ramBytes = 0
 
+-- Current engines sandbox both raw filesystem access and FFI. This module is
+-- therefore a legacy acceleration path; ChunkMesher automatically uses its
+-- supported table builder when this returns unavailable. Probe the old API
+-- behind pcall because merely indexing love.filesystem now raises an error.
+local legacyFilesystem
+pcall(function() legacyFilesystem = love and love.filesystem end)
+
 Disk.CACHE_REVISION = 2
 -- Patch releases which do not change emitted vertices must keep the existing
 -- world cache usable. This token matches the first static-mesh-cache-v2 build;
@@ -39,7 +46,7 @@ local FORMAT = 2
 local RAW_CHUNK = 1024 * 1024
 
 local function available()
-  local fs = love and love.filesystem
+  local fs = legacyFilesystem
   return ffi ~= nil and fs and fs.read and fs.write and fs.createDirectory
     and fs.newFile and fs.getDirectoryItems
     and love.data and love.data.newByteData
@@ -170,12 +177,12 @@ end
 function Disk.ramPlan()
   if not available() then return {}, 0 end
   local names, bytes = {}, 0
-  local ok, listed = pcall(love.filesystem.getDirectoryItems, Disk.DIRECTORY)
+  local ok, listed = pcall(legacyFilesystem.getDirectoryItems, Disk.DIRECTORY)
   if not ok then return names, bytes end
   for _, name in ipairs(listed or {}) do
     if name:sub(-5) == ".bavc" then
       local path = Disk.DIRECTORY .. "/" .. name
-      local info = love.filesystem.getInfo(path)
+      local info = legacyFilesystem.getInfo(path)
       if info and info.type == "file" then
         names[#names + 1] = name
         bytes = bytes + (info.size or 0)
@@ -205,7 +212,7 @@ function Disk.loadIntoRam(name)
   local path = Disk.DIRECTORY .. "/" .. name
   local prior = ramFiles[path]
   if prior then return true, #prior end
-  local ok, blob = pcall(love.filesystem.read, path)
+  local ok, blob = pcall(legacyFilesystem.read, path)
   if not ok or type(blob) ~= "string" then return false, 0 end
   ramFiles[path] = blob
   ramBytes = ramBytes + #blob
@@ -291,7 +298,7 @@ end
 -- validates every stream before gameplay uses it.
 local function headerMatches(path, expected, map)
   if not available() then return false end
-  local fs = love.filesystem
+  local fs = legacyFilesystem
   local info = fs.getInfo and fs.getInfo(path)
   if not (info and info.type == "file" and info.size >= 12) then return false end
   local ok, matches = pcall(function()
@@ -334,12 +341,12 @@ function Disk.stats()
   local out = { bytes = 0, files = 0, maps = 0,
                 aux = 0, full = 0, body = 0 }
   if not available() then return out end
-  local ok, names = pcall(love.filesystem.getDirectoryItems, Disk.DIRECTORY)
+  local ok, names = pcall(legacyFilesystem.getDirectoryItems, Disk.DIRECTORY)
   if not ok then return out end
   local maps = {}
   for _, name in ipairs(names or {}) do
     if name:sub(-5) == ".bavc" then
-      local info = love.filesystem.getInfo(Disk.DIRECTORY .. "/" .. name)
+      local info = legacyFilesystem.getInfo(Disk.DIRECTORY .. "/" .. name)
       if info and info.type == "file" then
         out.files = out.files + 1
         out.bytes = out.bytes + (info.size or 0)
@@ -413,7 +420,7 @@ local function readValidated(path, fp, map)
   local blob = ramFiles[path]
   if not blob then
     if sessionActive and ramRejected[path] then return nil end
-    local ok, loaded = pcall(love.filesystem.read, path)
+    local ok, loaded = pcall(legacyFilesystem.read, path)
     if not ok or not loaded then return nil end
     blob = loaded
     if sessionActive then
@@ -509,8 +516,8 @@ end
 
 local function writePersistent(path, blob)
   local ok, err = pcall(function()
-    assert(love.filesystem.createDirectory(Disk.DIRECTORY))
-    local file = assert(love.filesystem.newFile(path, "w"))
+    assert(legacyFilesystem.createDirectory(Disk.DIRECTORY))
+    local file = assert(legacyFilesystem.newFile(path, "w"))
     local wrote, writeErr = pcall(write, file, blob)
     file:close()
     if not wrote then error(writeErr, 0) end
@@ -550,8 +557,8 @@ local function writeFile(path, fp, writer)
   -- The title-screen whole-world generator streams directly to disk, avoiding
   -- an additional full-container Lua string beside its large raw mesh.
   local ok = pcall(function()
-    assert(love.filesystem.createDirectory(Disk.DIRECTORY))
-    local file = assert(love.filesystem.newFile(path, "w"))
+    assert(legacyFilesystem.createDirectory(Disk.DIRECTORY))
+    local file = assert(legacyFilesystem.newFile(path, "w"))
     local wrote, err = pcall(function()
       write(file, header(fp))
       writer(file)

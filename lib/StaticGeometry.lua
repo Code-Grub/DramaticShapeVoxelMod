@@ -18,6 +18,12 @@ local StaticGeometry = {}
 local snapshot, maps = nil, {}
 local ledger, ledgerLoaded = {}, false
 
+-- The exclusion ledger is diagnostic. Preserve it on legacy engines, while
+-- allowing current sandboxed engines (where love.filesystem raises on access)
+-- to keep the same information in memory for the session.
+local legacyFilesystem
+pcall(function() legacyFilesystem = love and love.filesystem end)
+
 StaticGeometry.EXCLUSION_FILE =
   "mod-derived/BATTLE_ART_VOXEL_FORK/static-cache-exclusions.tsv"
 
@@ -59,7 +65,7 @@ end
 local function loadLedger()
   if ledgerLoaded then return end
   ledgerLoaded = true
-  local fs = love and love.filesystem
+  local fs = legacyFilesystem
   if not (fs and fs.read) then return end
   local ok, text = pcall(fs.read, StaticGeometry.EXCLUSION_FILE)
   if not ok or type(text) ~= "string" then return end
@@ -71,7 +77,7 @@ local function loadLedger()
 end
 
 local function writeLedger()
-  local fs = love and love.filesystem
+  local fs = legacyFilesystem
   if not (fs and fs.write and fs.createDirectory) then return false end
   local rows = {}
   for line in pairs(ledger) do rows[#rows + 1] = line end

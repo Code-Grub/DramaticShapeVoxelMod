@@ -261,19 +261,14 @@ function CamControl.install()
   local function clamp(v)
     return math.max(-MOUSE_STEP, math.min(MOUSE_STEP, v or 0))
   end
-  do
-    local inner = love.mousemoved
-    love.mousemoved = function(x, y, dx, dy, istouch)
-      if battleLive() and not istouch then
-        -- dy is NEGATED for the same reason the stick's is: moving the
-        -- mouse away from you sends the camera up and over
-        if dx and dx ~= 0 then BattleCam.mouseOrbit(clamp(dx)) end
-        if dy and dy ~= 0 then BattleCam.mousePitch(-clamp(dy)) end
-        -- forwarded anyway: the cursor still has UI to point at, and the
-        -- steer is a read of the motion rather than a claim on it
-      end
-      if inner then return inner(x, y, dx, dy, istouch) end
-    end
+  local function mouseMotion(ev)
+    if not battleLive() then return end
+    -- dy is NEGATED for the same reason the stick's is: moving the mouse
+    -- away from you sends the camera up and over. This observes rather than
+    -- consumes the supported input.pointer event, so UI and free look still
+    -- receive it downstream.
+    if ev.dx and ev.dx ~= 0 then BattleCam.mouseOrbit(clamp(ev.dx)) end
+    if ev.dy and ev.dy ~= 0 then BattleCam.mousePitch(-clamp(ev.dy)) end
   end
 
   -- ------- the touch screen
@@ -286,8 +281,6 @@ function CamControl.install()
   --                             something -- and while they are down the
   --                             free-roam look stands aside, so a pinch in
   --                             3RD does not also spin the view
-  local TouchControls = require("src.core.TouchControls")
-
   local free = {}          -- id -> {x, y} for every finger on open screen
   local pinch = nil        -- { a, b, gap } while two of them are pinching
 
@@ -330,12 +323,6 @@ function CamControl.install()
     end
   end
 
-  local function onControl(x, y)
-    local hit = nil
-    pcall(function() hit = TouchControls:hitTest(x, y) end)
-    return hit
-  end
-
   -- Whether this module has any interest in touches at all this frame.
   -- Kept deliberately wide -- a battle, or anything that zooms -- because
   -- the wrap forwards everything it does not claim regardless.
@@ -343,23 +330,22 @@ function CamControl.install()
     return battleLive() or CamControl.zoomTarget() ~= nil
   end
 
-  do
-    local inner = Game.touchpressed
-    function Game:touchpressed(id, x, y)
-      if wantsTouch() and not onControl(x, y) then
+  V.mod.hooks:wrap("input.pointer", function(next, game, ev)
+    if ev.source == "mouse" then
+      if ev.phase == "moved" then mouseMotion(ev) end
+      return next(game, ev)
+    end
+    if ev.source ~= "touch" then return next(game, ev) end
+
+    local id, x, y = ev.id, ev.x, ev.y
+    if ev.phase == "pressed" then
+      -- input.pointer is emitted only after the touch overlay declines the
+      -- press, so every touch here is already on open screen.
+      if wantsTouch() then
         free[id] = { x = x, y = y }
         if CamControl.zoomTarget() then startPinch() end
-        -- forwarded even so: a single free finger is the free-roam look's
-        -- to claim (FirstPerson's wrap is inside this one), and in a
-        -- battle it is nobody's until it MOVES
       end
-      return inner(self, id, x, y)
-    end
-  end
-
-  do
-    local inner = Game.touchmoved
-    function Game:touchmoved(id, x, y)
+    elseif ev.phase == "moved" then
       local f = free[id]
       if f then
         local px, py = f.x, f.y
@@ -371,7 +357,7 @@ function CamControl.install()
             CamControl.pinchBy(factor)
             pinch.gap = gap
           end
-          return                       -- claimed: never a look drag too
+          return true                 -- claimed: never a look drag too
         end
         if battleLive() and not pinch then
           local w, h = 1280, 720
@@ -379,26 +365,20 @@ function CamControl.install()
             w, h = love.graphics.getWidth(), love.graphics.getHeight()
           end)
           BattleCam.dragOrbit((x - px) / math.max(320, w))
-          -- dragged UP sends the camera up and over, the same way the
-          -- stick and the mouse do
           BattleCam.dragPitch(-(y - py) / math.max(240, h))
-          return
+          return true
         end
       end
-      return inner(self, id, x, y)
-    end
-  end
-
-  do
-    local inner = Game.touchreleased
-    function Game:touchreleased(id, x, y)
+    elseif ev.phase == "released" or ev.phase == "cancelled" then
       if free[id] then
         if pinch and (id == pinch.a or id == pinch.b) then endPinch(id) end
         free[id] = nil
       end
-      return inner(self, id, x, y)
+      if ev.phase == "cancelled" then free, pinch = {}, nil end
     end
-  end
+    -- A single free finger remains FirstPerson's look drag downstream.
+    return next(game, ev)
+  end, 200)
 
   -- a reset that drops held input state drops ours with it, exactly as the
   -- free-roam look's does

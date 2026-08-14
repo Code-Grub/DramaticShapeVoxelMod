@@ -73,8 +73,6 @@ end
 
 local function atlasPath(def)
   local path = def and def.image and V.mod.assets:path(def.image)
-  local fs = love and love.filesystem
-  if not (path and fs and fs.getInfo and fs.getInfo(path)) then return nil end
   return path
 end
 
