@@ -11,7 +11,7 @@ Version 1.9.0 supports Pokémon Red, Blue, and Yellow on Gen1Recomp `0.1.69` thr
 - First-person free look and analog movement while retaining the engine's collision, encounter, warp, ledge, and script behavior.
 - Battles staged over the current map with an over-the-shoulder camera, parallax, depth of field, configurable HUDs, and optional Gen 6-style backdrops.
 - Static or animated Pokémon art from Gen 1 through Gen 5 collections, trainer portraits, player intro art, native shiny detection, and safe ROM fallback.
-- Compatibility modes for external sprite providers, Gen 3 Battle UI, Stadium-style presentation mods, and Kanto First Person.
+- Compatibility modes for [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX) sprites, Gen 3 Battle UI, the [Stadium 2 Importer](https://github.com/Deftones565/gen1recomp-mod-stadium2-importer), and Kanto First Person.
 - Two performance paths: persistent disk precaching on legacy engines and sandbox-safe bounded mesh streaming on current engines.
 
 ## Engine compatibility
@@ -50,7 +50,7 @@ Key visual controls include:
 
 | Option | Choices | Purpose |
 | --- | --- | --- |
-| `VOXEL` | `OFF`, `15`, `35`, `50`, `75`, `1ST` | Flat view, progressively pitched diorama cameras, or first person |
+| `VOXEL` | `OFF`, `FULL`, `15`, `35`, `50`, `75`, `1ST`, `3RD (EXPERIMENTAL)` | Flat view, complete diorama preset, pitched orbit cameras, first person, or experimental third person |
 | `V-GRID` | `OFF`, `ON` | One-pixel voxel wireframe |
 | `T-SHIFT` | `OFF`, `1`, `2`, `3` | Miniature depth blur |
 | `V-CURVE` | `OFF`, `1`, `2`, `3` | Curves the distant world toward the horizon |
@@ -75,11 +75,13 @@ Key visual controls include:
 
 The outdoor sky, shadows, flat-world tint, and water share the same clock. Gen 6 battle backdrops snapshot the current dawn/day/dusk/night period when a battle starts, so a time change cannot abruptly replace the backdrop during that battle.
 
-### First-person mode
+### First- and third-person modes
 
 Choose `VOXEL: 1ST` to enter the player's viewpoint. Look with the mouse, right stick, or a touch drag; move with WASD, the left stick, or the touch D-pad. Mouse left click acts as A and right click as B while pointer capture is active.
 
-First-person movement still asks the Gen 1 engine about collision and runs its landing pipeline for every crossed cell. Warps, encounters, ledges, gates, and scripts therefore remain engine-owned. Selecting another `VOXEL` mode restores ordinary grid movement.
+`VOXEL: 3RD (EXPERIMENTAL)` uses the same free-look and free-movement rig with the camera pulled back behind the player. Moving between `1ST` and `3RD` slides the eye along that camera boom instead of cutting between unrelated views.
+
+Both free-camera modes still ask the Gen 1 engine about collision and run its landing pipeline for every crossed cell. Warps, encounters, ledges, gates, and scripts therefore remain engine-owned. Selecting an orbit or flat `VOXEL` mode restores ordinary grid movement.
 
 ### Staged battles and arenas
 
@@ -113,7 +115,7 @@ Additional controls choose player front/back presentation, player-card mirroring
 `DUPLICATE FIX` separates sprite ownership from other mods:
 
 - `BATTLE ART` makes this mod own normal and shiny battle sprites. It evaluates the Gen 2 DV shiny formula itself and routes qualifying Pokémon to matching shiny assets without relying on Crystal or another shiny mod's API.
-- `MODDED` yields Pokémon sprite ownership to another provider or the ROM while retaining Battle Art's arena and camera features. Use this for Crystal sprite mods, Stadium model importers, and similar replacements.
+- `MODDED` yields Pokémon sprite ownership to [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX) or the ROM while retaining Battle Art's arena and camera features.
 
 Ditto Transform is tracked independently, so transformed art follows the species currently being presented. Missing, malformed, or unreadable assets fail open to the original ROM sprite instead of aborting the battle.
 
@@ -121,9 +123,10 @@ Ditto Transform is tracked independently, so transformed art follows the species
 
 - Gen 3 Battle UI automatically receives the HUD, text/menu, and panel surfaces when its revamped battle UI option is enabled. Unsupported scripted phases retain the native presentation.
 - The older Gen 1 Modern UI adapter is recognized when its experimental battle UI option is enabled.
-- Stadium-style and effects mods can inspect a read-only staged-battle descriptor rather than importing Battle Art internals.
+- The [Stadium 2 Importer](https://github.com/Deftones565/gen1recomp-mod-stadium2-importer) can provide Stadium 3D models through the staged-battle compatibility interface. This is the supported Stadium model path; it is separate from [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX), which supplies sprites.
+- Effects mods can inspect the same read-only staged-battle descriptor rather than importing Battle Art internals.
 - `OFF/KFP` leaves the world underlay to Kanto First Person.
-- `MODDED` leaves species sprite drawing to another battle sprite or model provider.
+- `MODDED` leaves species sprite drawing to [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX) or the ROM.
 
 ## Persistent precache on `0.1.69–0.1.83`
 
@@ -151,7 +154,7 @@ The hotkeys work in free roam and mirror rows in the Options menu:
 
 | Key | Option |
 | --- | --- |
-| `3` | Cycle `VOXEL` camera modes |
+| `3` | Cycle `OFF`, `15`, `35`, `50`, `75`, `1ST`, and experimental `3RD` (`FULL` remains an Options-menu preset) |
 | `5` | Toggle `V-GRID` |
 | `6` | Cycle `T-SHIFT` |
 | `7` | Cycle `V-CURVE` |
@@ -190,7 +193,7 @@ The exported descriptor is available at:
 mod.find("BATTLE_ART_VOXEL_FORK").exports.battlePresentation
 ```
 
-Effects, model importers, and presentation mods can inspect staged battle placement through:
+Effects and presentation mods can inspect staged battle placement through:
 
 ```lua
 local stage = mod.find("BATTLE_ART_VOXEL_FORK").exports.battleStage
@@ -198,6 +201,8 @@ local state = stage and stage.state(battle)
 ```
 
 API version 1 is observational and read-only. A staged session reports `staged = true`; `ready` becomes true when the first projected shot exists. Ready state includes copied player/enemy anchors, sprite placement, animation scale, layer transform, and ownership declarations for the arena, battlers, trainers, camera, HUD, transitions, and animation projection. Consumers can align effects or yield competing presentation without retaining live internal tables.
+
+For Stadium 3D models, use the [Stadium 2 Importer](https://github.com/Deftones565/gen1recomp-mod-stadium2-importer), which integrates through this staged-battle interface. [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX) uses sprites instead and should use `DUPLICATE FIX: MODDED` so Battle Art does not draw another species card over them.
 
 ## Gen 2 status
 
