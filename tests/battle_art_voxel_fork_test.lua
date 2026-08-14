@@ -2962,7 +2962,7 @@ T.eq(rig.curve, 0, "the battle camera switches the world curve off")
 local Battles = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("OverworldBattle")
 local Art = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require("BattleArt")
 T.eq(type(Battles.battle), "function",
-  "Crystal Animated Sprites can identify the active staged battle")
+  "presentation providers can identify the active staged battle")
 T.eq(Art.duplicateSetting.label, "DUPLICATE FIX",
   "front and back sprite ownership is presented as one duplicate fix")
 T.eq(Art.duplicateSetting.values[1], "battle_art",
@@ -3013,9 +3013,6 @@ do
   Art.duplicateSetting:sync("battle_art")
 end
 
-T.eq(Art.speciesFor({ mon = { species = "DITTO" },
-                      __crystalTransformed = "MEW" }), "MEW",
-  "Crystal v1.5's Transform marker wins while Battle Art captures the card")
 local nativeDitto = { mon = { species = "DITTO" }, sprite = {} }
 local TransformCompat = run.loader.exports.BATTLE_ART_VOXEL_FORK.lib.require(
   "TransformCompat")

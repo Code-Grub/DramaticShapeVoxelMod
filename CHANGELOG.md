@@ -13,6 +13,9 @@
   the ROM. Ordinary Pokemon retain the selected normal generation. Explicit
   HP DVs, when supplied by another mod, must match the value derived from the
   Attack/Defense/Speed/Special low bits.
+- Removed the named Crystal load-order dependency and transformed-species
+  marker fallback. Battle Art now owns both DV detection and Transform species
+  tracking without calling or reading another sprite mod.
 
 ## 1.8.3 — Illustrated battle arenas
 

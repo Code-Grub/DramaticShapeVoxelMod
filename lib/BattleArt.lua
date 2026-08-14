@@ -180,11 +180,9 @@ local function shinyPrefix(side, shiny)
 end
 
 -- Transform does not rewrite mon.species. Our engine hook records the copied
--- shape independently; Crystal Animated Sprites v1.5 publishes its own marker,
--- which remains supported when that mod is installed.
+-- shape independently, so species routing never needs another mod's marker.
 function BattleArt.speciesFor(battler)
   local species = battler and (battler.__battleArtTransformed
-                               or battler.__crystalTransformed
                                or (battler.mon and battler.mon.species)) or nil
   return speciesAlias(species)
 end

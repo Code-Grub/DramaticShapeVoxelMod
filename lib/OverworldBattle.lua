@@ -97,9 +97,8 @@ function OverworldBattle.enabled()
   return OverworldBattle.setting:get() and true or false
 end
 
--- Public compatibility seam used by Crystal Animated Sprites v1.4+: it asks
--- whether its BattleState is the one currently being captured into voxel
--- billboards before choosing its staged palette/transparency path.
+-- Public compatibility seam for presentation providers that need to know
+-- whether their BattleState is currently being captured into voxel billboards.
 function OverworldBattle.battle()
   return session and session.battle or nil
 end

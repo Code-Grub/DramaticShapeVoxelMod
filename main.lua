@@ -1177,8 +1177,7 @@ PoisonFlash.install()
 MomHealFlash.install()
 
 -- Preserve Ditto's copied species after the engine's Transform animation.
--- This is native Battle Art behaviour; Crystal Animated Sprites may add its
--- own compatible marker but is no longer required for the transformation.
+-- This is native Battle Art behaviour and uses no other mod's marker or API.
 TransformCompat.install()
 
 -- CamControl.install wires the battle-camera zoom (wheel / pinch) and the

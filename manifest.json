@@ -9,9 +9,7 @@
   "game_version": "0.0.0-dev || >=0.1.37 <2.0.0",
   "priority": 100,
   "dependencies": [],
-  "optional_dependencies": [
-    "crystal_animated_sprites_with_shiny_visuals"
-  ],
+  "optional_dependencies": [],
   "conflicts": [
     "DRAMATIC_SHAPE",
     "DRAMALESS_SHAPE",
