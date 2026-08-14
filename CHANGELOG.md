@@ -25,6 +25,10 @@
 - `BATTLE ART` now retains every selected normal and shiny frame outside the
   completed sprite-provider update chain. Later provider animation updates can
   no longer alternate a second opponent front over Battle Art's chosen image.
+- Added a versioned, read-only staged-battle compatibility API. Other mods can
+  detect the active Battle Art session, inspect presentation ownership, and
+  align effects to copied live projection anchors without depending on Battle
+  Art's internal module layout.
 
 ## 1.8.3 — Illustrated battle arenas
 

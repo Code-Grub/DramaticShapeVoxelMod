@@ -157,6 +157,22 @@ when the consumer will draw that complete surface. The descriptor is exported
 as `mod.find("BATTLE_ART_VOXEL_FORK").exports.battlePresentation`; absent,
 throwing or false consumers fail open to Battle Art's native presentation.
 
+### Staged-battle compatibility API
+
+Effects and presentation mods can read the versioned, read-only descriptor at
+`mod.find("BATTLE_ART_VOXEL_FORK").exports.battleStage`. Its `state(battle)`
+function returns `nil` unless that exact battle is staged. A staged session is
+reported immediately with `staged=true`; `ready` becomes true once the first
+projected shot exists.
+
+Ready state includes copied authored and projected player/enemy anchors,
+back-sprite pinning, the animation scale and complete layer transform. It also
+declares Battle Art's arena, battler, trainer, camera, HUD, transition and
+animation-projection ownership. Consumers can therefore align their effects
+or yield competing presentation without importing Battle Art's internal
+modules, retaining live tables, or changing either mod's settings. API version
+1 is observational only.
+
 ## Bring your own battle art
 
 `BATTLE ART: STATIC` is the default. Drop a front PNG named for the species
