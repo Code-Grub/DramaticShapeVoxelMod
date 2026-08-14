@@ -1,302 +1,206 @@
-# DRAMATIC SHAPE VOXEL MOD BATTLE ART
+# Battle Art Voxel Fork
 
-A mod for the [Pokémon Gen 1 Recompilation
-Project](https://github.com/bryanthaboi/pokemon-gen1-recomp-project).
+Battle Art Voxel Fork turns the overworld of the [Pokémon Gen 1 Recompilation Project](https://github.com/bryanthaboi/pokemon-gen1-recomp-project) into a 3D voxel diorama and stages battles inside that world. It also provides configurable static and animated battle sprites, arena backdrops, trainer art, first-person exploration, water reflections, lighting, and compatibility hooks for other presentation mods.
 
-The overworld as a 3D diorama. Terrain is extruded into real geometry,
-occlusion comes from a depth buffer rather than a y-sort, characters stand
-as leaning sprite slabs, a shadow map throws real cast shadows across
-whatever they land on, and an optional tilt-shift pass sells the
-miniature-model look.
+Version 1.9.0 supports Pokémon Red, Blue, and Yellow on Gen1Recomp `0.1.69` through current pre-2.0 releases. It is intentionally declared as a Gen 1 mod; Pokémon Gold uses different engine modules and needs a real port rather than a manifest change. See the [Gen 1 and Gen 2 differences and porting guide](docs/GEN1_GEN2_DIFFERENCES.md).
 
-Water is a surface rather than a texture lying in a hole. It is a field of
-one-pixel-wide voxel columns, each standing a whole number of pixels tall and
-rising and falling as waves — found by walking the view ray through them in
-the shader, so a crest hides what is behind it and shows you its lit side,
-with no extra geometry anywhere.
+## Highlights
 
-And it reflects. The sky it stands under, in the same bands, the same dither
-and off the same clock, so the lake and the sky above it meet at the
-waterline with no seam. The sun or moon hanging in it, at the size the
-painted disc is drawn, craters and all. Whoever is standing beside it —
-walkers, NPCs, the two Pokémon in a staged battle. And on **FULL**, a
-screen-space ray march adds the rest of what is on screen: the shoreline, the
-trees behind it, the buildings across the bay. How much of it shows is
-Fresnel, so the top rung is a mirror and a looking-straight-down rung is a
-pond, off the same water.
+- Extruded terrain, buildings, foliage, figures, depth-buffered occlusion, cast shadows, and optional tilt-shift and world curvature.
+- Voxel water with waves and sky reflections; FULL reflections also include visible shoreline, trees, buildings, and characters.
+- First-person free look and analog movement while retaining the engine's collision, encounter, warp, ledge, and script behavior.
+- Battles staged over the current map with an over-the-shoulder camera, parallax, depth of field, configurable HUDs, and optional Gen 6-style backdrops.
+- Static or animated Pokémon art from Gen 1 through Gen 5 collections, trainer portraits, player intro art, native shiny detection, and safe ROM fallback.
+- Compatibility modes for external sprite providers, Gen 3 Battle UI, Stadium-style presentation mods, and Kanto First Person.
+- Two performance paths: persistent disk precaching on legacy engines and sandbox-safe bounded mesh streaming on current engines.
 
-And battles fought on that world rather than on a white field. When
-something picks a fight the map's NPCs are culled, the engine's own wipe
-plays over the empty map, and the battle draws over the nearest patch of
-clear ground — shot over the shoulder, the player's mon low and left and
-the enemy high and right, with a slow parallax drift behind them and a
-depth-of-field pass that keeps both of them sharp.
+## Engine compatibility
 
-And the whole thing from inside. The ladder's top rung, **1ST**, dives the
-camera into the player's own head: free look on the mouse (captured while
-the rung is on — left click is A, right click is B), the right stick, or a
-touch dragged across open screen; free movement that goes where you look,
-at any angle, sliding along walls — the left stick's raw deflection, the
-touch d-pad's true vector, or WASD as forward/backpedal/strafe. NPCs turn
-to face the eye wearing the frame their pose shows *this* viewer — walk
-behind someone and you see their back — and the sky, the shadows and the
-water reflections all carry over, because the head rides the same placed
-camera the battle shot proved out.
+| Gen1Recomp version | Support | Mesh behavior | Persistent precache |
+| --- | --- | --- | --- |
+| `0.1.69–0.1.83` | Supported | Legacy filesystem/FFI mesh path | Available from the title and pause menus |
+| `0.1.84+` | Supported | Packed `ByteData` meshes held in session memory | Unavailable; the sandbox blocks the required raw filesystem and FFI access |
+| Earlier than `0.1.69` | Unsupported | Missing APIs used by Battle Art 1.9.0 | Not a supported configuration |
 
-Presentational, with one deliberate exception. Every rung but 1ST changes
-what the world *looks* like and nothing about what it *is*; the battle
-arena is where the **camera** goes, not where anybody goes. 1ST replaces
-the grid walk with a free one while it is selected — but even there the
-game is untouched: the walk asks the engine's own collision the same
-questions a grid step asks, keeps the player's cell synced, and runs the
-engine's own landing pipeline per cell crossed, so warps, encounters,
-ledges, gates and scripts all fire exactly as themselves. Step off the
-rung and the grid walk is back.
+The `0.1.83` boundary is inclusive: persistent BAVC precaching works through `0.1.83`. Starting with `0.1.84`, the mod hides the `PRECACHE` and `CACHE` actions and uses the newer sandbox-compatible path automatically. This is expected behavior, not an incomplete installation.
 
-## Game support
+Some older engine builds exposed enough filesystem functionality for the cache backend itself, but Battle Art 1.9.0 as a whole requires APIs introduced in `0.1.69`. Those older builds are therefore not advertised as supported merely because they can write a cache file.
 
-Battle Art 1.9.0 supports Red, Blue, and Yellow. It intentionally declares
-Gen 1 only: Gold uses separate world, map, battle, script, and UI stacks, while
-this mod currently integrates directly with their Gen 1 counterparts. See
-[Why Battle Art is Gen 1-only today](docs/GEN1_GEN2_DIFFERENCES.md) for the
-confirmed blockers, reusable renderer components, and a suggested Gen 2
-porting plan.
+On recent engines, `R.DIST: MEDIUM` is the default. It bounds connected-map work to 32 Gen 1 cells (512 world pixels) while the current map remains complete. `SHORT`, `FAR`, and `FULL` are available for lower-end hardware, wider views, or comparison.
+
+The manifest accepts the development build identifier and stable versions in the range `>=0.1.69 <2.0.0`.
+
+## Installation
+
+1. Install a supported Gen1Recomp build and import Pokémon Red, Blue, or Yellow.
+2. Download a package from [Releases](https://github.com/absol89/DramaticShapeVoxelMod/releases), or clone this repository.
+3. Put the mod folder in the game's `mods` directory. A normal Windows installation uses `%APPDATA%\pokemon-love2d\mods\BATTLE_ART_VOXEL_FORK`.
+4. Enable **BATTLE ART VOXEL FORK** in the Mod Manager or in a profile.
+5. Optionally import or add battle-art PNGs as described below. Missing art always falls back to the ROM.
+
+The mod conflicts with the original Dramatic Shape, Dramaless Shape, and Potato Voxel renderers because they compete for the same world presentation.
+
+## Feature sets
+
+### Voxel overworld
+
+The renderer turns map blocks into a perspective diorama instead of flattening them into a single plane. Terrain, water, structures, grass, flowers, authored figures, NPCs, and overworld Pokémon retain their normal game state while the mod changes how they are presented.
+
+Key visual controls include:
+
+| Option | Choices | Purpose |
+| --- | --- | --- |
+| `VOXEL` | `OFF`, `15`, `35`, `50`, `75`, `1ST` | Flat view, progressively pitched diorama cameras, or first person |
+| `V-GRID` | `OFF`, `ON` | One-pixel voxel wireframe |
+| `T-SHIFT` | `OFF`, `1`, `2`, `3` | Miniature depth blur |
+| `V-CURVE` | `OFF`, `1`, `2`, `3` | Curves the distant world toward the horizon |
+| `SHADOWS` | `ON`, `OFF` | Cast or fallback sprite shadows |
+| `AA` | `OFF`, `2X`, `4X` | Supersampled edge smoothing; the most expensive visual option |
+| `R.DIST` | `SHORT`, `MEDIUM`, `FAR`, `FULL` | Limits adjacent-map rendering work |
+| `DAYTIME` | `SYNC`, `DAY`, `NIGHT`, `DUSK`, `DAWN`, `CYCLE` | Controls outdoor lighting and sky time |
+
+`WORLD FILL` controls empty space below and outside the world:
+
+- `CYAN` is the default classic underlay.
+- `BLACK` uses the dark `#181818` underlay.
+- `OFF/KFP` draws no underlay, allowing Kanto First Person to own that space.
+
+### Water and sky
+
+`WATER` has three levels:
+
+- `OFF` disables the voxel water pass.
+- `SKY` draws pixel-height waves reflecting the current sky, sun or moon, and staged battlers.
+- `FULL` adds screen-space reflections of visible shoreline, trees, and buildings.
+
+The outdoor sky, shadows, flat-world tint, and water share the same clock. Gen 6 battle backdrops snapshot the current dawn/day/dusk/night period when a battle starts, so a time change cannot abruptly replace the backdrop during that battle.
+
+### First-person mode
+
+Choose `VOXEL: 1ST` to enter the player's viewpoint. Look with the mouse, right stick, or a touch drag; move with WASD, the left stick, or the touch D-pad. Mouse left click acts as A and right click as B while pointer capture is active.
+
+First-person movement still asks the Gen 1 engine about collision and runs its landing pipeline for every crossed cell. Warps, encounters, ledges, gates, and scripts therefore remain engine-owned. Selecting another `VOXEL` mode restores ordinary grid movement.
+
+### Staged battles and arenas
+
+`3D-BTL` stages battles on nearby clear ground in the current map. It is enabled by default and does not require the free-roam `VOXEL` camera to be pitched.
+
+Presentation controls include:
+
+| Option | Choices | Purpose |
+| --- | --- | --- |
+| `ARENA FILL` | `OFF`, `WHITE`, `GEN6`, `PNG` | World arena, flat white arena, contextual Gen 6 backdrop, or custom backdrop |
+| `BG Y-OFFSET` | `-400` to `+400` | Vertically crops a selected backdrop |
+| `BOSS BG` | `ON`, `OFF` | Allows special boss backdrops |
+| `SPRITE LIGHT` | `SHADED`, `UNLIT` | Lets battle cards receive world lighting or preserve source colors |
+| `HUD COLOR` | `COLOR`, `INVERTED` | Dark or light HUD glyph treatment while retaining HP colors |
+| `TEXTBOX FILL` | `WHITE`, `HALF`, `BLACK`, `OFF` | Controls the native text and menu paper independently of the arena |
+
+`ARENA FILL: GEN6` selects backgrounds using map location, encounter type, surfing/fishing state, boss state, and the time captured at battle entry.
+
+### Battle art
+
+`BATTLE ART` controls Pokémon sprite ownership:
+
+- `STATIC` reads ordinary species PNGs.
+- `ANIMATED` reads the selected animated front set and compatible animated/static back set.
+- `ROM` bypasses imported Pokémon art.
+
+Front collections can be selected from Gen 1 through Gen 5. Gen 1 animated-mode fronts are single-frame compatibility PNGs; Gen 2–5 fronts are atlases. Back collections also expose Gen 1 through Gen 5: Gen 3 and Gen 5 can animate, while Gen 1, Gen 2, and Gen 4 use static PNGs.
+
+Additional controls choose player front/back presentation, player-card mirroring, automatic/world/original-UI back placement, opponent trainer generations, and static or five-pose player trainer introductions.
+
+`DUPLICATE FIX` separates sprite ownership from other mods:
+
+- `BATTLE ART` makes this mod own normal and shiny battle sprites. It evaluates the Gen 2 DV shiny formula itself and routes qualifying Pokémon to matching shiny assets without relying on Crystal or another shiny mod's API.
+- `MODDED` yields Pokémon sprite ownership to another provider or the ROM while retaining Battle Art's arena and camera features. Use this for Crystal sprite mods, Stadium model importers, and similar replacements.
+
+Ditto Transform is tracked independently, so transformed art follows the species currently being presented. Missing, malformed, or unreadable assets fail open to the original ROM sprite instead of aborting the battle.
+
+### UI and mod compatibility
+
+- Gen 3 Battle UI automatically receives the HUD, text/menu, and panel surfaces when its revamped battle UI option is enabled. Unsupported scripted phases retain the native presentation.
+- The older Gen 1 Modern UI adapter is recognized when its experimental battle UI option is enabled.
+- Stadium-style and effects mods can inspect a read-only staged-battle descriptor rather than importing Battle Art internals.
+- `OFF/KFP` leaves the world underlay to Kanto First Person.
+- `MODDED` leaves species sprite drawing to another battle sprite or model provider.
+
+## Persistent precache on `0.1.69–0.1.83`
+
+On legacy engines, the title menu's `PRECACHE` action opens a cancellable **GENERATE PRECACHE** task. It creates reusable terrain, water, connected-map body, and auxiliary geometry after content mods have patched maps and tilesets. Running it again resumes from valid records instead of rebuilding them.
+
+The files are written only below:
+
+```text
+mod-derived/BATTLE_ART_VOXEL_FORK/static-mesh-cache-v2
+```
+
+The cache does not store runtime NPCs, spawned overworld Pokémon, or temporary script changes. Live map changes are meshed in RAM; returning to the canonical layout reuses the disk record. A human-readable `static-cache-exclusions.tsv` records intentionally excluded runtime objects and noncanonical geometry.
+
+BAVC is a versioned, fingerprinted, LZ4-compressed geometry container. Corrupt or truncated records safely fall back to cooperative mesh generation. Cache size depends on the imported ROM and installed content and can reach hundreds of MiB. The directory is disposable: deleting it only makes the mod regenerate those meshes. The pause-menu `CACHE` action can save or drop accumulated legacy-engine RAM cache work.
+
+## Sandboxed mesh streaming on `0.1.84+`
+
+Current engines do not grant content mods the raw filesystem and FFI access used by the persistent cache. Battle Art instead packs mesh vertices into bounded `ByteData` buffers, uploads them through the supported API, keeps only the current session's useful meshes in memory, and releases map meshes as they become unnecessary.
+
+There is no precache button in this mode. Use `R.DIST` to trade connected-world breadth for loading time and memory use; `MEDIUM` is the recommended default. All supported voxel, camera, battle, battle-art, backdrop, and compatibility features remain available.
 
 ## Controls
 
-Every key is free-roam only, and each one is also a row on the OPTIONS
-menu.
+The hotkeys work in free roam and mirror rows in the Options menu:
 
-| control | does |
+| Key | Option |
 | --- | --- |
-| `3`, or the **VOXEL** options row | OFF → 15 → 35 → 50 → 75 → 1ST → OFF (camera pitch or first-person view) |
-| `5`, or the **V-GRID** options row | OFF / ON — a one-pixel wireframe on every voxel |
-| `6`, or the **T-SHIFT** options row | OFF → 1 → 2 → 3 → OFF (miniature blur) |
-| `7`, or the **V-CURVE** options row | OFF → 1 → 2 → 3 — bend the world over the horizon |
-| `8`, or the **3D-BTL** options row | ON / OFF — fight on the map instead of on a white field |
-| the **BATTLE ART** options row | STATIC / ANIMATED / ROM — use optional battle-only art, with a direct ROM fallback when a file or atlas is absent |
-| the **TRAINER ART** options row | GEN 1 / GEN 2 / GEN 3 — choose a static opponent-trainer collection |
-| the **PLAYER ART** options row | PNG / GEN 1–5 / ASH / GARY / BOY / LASS / HILBERT / ROM — choose the static player trainer battle-intro portrait; BATTLE ART: ROM pins it to ROM |
-| the **PLAYER ANIM** options row | PNG / GEN 1–5 / ASH / GARY / RED / ASH FRONT / MISTY FRONT / BROCK FRONT / BULMA FRONT / GARY FRONT / ROM — choose a static `player.png` or five-pose player intro while ANIMATED is selected |
-| the **ANIM FRONT GEN** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 — choose a single-frame Gen 1 compatibility set or an animated Gen 2–5 collection |
-| the **BACK ART SET** options row | GEN 1 / GEN 2 / GEN 3 / GEN 4 / GEN 5 — STATIC always uses generation PNGs; ANIMATED uses Gen 3/5 atlases and Gen 1/2/4 PNGs |
-| the **DUPLICATE FIX** options row | BATTLE ART / MODDED — use the Gen 2 DV formula to route actual shinies through Battle Art's matching imported shiny collections, or leave shiny pictures to another mod/ROM; ordinary Pokémon retain their selected normal Battle Art in either mode; replaces both old SHINY FIX rows |
-| the **PLAYER** options row | FRONT SPRITES / BACK SPRITES — supplied art is world-placed; a missing selected back uses the ROM's UI-attached pic |
-| the **FLIP FRONT SPRITE** options row | BATTLE ART / DEFAULT — mirror ordinary Battle Art on the player side, or preserve an already-oriented picture supplied by a sprite mod |
-| the **BACK PLACEMENT** options row | AUTO / WORLD / OG UI — use the mode-aware default or force every player back onto one layer |
-| the **HUD COLOR** options row | COLOR keeps black HUD glyphs and coloured HP gauges with a light shadow; INVERTED uses white glyphs with a dark shadow. Gauge health remains bright green / amber / red in either mode |
-| the **SHADOWS** options row | ON uses cast shadows (with the flat fallback on unsupported hardware); OFF removes both paths in free roam and staged battles. UNLIT battle sprites neither receive nor cast shadows even while this is ON |
-| `9`, or the **WATER** options row | FULL / SKY / OFF — waves and reflections on water. **SKY** gives the surface its pixel-tall wave columns and puts the sky, the sun, the moon and the cast in them; **FULL** adds a screen-space ray march that also reflects the shoreline, the trees and the buildings standing behind it |
-| the **AA** options row | OFF / 2X / 4X — smooth the stair-stepped edges of the 3D world by rendering the diorama larger than the window and folding it back down. The ladder is samples per display pixel: 2X is a canvas root-two wider and taller, 4X one exactly twice the size. Every edge in the projected picture softens with the silhouettes — the tileset's own texels are quads in a perspective view and cross the pixel grid at the same arbitrary angles — so the diorama reads smoother rather than sharper. The most expensive row in the mod, so it is OFF by default and **FULL** leaves it alone |
-| the **DAYTIME** options row | SYNC / DAY / NIGHT / DUSK / DAWN / CYCLE — what time it is outdoors, on the diorama *and* on the flat 2D world; held at SYNC (and off the menu) while VOXEL is FULL |
+| `3` | Cycle `VOXEL` camera modes |
+| `5` | Toggle `V-GRID` |
+| `6` | Cycle `T-SHIFT` |
+| `7` | Cycle `V-CURVE` |
+| `8` | Toggle `3D-BTL` |
+| `9` | Cycle `WATER` |
 
-Fresh installs start at **VOXEL: FULL**, with **PLAYER: BACK SPRITES** and the
-other defaults listed above. Existing saved choices, including VOXEL: OFF,
-are preserved across updates.
-
-**3D-BTL** is on by default and is independent of **VOXEL**: battles draw
-on the world whether or not the free-roam camera is pitched over.
-
-## Persistent voxel precache
-
-Persistent mesh precaching is available on legacy engines that expose the
-filesystem and FFI facilities it needs. Current sandboxed engines hide the
-PRECACHE and CACHE actions; they build meshes through bounded packed buffers
-in session memory instead, with **R.DIST: MEDIUM** limiting adjacent-map work.
-
-The title menu's **PRECACHE** item opens **GENERATE PRECACHE** before gameplay.
-It cooperatively prepares every persistent mesh variant the renderer can ask
-for, shows live progress and disk use, and remains cancellable with B. Running
-it again resumes: records whose exact input fingerprint is still valid are
-counted as EXISTING rather than rebuilt.
-
-The generator writes only beneath
-`mod-derived/BATTLE_ART_VOXEL_FORK/static-mesh-cache-v2` in the game's save
-directory. At `mods.loaded` it takes a private snapshot of the final map and
-tileset geometry, after content mods have patched it but before gameplay can
-change it:
-
-- one `MAP.full.terrain.bavc` for every loadable map, containing terrain and
-  the separately drawn water surface, with that map's connection masks;
-- one `MAP.body.terrain.bavc` only for maps participating in seamless outdoor
-  connections, because only neighbour rendering requests the body-only form;
-- one shared `MAP.aux.bavc` per generated map, containing tall grass, flowers,
-  and authored figure geometry.
-
-These records contain only geometry derived from that immutable snapshot:
-terrain, water sheets, buildings, trees, static grass/flowers and figures
-authored into the tileset. Runtime NPCs and spawned overworld Pokemon remain
-ordinary sprite billboards and never enter a disk record or fingerprint. If a
-script, Cut or a door changes a live block, that one live map is meshed in RAM;
-it neither reads nor replaces the canonical static file. Returning to the
-canonical layout reuses the disk mesh again.
-
-For auditing, the mod builds
-`mod-derived/BATTLE_ART_VOXEL_FORK/static-cache-exclusions.tsv`. It records the
-map, component and asset key for runtime objects and noncanonical live geometry
-which were deliberately refused by background/persistent precaching. It is a
-human-readable exclusion ledger, not a permanent map blacklist: a spawned
-Pokemon can never poison its town's canonical terrain cache.
-
-BAVC is a small documented container, not a serialized GPU object or ROM dump:
-a `BAVC`/version/fingerprint header followed by LZ4 chunks of interleaved
-`position.xyz`, `uv.xy`, `shade` float vertices. Standard GLB was evaluated for
-inspectability, but the measured 744 MiB test cache contains 2.73 GiB of raw
-vertex data; without shipping a mesh-compression decoder, GLB would increase
-mobile storage about 3.7 times. Corrupt/truncated records fail open to the
-ordinary cooperative mesher. Runtime meshes are released between maps, so
-generating the whole cache does not hold the whole world in RAM.
-
-The completion screen reports map, file, FULL/BODY/AUX counts and total MiB or
-GiB. Exact size depends on the imported ROM and installed map/tileset content;
-large routes dominate and a complete cache can occupy hundreds of MiB or more.
-The directory is disposable: deleting it only makes the mod regenerate static
-meshes. The older `mesh-cache-v1` directory is no longer read and may be removed
-manually after confirming the v2 build.
-
-## Battle UI compatibility
-
-Battle Art automatically yields its native battle HUD, text/menu layer and
-panels to the installed `gen3_battle_ui` while that mod's `revampedBattleUI`
-option is enabled. Mimic, Safari and the scripted demo retain native text
-because Gen 3 UI v0.1 does not replace those phases.
-The older `gen1_modern_ui` adapter is also recognised when its experimental
-`battleUiWip` option is explicitly enabled.
-
-Other replacement presenters can wrap
-`battle.presentation.suppress_native.v1`. The request reports API version 1,
-source ID `BATTLE_ART_VOXEL_FORK`, the requested `hud`, `text`, or `panels`
-surface, and the current battle when available. Return exactly `true` only
-when the consumer will draw that complete surface. The descriptor is exported
-as `mod.find("BATTLE_ART_VOXEL_FORK").exports.battlePresentation`; absent,
-throwing or false consumers fail open to Battle Art's native presentation.
-
-### Staged-battle compatibility API
-
-Effects and presentation mods can read the versioned, read-only descriptor at
-`mod.find("BATTLE_ART_VOXEL_FORK").exports.battleStage`. Its `state(battle)`
-function returns `nil` unless that exact battle is staged. A staged session is
-reported immediately with `staged=true`; `ready` becomes true once the first
-projected shot exists.
-
-Ready state includes copied authored and projected player/enemy anchors,
-back-sprite pinning, the animation scale and complete layer transform. It also
-declares Battle Art's arena, battler, trainer, camera, HUD, transition and
-animation-projection ownership. Consumers can therefore align their effects
-or yield competing presentation without importing Battle Art's internal
-modules, retaining live tables, or changing either mod's settings. API version
-1 is observational only.
+Battle Art suppresses the engine's flat `TILT` and full-screen `GBC FX` while installed because those passes conflict with the 3D renderer. Uninstalling the mod restores their normal rows and saved values.
 
 ## Bring your own battle art
 
-`BATTLE ART: STATIC` is the default. Drop a front PNG named for the species
-into `assets/battle/front-static`, or a back PNG into the selected
-`assets/battle/back-static/gen1` through `gen5` folder; for example,
-`caterpie.png`, `farfetchd.png`, or `mr-mime.png`. No Lua sidecar or fixed
-resolution is required, and the image is not resized. Existing alpha is
-preserved. For a fully opaque PNG, the corner-coloured background connected
-to the image border is keyed transparent while enclosed matching pixels are
-left intact.
+Local battle PNGs are ignored by Git. The repository supplies folder contracts and importer tools, while a missing file always falls back to ROM art.
 
-Enemy front art is used as authored, facing left. Player front art is mirrored
-to face right; authored player back art already faces right and is not
-mirrored. Every imported sprite remains a card in the 3D world, so hit flash,
-depth occlusion and alpha-shaped shadows apply. Static species front
-illustrations preserve their authored brightness instead of receiving the
-day/night colour tint; other art continues to follow the hour. OG, inverted
-and CLASSIC display filters still apply to imported art. Missing or unreadable
-files fall straight back to the ROM art.
+| Purpose | Folder |
+| --- | --- |
+| Static species fronts | `assets/battle/front-static/` |
+| Gen 1 single-frame and Gen 2–5 animated fronts | `assets/battle/front-animated/gen1/` through `gen5/` |
+| Static species backs | `assets/battle/back-static/gen1/` through `gen5/` |
+| Animated Emerald and Black/White backs | `assets/battle/back-animated/gen3/` and `gen5/` |
 
-The four battle-art directories are intentionally ignored by Git except for
-their README contracts. `tools/package_mod.ps1` nevertheless includes local
-PNGs from them in a test ZIP, so artwork can stay private and uncommitted.
-Use `tools/package_clean_mod.ps1` for a shareable install ZIP that preserves
-the documented battle-art folder layout but excludes every PNG below
-`assets/battle`. The clean ZIP includes the complete public `tools` folder, so
-users who receive only the archive can import their own art and rebuild it
-without cloning the repository. Generated Python `__pycache__`/`.pyc` files
-remain excluded.
-`BATTLE ART: ANIMATED` reads independent `ANIM FRONT GEN` and `BACK ART SET`
-choices. GEN 1 fronts are ordinary single-frame PNGs from
-`front-animated/gen1`; Gen 2–5 fronts remain animated atlases, including
-converted Diamond/Pearl APNGs for GEN 4. Animated back GEN 3 and GEN 5 read
-atlases from `back-animated/gen3` and `back-animated/gen5`. Back GEN 1, GEN 2
-and GEN 4 read ordinary species PNGs from their `back-static` generation folders. A
-loaded back is world-placed, lit, depth-occluded and shadowed. If its selected
-PNG or atlas is missing or malformed, the unmodified ROM backsprite remains in
-the original UI layer, including its normal battle motion and filtering.
-`BACK ART SET` also appears under STATIC. In that mode every choice, including
-GEN 5, reads only `back-static/<generation>/<species>.png`; it never inspects
-an animated atlas. GEN 1 remains selectable when its directory is absent so
-users can create it for ROM-hack art. `ANIM FRONT GEN` remains exclusive to
-ANIMATED, and ROM ignores both selectors.
+Use lowercase species filenames such as `pikachu.png`, `caterpie.png`, `farfetchd.png`, and `mr-mime.png`. The Nidoran files are `nidoran-f.png` and `nidoran-m.png`. Place shiny variants in the corresponding documented `shiny` folder. Each battle-art directory contains a README describing its exact file and atlas contract.
 
-Run `python tools/import_emerald_back_sprites.py --root .` to import both the
-animated Emerald `Spr b 3e` backs and the static `Spr b 3r` backs for the
-first 151 species. The generated atlases and ordinary PNGs remain local,
-ignored artwork; only their shared atlas metadata is committed.
+Static PNGs are used at native resolution. Existing alpha is preserved. For an opaque source image, the border-connected corner color is keyed transparent while enclosed matching pixels remain intact. Enemy fronts face left; player fronts can be mirrored by the mod; authored back art should face right.
 
-Run `python tools/import_crystal_back_sprites.py --root .` to import the first
-151 static Crystal backs. In ANIMATED mode, `BACK ART SET: GEN 1` and `GEN 2`
-still select the static Yellow SGB and Crystal folders respectively; only GEN
-3 and GEN 5 invoke an animated back-atlas decoder.
+The `tools` directory includes importers for Crystal, Emerald, Platinum, Black/White, extended Gen 2–5 species sets, shiny collections, static illustrations, and animated atlases. These scripts prepare local art without committing it.
 
-Run `python tools/import_platinum_back_sprites.py --root .` to populate the
-static GEN 4 back set. It follows the Platinum category's mixture of `4p` and
-reused `4d` files and chooses the male image for a dimorphic species.
+- `tools/package_mod.ps1` creates a local test package including your ignored battle PNGs.
+- `tools/package_clean_mod.ps1` creates a shareable package that preserves the folder contracts and tools but excludes local battle PNGs.
 
-Run `python tools/import_black_white_static_back_sprites.py --root .` to
-populate static GEN 5 with the first 151 Black/White back-normal PNGs. This
-does not replace or alter the animated GEN 5 atlas collection.
+## Integration API for mod authors
 
-`BACK PLACEMENT: AUTO` keeps STATIC-mode player backs in the world, including
-ROM fallbacks. Under ANIMATED, supplied Gen 1–4 PNGs and Gen 5 atlases stay in
-the world while a missing selection leaves the ROM backsprite on its OG UI
-anchor. ROM mode also uses OG UI. `WORLD` and `OG UI` override that decision
-for testing any art set; large supplied art may crop when forced onto OG UI.
+Replacement UIs can wrap `battle.presentation.suppress_native.v1`. A consumer receives the API version, source ID, requested `hud`, `text`, or `panels` surface, and the current battle when available. Return exactly `true` only when the consumer draws the complete requested surface; absent, failing, or false consumers leave Battle Art's native surface enabled.
 
-Opponent trainer cards are always static. `TRAINER ART` chooses fronts from
-`front-static/gen1`, `front-static/gen2`, or `front-static/gen3`, using class
-filenames such as `youngster.png`, `cooltrainer-f.png`, and
-`jessie-james.png`. A missing class falls directly back to its ROM portrait;
-generations are never silently mixed. In STATIC mode, `PLAYER ART` selects
-player trainer backs
-such as `back-static/gen1player.png`, `back-static/ashplayer.png`,
-`back-static/boyplayer.png`, `back-static/lassplayer.png`,
-`back-static/hilbertplayer.png`, or ROM.
-PNG is the default and reads `back-static/player.png`; every missing named
-choice tries that same generic PNG before falling back to ROM.
-In ANIMATED mode, `PLAYER ANIM: PNG` reads the static
-`back-static/player.png`. Named choices select the corresponding five-frame
-strip from `back-animated`; the five `*frontplayer.png` choices retain their
-authored front-facing poses, while ROM retains the engine portrait. Frame one
-holds during the stationary entrance pose. Frames two through five advance
-once with the engine's leftward intro slide and then stop; they do not loop.
-AUTO placement keeps this intro on OG UI, while WORLD and OG UI remain
-explicit overrides.
-Both the original five-by-64 strips and normalized five-by-80 strips are read
-at native resolution. Unlike the ROM's half-resolution player back, a custom
-static or animated trainer remains 1x when attached to OG UI. Use
-`tools/player-animation-template-400x80.png` as the authoring guide, then
-remove its coloured dividers from the finished atlas.
-`back-static/oak.png` and `back-static/old-man.png` remain the scripted demo
-portraits. The folder READMEs carry
-the complete trainer-class list and the four exceptional Pokémon filenames.
+The exported descriptor is available at:
 
-Two of the engine's own rows are taken away while this mod is installed:
-**TILT**, which is the flat fake of what this mode does for real, and **GBC
-FX**, a full-screen present pass over the top of the diorama. Both are held at
-off rather than merely hidden — a row that is not there cannot switch off a
-value an older save arrived with. Uninstall and both come back, at whatever
-they were last set to.
+```lua
+mod.find("BATTLE_ART_VOXEL_FORK").exports.battlePresentation
+```
 
-The two battle HUD blocks sit on frosted glass over the world. `TEXTBOX FILL`
-controls the engine's own text and menu paper independently: WHITE (the
-default), translucent HALF, opaque BLACK, or OFF. Dark and transparent modes
-use white ink with a one-pixel shadow, while `ARENA FILL: WHITE` forces the
-guaranteed-readable white box. The engine still owns the box geometry, so its
-border, corners and ink remain aligned under both fixed and fill scaling.
-`HUD COLOR: COLOR` (the default) keeps black names, levels and HP text with
-the original green/yellow/red bars and a bright one-pixel shadow. INVERTED
-uses white HUD ink with a dark shadow. The setting affects only the opponent
-and player status blocks, never textbox ink; `ARENA FILL: WHITE` forces COLOR.
+Effects, model importers, and presentation mods can inspect staged battle placement through:
+
+```lua
+local stage = mod.find("BATTLE_ART_VOXEL_FORK").exports.battleStage
+local state = stage and stage.state(battle)
+```
+
+API version 1 is observational and read-only. A staged session reports `staged = true`; `ready` becomes true when the first projected shot exists. Ready state includes copied player/enemy anchors, sprite placement, animation scale, layer transform, and ownership declarations for the arena, battlers, trainers, camera, HUD, transitions, and animation projection. Consumers can align effects or yield competing presentation without retaining live internal tables.
+
+## Gen 2 status
+
+Battle Art 1.9.0 is Gen 1 only. The renderer, shaders, asset resolvers, shiny predicate, battle-art formats, and presentation API are reusable, but the current boot sequence directly wraps Gen 1 world, map, battle, UI, script, and input modules. Gold exposes separate stacks that must be mapped and tested deliberately.
+
+The [Gen 1 and Gen 2 differences and porting guide](docs/GEN1_GEN2_DIFFERENCES.md) lists the confirmed blockers, reusable portions, and a staged porting plan for anyone working on Gen 2 support.
