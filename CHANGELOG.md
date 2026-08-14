@@ -8,8 +8,9 @@
 
 - **Provider-neutral shiny routing.** Battle Art now owns the canonical Gen 2
   DV predicate instead of consulting Crystal Animated Sprites' image API.
-  `MODDED` sends only DV-confirmed shinies to the matching shiny collection or
-  override; ordinary Pokemon retain the selected normal generation. Explicit
+  `BATTLE ART` sends only DV-confirmed shinies to its matching imported shiny
+  collection or override; `MODDED` leaves those shinies to another provider or
+  the ROM. Ordinary Pokemon retain the selected normal generation. Explicit
   HP DVs, when supplied by another mod, must match the value derived from the
   Attack/Defense/Speed/Special low bits.
 

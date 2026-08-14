@@ -36,10 +36,10 @@ BattleArt.playerAnimationSetting = ModSetting.new(
   { "PNG", "GEN 1", "GEN 2", "GEN 3", "GEN 4", "GEN 5", "ASH", "GARY", "RED",
     "ASH FRONT", "MISTY FRONT", "BROCK FRONT", "BULMA FRONT", "GARY FRONT", "ROM" }, 9)
 -- One owner for species pictures. BATTLE ART keeps this mod's selected front
--- and back collections in charge. MODDED is the old FRONT/BACK SHINY FIX: ON
--- behaviour: for a DV-confirmed shiny it checks the matching shiny collection
--- or override folder and, on a miss, leaves the underlying sprite supplied by
--- another mod in charge. Ordinary Pokemon keep the selected normal Battle Art.
+-- and back collections in charge, including its imported shiny children.
+-- MODDED is the old FRONT/BACK SHINY FIX: ON behaviour: a DV-confirmed shiny
+-- is left to the underlying sprite supplied by another mod (or the ROM), while
+-- ordinary Pokemon keep the selected normal Battle Art.
 -- Trainers are people rather than battlers, so this never affects trainer art.
 BattleArt.duplicateSetting = ModSetting.new(
   "duplicateFix", "DUPLICATE FIX",
@@ -57,6 +57,10 @@ BattleArt.frontFlipSetting = ModSetting.new(
 
 function BattleArt.prefersModded()
   return BattleArt.duplicateSetting:get() == "modded"
+end
+
+function BattleArt.ownsShinyArt()
+  return not BattleArt.prefersModded()
 end
 
 -- Gen 1 already stores the four DVs Gen 2 uses for shininess. Own that
@@ -170,9 +174,9 @@ end
 local function shinyPrefix(side, shiny)
   -- species-only. Players can never be shiny, so this never consults player
   -- art; `side` remains part of the call contract for the folder resolvers.
-  -- MODDED routes to the flat shiny folder; BATTLE ART keeps fronts in the
-  -- generation-neutral front-static root (no shiny child for fronts).
-  return BattleArt.prefersModded() and shiny and "shiny/" or ""
+  -- BATTLE ART routes confirmed shinies to its flat override folder. MODDED
+  -- never reaches this helper for a shiny through the public image resolver.
+  return BattleArt.ownsShinyArt() and shiny and "shiny/" or ""
 end
 
 -- Transform does not rewrite mon.species. Our engine hook records the copied
@@ -190,7 +194,7 @@ end
 -- front-static species art remains the deliberate exception because it has
 -- no generation selector of its own.
 local function generationFolder(generation, side, shiny)
-  if BattleArt.prefersModded() and shiny then
+  if BattleArt.ownsShinyArt() and shiny then
     return generation .. "/shiny"
   end
   return generation
@@ -379,7 +383,9 @@ local function prepare(path, mode)
 end
 
 function BattleArt.image(species, side, battler)
-  local path = pathFor(species, side, BattleArt.isShiny(battler))
+  local shiny = BattleArt.isShiny(battler)
+  if shiny and BattleArt.prefersModded() then return nil end
+  local path = pathFor(species, side, shiny)
   local image = path and prepare(path, displayMode()) or nil
   -- Authored static species fronts preserve their illustration brightness in
   -- the battle scene. BattleScene reads this tag to omit only the clock tint;
@@ -395,8 +401,10 @@ end
 -- pixel metrics as BATTLE ART: STATIC, but live in generation subfolders so
 -- switching the selector does not require renaming or replacing files.
 function BattleArt.generationBackImage(species, generation, battler)
+  local shiny = BattleArt.isShiny(battler)
+  if shiny and BattleArt.prefersModded() then return nil end
   local rel = generationRelativePath(
-    species, generation, "back", BattleArt.isShiny(battler))
+    species, generation, "back", shiny)
   if not rel then return nil end
   local path = V.mod.assets:path(rel)
   local fs = love and love.filesystem
@@ -410,12 +418,13 @@ end
 -- image; no metadata or timing sidecar is involved.
 function BattleArt.generationFrontImage(species, generation, battler)
   if not tostring(generation or ""):match("^gen[1-5]$") then return nil end
-  -- Shiny-compatible: MODDED selects the generation's own shiny child folder
+  -- Shiny-compatible: BATTLE ART selects the generation's shiny child folder
   -- (`front-animated/<gen>/shiny/<slug>.png`).
-  -- A missing shiny file falls through to ROM -- the normal generation's
-  -- animated atlas is intentionally NOT used here so MODDED suppresses it.
+  -- MODDED leaves a DV-confirmed shiny to another sprite mod or the ROM.
+  local shiny = BattleArt.isShiny(battler)
+  if shiny and BattleArt.prefersModded() then return nil end
   local rel = generationRelativePath(
-    species, generation, "front", BattleArt.isShiny(battler))
+    species, generation, "front", shiny)
   local path = V.mod.assets:path(rel)
   local fs = love and love.filesystem
   if not (fs and fs.getInfo and fs.getInfo(path)) then return nil end

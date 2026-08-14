@@ -3083,22 +3083,38 @@ T.eq(Art.staticSpeciesRelativePath(252, "front"),
 T.eq(Art.generationRelativePath(252, "gen3", "back"),
   "assets/battle/back-static/gen3/treecko.png",
   "normal static backs resolve post-Kanto species inside the selected generation")
-Art.duplicateSetting:sync("modded")
+Art.duplicateSetting:sync("battle_art")
+T.eq(Art.ownsShinyArt(), true,
+  "BATTLE ART owns its imported shiny collections")
 T.eq(Art.staticSpeciesRelativePath(386, "front", true),
   "assets/battle/front-static/shiny/deoxys.png",
-  "a DV-confirmed shiny static front uses the flat override folder")
+  "BATTLE ART routes a shiny static front through the flat override folder")
 T.eq(Art.staticSpeciesRelativePath(386, "front", false),
   "assets/battle/front-static/deoxys.png",
-  "MODDED does not send an ordinary Pokemon down the shiny path")
+  "BATTLE ART keeps an ordinary Pokemon in the normal collection")
 T.eq(Art.generationRelativePath(386, "gen4", "back", true),
   "assets/battle/back-static/gen4/shiny/deoxys.png",
-  "a DV-confirmed shiny static back uses generation/shiny")
+  "BATTLE ART routes a shiny static back through generation/shiny")
 T.eq(Art.generationRelativePath(152, "gen2", "front", true),
   "assets/battle/front-animated/gen2/shiny/chikorita.png",
-  "a DV-confirmed shiny animated front uses generation/shiny")
+  "BATTLE ART routes a shiny animated front through generation/shiny")
 T.eq(Art.generationRelativePath(152, "gen2", "front", false),
   "assets/battle/front-animated/gen2/chikorita.png",
-  "the same MODDED resolver keeps ordinary fronts in the normal generation")
+  "the same BATTLE ART resolver keeps ordinary fronts in the normal generation")
+Art.duplicateSetting:sync("modded")
+T.eq(Art.ownsShinyArt(), false,
+  "MODDED leaves shiny pictures to another provider or the ROM")
+do
+  local routedShiny = { mon = { species = "DEOXYS", dvs = {
+    attack = 15, defense = 10, speed = 10, special = 10, hp = 8,
+  } } }
+  T.eq(Art.image("DEOXYS", "front", routedShiny), nil,
+    "MODDED does not replace another provider's shiny static picture")
+  T.eq(Art.generationBackImage("DEOXYS", "gen4", routedShiny), nil,
+    "MODDED does not replace another provider's shiny generation back")
+  T.eq(Art.generationFrontImage("DEOXYS", "gen4", routedShiny), nil,
+    "MODDED does not replace another provider's shiny animated front")
+end
 Art.duplicateSetting:sync("battle_art")
 
 Art.viewSetting:sync("front")

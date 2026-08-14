@@ -231,7 +231,7 @@ end
 local function shinyDefFor(def, side)
   if not def or not def.image then return def end
   -- The shiny atlas is the selected generation's child. This branch is
-  -- reached only for a DV-confirmed shiny while MODDED owns shiny routing.
+  -- reached only for a DV-confirmed shiny while BATTLE ART owns its routing.
   local shiny = def.image:gsub(
     "^(assets/battle/[^/]+%-animated/gen[1-5])/",
     "%1/shiny/")
@@ -255,7 +255,11 @@ local function definition(battler, side)
   local generation = setting:get()
   local collections = side == "back" and BACK_SETS or SETS
   local selected = collections[generation]
-  local shiny = BattleArt.prefersModded() and BattleArt.isShiny(battler)
+  local detectedShiny = BattleArt.isShiny(battler)
+  -- MODDED means another sprite provider (or the ROM) owns shiny pictures.
+  -- Returning no definition restores/leaves that provider's battler image.
+  if detectedShiny and BattleArt.prefersModded() then return nil end
+  local shiny = detectedShiny and BattleArt.ownsShinyArt()
   if shiny and side == "front" and SHINY_SETS[generation] then
     selected = SHINY_SETS[generation]
   end
