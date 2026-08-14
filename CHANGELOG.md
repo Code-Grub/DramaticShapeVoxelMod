@@ -19,6 +19,9 @@
 - Animated shiny player backs now use their generated shiny metadata instead
   of combining a shiny atlas with the normal atlas geometry. This prevents ROM
   fallback and corrupted frame fragments for species such as Krabby and Zubat.
+- `MODDED` cleanup now restores a cached ROM sprite only while Battle Art still
+  owns the live image. If another provider has taken over, Battle Art drops its
+  stale cache without overwriting that provider and causing alternating frames.
 
 ## 1.8.3 — Illustrated battle arenas
 

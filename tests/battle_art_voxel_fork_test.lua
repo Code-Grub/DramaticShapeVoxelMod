@@ -3281,6 +3281,43 @@ do
   Art.setting:sync("animated")
   Backplates.arenaFill:sync("GEN6")
 end
+do
+  -- MODDED is a handoff, not permission to restore a cached ROM image over
+  -- the provider that took ownership after Battle Art. Exercise both cleanup
+  -- seams used by static-to-animated switches and the animation manager.
+  local savedImage, savedExternal = Art.image, Art.isExternal
+  local ours, rom, provider = {}, {}, {}
+  Art.isExternal = function(image)
+    return image == ours or savedExternal(image)
+  end
+  Art.setting:sync("static")
+  Art.duplicateSetting:sync("battle_art")
+  Art.image = function() return ours end
+  local battler = { mon = { species = "ZUBAT" }, sprite = rom }
+  local battle = { enemy = battler }
+  Art.apply(battle)
+  T.eq(battler.sprite, ours,
+    "Battle Art owns the static species image before provider handoff")
+
+  battler.sprite = provider
+  Art.setting:sync("animated")
+  Art.duplicateSetting:sync("modded")
+  Art.apply(battle)
+  T.eq(battler.sprite, provider,
+    "MODDED cleanup does not restore ROM over a later provider image")
+
+  Art.setting:sync("static")
+  Art.duplicateSetting:sync("battle_art")
+  battler.sprite = rom
+  Art.apply(battle)
+  battler.sprite = provider
+  Art.releaseSpeciesOverrides(battle)
+  T.eq(battler.sprite, provider,
+    "animated release relinquishes stale ownership without provider flicker")
+  Art.image, Art.isExternal = savedImage, savedExternal
+  Art.setting:sync("animated")
+  Art.duplicateSetting:sync("battle_art")
+end
 T.eq(Battles.flashing(nil), false, "no battle, no flash")
 T.eq(Battles.flashing({ fx = {}, frame = 0 }), false,
   "a battle with no flash counter is not flashing")

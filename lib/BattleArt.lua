@@ -526,6 +526,17 @@ end
 
 function BattleArt.apply(battle)
   if not battle then return end
+  local function releaseIfOwned(battler)
+    local saved = original[battler]
+    if not saved then return end
+    -- Another sprite provider may have replaced our image after it was
+    -- installed. Relinquish the stale cache without restoring the ROM over
+    -- that provider; only the image we own authorizes a restore.
+    if BattleArt.isExternal(battler.sprite) then
+      battler.sprite = saved
+    end
+    original[battler] = nil
+  end
   local function applyOne(battler, side)
     local species = BattleArt.speciesFor(battler)
     if not species then return end
@@ -533,9 +544,7 @@ function BattleArt.apply(battle)
     -- pass through applyTrainers below for opponent and scripted trainer art;
     -- AnimatedBattleArt separately owns the normal player's animated intro.
     if BattleArt.setting:get() == "animated" then
-      if original[battler] then
-        battler.sprite, original[battler] = original[battler], nil
-      end
+      releaseIfOwned(battler)
       return
     end
     local img = BattleArt.image(species, side, battler)
@@ -545,7 +554,7 @@ function BattleArt.apply(battle)
       end
       battler.sprite = img
     elseif original[battler] then
-      battler.sprite, original[battler] = original[battler], nil
+      releaseIfOwned(battler)
     end -- otherwise retain the ROM image
   end
   applyOne(battle.enemy, "front")
@@ -561,7 +570,10 @@ function BattleArt.releaseSpeciesOverrides(battle)
   if not battle then return end
   for _, battler in ipairs({ battle.enemy, battle.player }) do
     if battler and original[battler] then
-      battler.sprite, original[battler] = original[battler], nil
+      if BattleArt.isExternal(battler.sprite) then
+        battler.sprite = original[battler]
+      end
+      original[battler] = nil
     end
   end
 end
