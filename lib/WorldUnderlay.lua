@@ -26,8 +26,8 @@ local HEIGHT = -20
 
 WorldUnderlay.setting = ModSetting.new(
   "worldFill", "WORLD FILL",
-  { "cyan", "black" },
-  { "CYAN", "BLACK" })
+  { "cyan", "black", "off" },
+  { "CYAN", "BLACK", "OFF/KFP" })
 
 local COLORS = {
   cyan  = {   0 / 255,  71 / 255, 109 / 255, 1 }, -- #00476D
@@ -41,6 +41,10 @@ local textures = {}
 
 function WorldUnderlay.selected()
   return WorldUnderlay.setting:get() or DEFAULT_FILL
+end
+
+function WorldUnderlay.enabled()
+  return WorldUnderlay.selected() ~= "off"
 end
 
 -- Dense where the camera can inspect the curve, increasingly coarse after
@@ -114,6 +118,7 @@ end
 -- map's own border block, because the engine's three-block void ring is the
 -- authored room boundary and a perspective camera can see beyond it.
 function WorldUnderlay.resolve(state, colors)
+  if not WorldUnderlay.enabled() then return nil, "world:off" end
   local map = state and state.map
   if map and map.def and not Map.isOutdoor(map.def) then
     local borderId = TileRenderer.borderBlockFor(map)
@@ -126,7 +131,7 @@ function WorldUnderlay.resolve(state, colors)
 end
 
 function WorldUnderlay.draw(state, cx, cy, resolvedColor)
-  if not state then return false end
+  if not state or not WorldUnderlay.enabled() then return false end
   local color = resolvedColor or COLORS[WorldUnderlay.selected()] or COLORS[DEFAULT_FILL]
   local mesh, texture = meshFor(), textureFor(color)
   if not (mesh and texture) then return false end

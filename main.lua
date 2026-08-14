@@ -468,7 +468,8 @@ local SETTINGS = {
     "Bend the world down over the horizon, Animal Crossing style." },
   { WorldUnderlay.setting,
     "Choose the solid outdoor world beneath terrain holes and beyond map edges: "
-    .. "CYAN or BLACK. Indoor horizons automatically match "
+    .. "CYAN or BLACK. OFF/KFP leaves the underlay to Kanto First Person. "
+    .. "Indoor horizons automatically match "
     .. "the room's own border/void material so the finite map ring cannot reveal "
     .. "a differently coloured infinite fill behind it.",
     full = true },

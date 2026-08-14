@@ -712,12 +712,24 @@ local Gen6 = modExports.lib.require("Gen6Backdrop")
 local WorldUnderlay = modExports.lib.require("WorldUnderlay")
 T.eq(hookedByLabel["WORLD FILL"].value(), "CYAN",
   "WORLD FILL defaults to the established cyan underlay")
-T.eq(#WorldUnderlay.setting.values, 2,
-  "WORLD FILL exposes only cyan and black")
+T.eq(#WorldUnderlay.setting.values, 3,
+  "WORLD FILL exposes cyan, black and the KFP compatibility mode")
 T.eq(WorldUnderlay.setting.values[1], "cyan",
   "WORLD FILL stores cyan as its first and default choice")
 T.eq(WorldUnderlay.setting.values[2], "black",
   "WORLD FILL offers a separate black choice")
+T.eq(WorldUnderlay.setting.values[3], "off",
+  "WORLD FILL offers an underlay-off KFP compatibility choice")
+WorldUnderlay.setting:sync("off")
+T.eq(WorldUnderlay.selected(), "off",
+  "OFF/KFP stores the explicit disabled material")
+T.check(not WorldUnderlay.enabled(),
+  "OFF/KFP disables the Battle Art underlay")
+T.eq(WorldUnderlay.draw({}, 0, 0), false,
+  "OFF/KFP declines drawing before creating a mesh")
+WorldUnderlay.setting:sync("cyan")
+T.check(WorldUnderlay.enabled(),
+  "CYAN restores Battle Art's underlay")
 T.eq(WorldUnderlay.COLORS.cyan[1], 0,
   "cyan keeps its zero red channel")
 T.eq(WorldUnderlay.COLORS.cyan[2], 71 / 255,

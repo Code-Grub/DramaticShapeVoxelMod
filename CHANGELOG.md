@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Kanto First Person underlay compatibility.** `WORLD FILL: OFF/KFP`
+  suppresses Battle Art's infinite underlay plane, including the automatic
+  indoor border fill, so KFP can own that background without competing layers.
+  CYAN remains the default and BLACK is unchanged.
+
 - **Current mod API compatibility.** The mod now boots inside the engine's
   sandbox instead of reaching denied `love.filesystem`, FFI, or LOVE callback
   surfaces. Mouse and touch camera input use the supported `input.pointer`
