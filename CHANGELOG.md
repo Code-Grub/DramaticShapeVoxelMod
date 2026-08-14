@@ -22,6 +22,9 @@
 - `MODDED` cleanup now restores a cached ROM sprite only while Battle Art still
   owns the live image. If another provider has taken over, Battle Art drops its
   stale cache without overwriting that provider and causing alternating frames.
+- `BATTLE ART` now retains every selected normal and shiny frame outside the
+  completed sprite-provider update chain. Later provider animation updates can
+  no longer alternate a second opponent front over Battle Art's chosen image.
 
 ## 1.8.3 — Illustrated battle arenas
 

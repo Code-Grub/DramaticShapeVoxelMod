@@ -3150,6 +3150,22 @@ do
 end
 Art.duplicateSetting:sync("battle_art")
 
+do
+  local selected, provider = {}, {}
+  local ordinary = { mon = { species = "PIDGEOTTO" }, sprite = provider }
+  T.eq(Battles.retainOwnedSprite(ordinary, selected, "PIDGEOTTO"), true,
+    "BATTLE ART reasserts an ordinary selected opponent frame after providers")
+  T.eq(ordinary.sprite, selected,
+    "ordinary opponent fronts cannot alternate with a provider image")
+  ordinary.sprite = provider
+  Art.duplicateSetting:sync("modded")
+  T.eq(Battles.retainOwnedSprite(ordinary, selected, "PIDGEOTTO"), false,
+    "MODDED does not reassert a Battle Art frame after provider updates")
+  T.eq(ordinary.sprite, provider,
+    "MODDED leaves the provider's ordinary opponent image untouched")
+  Art.duplicateSetting:sync("battle_art")
+end
+
 Art.viewSetting:sync("front")
 Art.frontFlipSetting:sync("battle_art")
 T.eq(Battles.playerCardNoMirror(), false,

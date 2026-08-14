@@ -113,6 +113,10 @@ local TransformCompat = V.require("TransformCompat")
 -- blocks. Persistent voxel meshes are keyed exclusively from this snapshot.
 mod.events:on("mods.loaded", function(payload)
   StaticGeometry.capture(payload and payload.data)
+  -- Sprite providers commonly wrap BattleState.update from their main chunk.
+  -- Reassert BATTLE ART ownership outside the completed chain so ordinary and
+  -- shiny opponent fronts cannot alternate after those providers advance.
+  OverworldBattle.refreshSpriteOwnershipHook()
 end)
 
 -- Forward declaration: the voxel pipeline's update hook (registered below)

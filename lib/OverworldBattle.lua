@@ -1073,6 +1073,44 @@ end
 --
 -- Four wraps, each idempotent so a hot reload cannot stack them.
 
+local spriteOwnershipUpdate = nil
+
+function OverworldBattle.retainOwnedSprite(battler, owned, species)
+  if not BattleArt.ownsSpeciesArt() or not (battler and owned) then return false end
+  if species ~= BattleArt.speciesFor(battler) or battler.sprite == owned then
+    return false
+  end
+  battler.sprite = owned
+  return true
+end
+
+-- Install this once during ordinary setup and once more at mods.loaded. The
+-- latter deliberately puts the ownership decision outside sprite providers
+-- that wrapped BattleState.update after Battle Art was loaded.
+function OverworldBattle.refreshSpriteOwnershipHook()
+  local BattleState = require("src.battle.BattleState")
+  if BattleState.update == spriteOwnershipUpdate then return false end
+  local innerUpdate = BattleState.update
+  local function update(self, dt)
+    local enemy = self.enemy
+    local player = self.player
+    local ownedEnemy = enemy and BattleArt.isExternal(enemy.sprite)
+                       and enemy.sprite or nil
+    local ownedPlayer = player and BattleArt.isExternal(player.sprite)
+                        and player.sprite or nil
+    local enemySpecies = BattleArt.speciesFor(enemy)
+    local playerSpecies = BattleArt.speciesFor(player)
+    local result = innerUpdate(self, dt)
+    OverworldBattle.retainOwnedSprite(enemy, ownedEnemy, enemySpecies)
+    OverworldBattle.retainOwnedSprite(player, ownedPlayer, playerSpecies)
+    return result
+  end
+  spriteOwnershipUpdate = update
+  BattleState.update = update
+  BattleState.dramaticShapeDuplicateFixHook = true
+  return true
+end
+
 function OverworldBattle.install()
   local OverworldState = require("src.world.OverworldController")
   if not OverworldState.dramaticShapeBattleHook then
@@ -1089,38 +1127,11 @@ function OverworldBattle.install()
 
   local BattleState = require("src.battle.BattleState")
 
-  -- Shiny sprite mods advance by assigning battler.sprite after the engine
-  -- update. DUPLICATE FIX: BATTLE ART owns that same field, so retain our
-  -- already-selected frame for a DV-confirmed shiny without depending on a
-  -- particular mod's image-identity API. The unchanged-species guard leaves
-  -- Transform and other shape changes in charge.
-  if not BattleState.dramaticShapeDuplicateFixHook then
-    local innerUpdate = BattleState.update
-    function BattleState:update(dt)
-      local enemy = self.enemy
-      local player = self.player
-      local ownedEnemy = enemy and BattleArt.isExternal(enemy.sprite)
-                         and enemy.sprite or nil
-      local ownedPlayer = player and BattleArt.isExternal(player.sprite)
-                          and player.sprite or nil
-      local enemySpecies = BattleArt.speciesFor(enemy)
-      local playerSpecies = BattleArt.speciesFor(player)
-      local result = innerUpdate(self, dt)
-      if not BattleArt.prefersModded() then
-        if ownedEnemy and enemy and enemySpecies == BattleArt.speciesFor(enemy)
-           and BattleArt.isShiny(enemy) and enemy.sprite ~= ownedEnemy then
-          enemy.sprite = ownedEnemy
-        end
-        if ownedPlayer and player
-           and playerSpecies == BattleArt.speciesFor(player)
-           and BattleArt.isShiny(player) and player.sprite ~= ownedPlayer then
-          player.sprite = ownedPlayer
-        end
-      end
-      return result
-    end
-    BattleState.dramaticShapeDuplicateFixHook = true
-  end
+  -- BATTLE ART owns every selected species frame, ordinary and shiny. Install
+  -- an initial guard now; mods.loaded refreshes it around providers loaded
+  -- later, so their post-update assignment cannot produce an alternating
+  -- second front. The unchanged-species guard leaves Transform in charge.
+  OverworldBattle.refreshSpriteOwnershipHook()
 
   if not BattleState.dramaticShapeTrainerPartyHook then
     local newTrainer = BattleState.newTrainer
