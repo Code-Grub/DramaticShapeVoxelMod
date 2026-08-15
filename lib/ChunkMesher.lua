@@ -216,6 +216,10 @@ local function newPackedSink()
       chunks, parts = {}, {}
       return ok and mesh or nil
     end,
+    raw = function()
+      flush()
+      return { chunks = chunks, n = n }
+    end,
   }
 end
 
@@ -279,6 +283,17 @@ local function newFfiSink()
 end
 
 local function newSink()
+  -- 0.1.83 and older retain the native filesystem/FFI path. Sandboxed mobile
+  -- releases use LOVE's packer and mod.storage instead.
+  if MeshDisk.available() and MeshDisk.legacy() and ffi
+     and love and love.data and love.data.newByteData
+     and love.graphics and love.graphics.newMesh then
+    return newFfiSink()
+  end
+  if MeshDisk.available() and love and love.data and love.data.pack
+     and love.data.newByteData and love.graphics and love.graphics.newMesh then
+    return newPackedSink()
+  end
   if ffi and love and love.data and love.data.newByteData
      and love.graphics and love.graphics.newMesh then
     return newFfiSink()
@@ -290,35 +305,56 @@ local function newSink()
   return newTableSink()
 end
 
--- Upload one cached/fresh raw stream through the same sliced path used by the
--- FFI sink. Cached records own a stable ByteData allocation; fresh records own
--- an FFI buffer. Both remain alive through this call.
+-- Upload one cached/fresh packed stream in bounded vertex-aligned slices.
 local function meshFromRaw(record)
-  if not (record and record.n and record.n > 0 and ffi) then return nil end
-  local bytes = record.ptr and ffi.cast("const uint8_t*", record.ptr) or nil
-  if not bytes then return nil end
+  if not (record and record.n and record.n > 0) then return nil end
+  if record.ptr and ffi then
+    local ok, mesh = pcall(function()
+      local result = love.graphics.newMesh(Voxel3D.FORMAT, record.n,
+                                           "triangles", "static")
+      local first = 0
+      while first < record.n do
+        local count = math.min(65536, record.n - first)
+        local byteCount = count * PACKED_VERTEX_BYTES
+        local data = love.data.newByteData(byteCount)
+        ffi.copy(data:getFFIPointer(),
+          ffi.cast("const uint8_t*", record.ptr)
+            + first * PACKED_VERTEX_BYTES, byteCount)
+        result:setVertices(data, first + 1)
+        data:release()
+        first = first + count
+        Budget.check()
+      end
+      return result
+    end)
+    return ok and mesh or nil
+  end
+  if not record.chunks then return nil end
   local ok, mesh = pcall(function()
     local result = love.graphics.newMesh(Voxel3D.FORMAT, record.n,
                                          "triangles", "static")
-    local chunk, i = 65536, 0
-    while i < record.n do
-      local count = math.min(chunk, record.n - i)
-      local byteCount = count * 6 * 4
-      local data = love.data.newByteData(byteCount)
-      ffi.copy(data:getFFIPointer(), bytes + i * 6 * 4, byteCount)
-      result:setVertices(data, i + 1)
-      data:release()
-      i = i + count
+    local first, carry = 1, ""
+    for _, chunk in ipairs(record.chunks) do
+      local bytes = carry .. chunk
+      local usable = math.floor(#bytes / PACKED_VERTEX_BYTES)
+                     * PACKED_VERTEX_BYTES
+      carry = bytes:sub(usable + 1)
+      if usable > 0 then
+        local data = love.data.newByteData(bytes:sub(1, usable))
+        result:setVertices(data, first)
+        first = first + usable / PACKED_VERTEX_BYTES
+        data:release()
+      end
       Budget.check()
+    end
+    if #carry ~= 0 or first ~= record.n + 1 then
+      error("invalid packed voxel vertex stream", 0)
     end
     return result
   end)
-  -- setVertices has copied every slice into the Mesh. Release the potentially
-  -- huge decompressed cache buffer immediately instead of waiting for GC.
-  if record.data and record.data.release then
-    pcall(record.data.release, record.data)
-    record.data, record.ptr = nil, nil
-  end
+  -- setVertices copied every slice into the Mesh; release the decoded strings
+  -- immediately instead of retaining a second world-sized CPU representation.
+  record.chunks = nil
   return ok and mesh or nil
 end
 
@@ -950,20 +986,41 @@ end
 local function rawQuads(quads)
   local n = #(quads or {}) * 6
   if n == 0 then return { n = 0 } end
-  local buf = ffi.new("float[?]", n * 6)
-  local at = 0
+  if MeshDisk.legacy() and ffi then
+    local buf, at = ffi.new("float[?]", n * 6), 0
+    for _, q in ipairs(quads) do
+      for k = 1, 6 do
+        local i = TRI_ORDER[k]
+        local c = q[i]
+        local uv = q.uv and q.uv[i] or { q.u, q.v }
+        buf[at], buf[at + 1], buf[at + 2] = c[1], c[2], c[3]
+        buf[at + 3], buf[at + 4], buf[at + 5] = uv[1], uv[2], q.shade
+        at = at + 6
+      end
+      Budget.tick()
+    end
+    return { ptr = buf, n = n }
+  end
+  local chunks, parts, values = {}, {}, {}
   for _, q in ipairs(quads) do
+    local at = 1
     for k = 1, 6 do
       local i = TRI_ORDER[k]
       local c = q[i]
       local uv = q.uv and q.uv[i] or { q.u, q.v }
-      buf[at], buf[at + 1], buf[at + 2] = c[1], c[2], c[3]
-      buf[at + 3], buf[at + 4], buf[at + 5] = uv[1], uv[2], q.shade
+      values[at], values[at + 1], values[at + 2] = c[1], c[2], c[3]
+      values[at + 3], values[at + 4], values[at + 5] = uv[1], uv[2], q.shade
       at = at + 6
+    end
+    parts[#parts + 1] = love.data.pack(
+      "string", PACKED_VERTEX, unpack(values, 1, 36))
+    if #parts == PACKED_QUADS_PER_CHUNK then
+      chunks[#chunks + 1], parts = table.concat(parts), {}
     end
     Budget.tick()
   end
-  return { ptr = buf, n = n }
+  if #parts > 0 then chunks[#chunks + 1] = table.concat(parts) end
+  return { chunks = chunks, n = n }
 end
 
 local function buildRawAux(map)
@@ -1208,25 +1265,51 @@ end
 
 -- Queue a build unless the slot is already cached or queued. Returns the
 -- cached mesh when there is one (false-cached misses return nil).
--- `urgent` marks the current map's meshes: pump() gives those a bigger
--- slice and runs them before neighbour jobs. A slot refresh() marked
+-- `priority` is true/"current" for the current map, a 1..<2 distance score
+-- for connected bodies, and false/nil for speculative warp precaching.
+-- Current and connected work both get a foreground slice, but the current map
+-- always wins first. A slot refresh() marked
 -- stale queues its rebuild AND keeps handing back the old mesh, so a
 -- one-block edit never drops the scene to the flat 2D path while the
 -- replacement cooks.
-function ChunkMesher.request(map, bodyOnly, masks, urgent)
+local function priorityValue(priority)
+  if priority == true or priority == "current" then return 2 end
+  if priority == "visible" then return 1 end
+  if type(priority) == "number" then
+    return math.max(0, math.min(1.99, priority))
+  end
+  return 0
+end
+
+function ChunkMesher.request(map, bodyOnly, masks, priority)
   local slot = bodyOnly and "body" or "full"
   local c = cache[map.id]
   local stale = c and c.stale and (c.stale[slot] or c.stale.aux)
   if c and c[slot] ~= nil and not stale then return c[slot] or nil end
   local key = jobKey(map.id, slot)
   local job = jobIndex[key]
+  local requested = priorityValue(priority)
   if not job then
     job = { id = map.id, map = map, slot = slot, masks = masks,
-            urgent = urgent or false, gen = gen[map.id] or 0 }
+            priority = requested, gen = gen[map.id] or 0 }
     jobIndex[key] = job
     jobs[#jobs + 1] = job
-  elseif urgent then
-    job.urgent = true
+  elseif type(priority) == "number" and (job.priority or 0) < 2 then
+    -- Distance-ranked connected bodies can move both toward and away from the
+    -- player. Re-rank them every prefetch tick instead of permanently pinning
+    -- whichever map happened to be close first.
+    job.priority = requested
+  elseif requested > (job.priority or 0) then
+    job.priority = requested
+  end
+  -- Crossing a seam asks for the destination FULL mesh while its already
+  -- started neighbour BODY may still be packing. Finish that smaller body
+  -- first so it can draw immediately as the current-map fallback; otherwise
+  -- the new full job (priority 2) starves the nearly-ready body (priority 1)
+  -- and recreates the Android flowers-without-terrain delay at the seam.
+  if slot == "full" and requested == 2 then
+    local body = jobIndex[jobKey(map.id, "body")]
+    if body then body.priority = math.max(body.priority or 0, 3) end
   end
   return (c and c[slot]) or nil
 end
@@ -1242,6 +1325,13 @@ function ChunkMesher.jobPending(mapId, bodyOnly)
   return jobIndex[jobKey(mapId, bodyOnly and "body" or "full")] ~= nil
 end
 
+-- Small diagnostic used by probes/tests to verify that a queued neighbour was
+-- promoted instead of remaining behind speculative precache work.
+function ChunkMesher.jobPriority(mapId, bodyOnly)
+  local job = jobIndex[jobKey(mapId, bodyOnly and "body" or "full")]
+  return job and (job.priority or 0) or nil
+end
+
 -- True once a slot has produced an answer, including a cached `false` after a
 -- failed/empty build.  Unlike peek(), this distinguishes that settled state
 -- from an invalidated slot so the background precacher retries only real
@@ -1251,27 +1341,32 @@ function ChunkMesher.slotKnown(map, bodyOnly)
   return c ~= nil and c[bodyOnly and "body" or "full"] ~= nil
 end
 
--- Advance queued builds inside a per-frame time budget. Urgent jobs (the
--- current map) come first and get the larger slice -- the first voxel
--- frame after a toggle is worth more milliseconds than a neighbour
--- popping in one frame later. `covered` says the world pass is hidden
+-- Advance queued builds inside a per-frame time budget. A partially built body
+-- for a seam just crossed runs first, then current-map jobs, visible neighbours,
+-- and speculative destinations. All foreground classes get enough time to
+-- finish a packed Android route before the player reaches its seam. `covered`
+-- says the world pass is hidden
 -- this frame (a warp's fade, a menu): nothing visible can hitch, so the
 -- slice opens up and a door fade swallows most of a destination build.
-local URGENT_SLICE = 0.012
+local FOREGROUND_SLICE = 0.012
 local IDLE_SLICE = 0.005
 local COVERED_SLICE = 0.030
 
+local function nextJob()
+  local pick = jobs[1]
+  for i = 2, #jobs do
+    local candidate = jobs[i]
+    if (candidate.priority or 0) > (pick.priority or 0) then pick = candidate end
+  end
+  return pick
+end
+
 function ChunkMesher.pump(covered)
   if #jobs == 0 then return end
-  local pick = jobs[1]
-  for _, j in ipairs(jobs) do
-    if j.urgent then
-      pick = j
-      break
-    end
-  end
+  local pick = nextJob()
   local slice = covered and COVERED_SLICE
-                or (pick.urgent and URGENT_SLICE or IDLE_SLICE)
+                or ((pick.priority or 0) > 0 and FOREGROUND_SLICE
+                    or IDLE_SLICE)
   local deadline = clock() + slice
   while pick do
     if not pick.co then
@@ -1288,13 +1383,7 @@ function ChunkMesher.pump(covered)
       return   -- slice spent mid-build; resume next frame
     end
     if clock() >= deadline or #jobs == 0 then return end
-    pick = jobs[1]
-    for _, j in ipairs(jobs) do
-      if j.urgent then
-        pick = j
-        break
-      end
-    end
+    pick = nextJob()
   end
 end
 

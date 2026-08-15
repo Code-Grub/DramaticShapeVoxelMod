@@ -886,13 +886,13 @@ end)
 mod.hooks:wrap("ui.title_menu.items", function(next, game, items)
   local out = next(game, items)
   if type(out) ~= "table" then return out end
-  -- Current sandboxed engines intentionally deny the FFI/filesystem pair the
-  -- legacy BAVC cache uses. The renderer still has its cooperative pure-Lua
-  -- mesher; do not advertise a title action which can only say unavailable.
-  if not VoxelMeshDisk.available() then return out end
+  -- Static mesh storage has its own mod-private game-version scope, so this
+  -- works before the first NEW GAME as well as beside an existing CONTINUE.
+  VoxelMeshDisk.bind(game, true)
+  local cacheAvailable = VoxelMeshDisk.available()
   for _, item in ipairs(out) do
     if tostring(item and item.label or "") == "CONTINUE"
-        and type(item.onSelect) == "function" then
+        and type(item.onSelect) == "function" and cacheAvailable then
       local continue = item.onSelect
       item.onSelect = function()
         VoxelMeshDisk.beginSession()
@@ -910,11 +910,13 @@ mod.hooks:wrap("ui.title_menu.items", function(next, game, items)
         -- A save which has never run PRECACHE still gets the same RAM-only
         -- gameplay layer. Its first adjacent maps are generated lazily and
         -- may later be persisted with pause-menu CACHE -> SAVE.
-        VoxelMeshDisk.beginSession()
         newGame()
+        VoxelMeshDisk.bind(game, false)
+        VoxelMeshDisk.beginSession()
       end
     end
   end
+  if not VoxelMeshDisk.precacheAvailable() then return out end
   local entry = {
     label = "PRECACHE",
     onSelect = function()
@@ -940,7 +942,8 @@ end)
 mod.hooks:wrap("ui.start_menu.items", function(next, game, items)
   local out = next(game, items)
   if type(out) ~= "table" then return out end
-  if not VoxelMeshDisk.available() then return out end
+  VoxelMeshDisk.bind(game, false)
+  if not VoxelMeshDisk.precacheAvailable() then return out end
   for _, item in ipairs(out) do
     if tostring(item and item.label or "") == "CACHE" then return out end
   end
@@ -1319,7 +1322,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.9.0"
+mod.exports.version = "1.9.2"
 mod.exports.battlePresentation = BattlePresentation.export()
 mod.exports.battleStage = BattleStage.export(OverworldBattle)
 -- exposed so a companion mod can pin its own tiles' shapes or read the
