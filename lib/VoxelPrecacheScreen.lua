@@ -43,13 +43,31 @@ local function countKinds(jobs)
 end
 
 function Screen.new(game)
+  -- Builds whose storage backend would freeze (e.g. Windows 0.1.84+) skip
+  -- all the heavy engine setup and land directly on the unsupported message.
+  if MeshDisk.storageUnsupported() then
+    return setmetatable({
+      game = game,
+      phase = "unsupported",
+      jobs = {},
+      index = 1,
+      maps = 0, full = 0, body = 0,
+      skipped = 0, built = 0, failed = 0,
+      active = nil,
+      loadedId = nil, loadedMap = nil,
+      stats = { bytes = 0, files = 0, maps = 0, full = 0, body = 0, aux = 0 },
+      statClock = 0,
+      titleUiBox = { 0, 0, 19, 17 },
+    }, Screen)
+  end
   StaticGeometry.capture(game and game.data) -- lifecycle/test fallback
   local data = StaticGeometry.data() or (game and game.data)
   local jobs = Precache.allJobs(data)
   local maps, full, body = countKinds(jobs)
   local self = setmetatable({
     game = game,
-    phase = MeshDisk.available() and "confirm" or "unavailable",
+    phase = MeshDisk.storageUnsupported() and "unsupported"
+            or (MeshDisk.available() and "confirm" or "unavailable"),
     jobs = jobs,
     index = 1,
     maps = maps,
@@ -203,10 +221,10 @@ function Screen:draw()
     put(("FILES: %d"):format(self.stats.files), 12)
     put(("DISK: %s"):format(sizeText(self.stats.bytes)), 13)
     put("B:CANCEL", 15)
-  elseif self.phase == "unavailable" then
+  elseif self.phase == "unsupported" then
     put("DISK CACHE IS NOT", 4)
     put("AVAILABLE ON THIS", 5)
-    put("LOVE BUILD.", 6)
+    put("BUILD. TRY <0.1.83", 6)
     put("A/B:BACK", 15)
   else
     local result = self.phase == "complete" and "COMPLETE"

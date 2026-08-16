@@ -69,10 +69,13 @@
   binds the storage backend; if a specific 0.1.84+ build still lacks storage
   writes, `bind()` degrades to a read-only legacy backend rather than freezing
   or silently dropping writes.
-- **Cache write failures no longer silent.** A failed `saveAux`/`saveTerrain`
-  returns its error and the mesher prints a `[warn]` instead of discarding the
-  failure; `writeFile` reports the unavailable-backend reason instead of a bare
-  `false`.
+- **Windows 0.1.84+ shows an instructional error instead of freezing.** Builds
+  such as Windows 0.1.98 ship a `mod.storage` byte backend whose cache write
+  path hangs the app with no progress. On Windows 0.1.84+ the PRECACHE (title)
+  and CACHE (pause) actions no longer attempt to bind that backend; selecting
+  them opens a text box reading
+  `DISK CACHE IS NOT AVAILABLE ON THIS BUILD` / `TRY 0.1.83`. Legacy 0.1.83 and
+  older engines, and non-Windows 0.1.84+ builds, are unaffected.
 
 ## 1.8.3 — Illustrated battle arenas
 

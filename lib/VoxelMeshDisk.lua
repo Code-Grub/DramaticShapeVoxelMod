@@ -33,6 +33,16 @@ local knownSizes = {}
 local compatibilityOverride
 local backendKind
 local precacheAllowed = false
+-- When true, the storage-unsupported gate is overridden so the player can
+-- attempt a disk cache on a build where it is normally disabled (e.g. Windows
+-- 0.1.84+). TEST-ONLY: if the write hangs/freezes, this must stay OFF.
+local forcePrecache = false
+
+-- Best-effort logger; never throws if the engine offers no Logger.
+local function diskLog(...)
+  local ok, L = pcall(require, "src.core.Logger")
+  if ok and L and L.info then pcall(L.info, ...) end
+end
 
 -- Static geometry is shared by every journey through one game version. Keep
 -- it in a mod-private, deterministic storage scope instead of tying hundreds
@@ -110,18 +120,70 @@ function Disk.precachePolicy(engineVersion, osName)
   return allowed, legacy and "legacy" or "storage"
 end
 
+-- Case-insensitive Windows probe: the engine may report the OS as "Windows",
+-- "windows", "Win32", etc., so match on a substring rather than an exact
+-- string.
+local function isWindows(osName)
+  return type(osName) == "string" and osName:lower():find("win") ~= nil
+end
+
+-- Some 0.1.84+ builds ship a mod.storage byte backend that freezes the app
+-- when the precache generator writes through it (observed on Windows 0.1.98).
+-- For those builds the disk cache is simply unavailable; callers surface the
+-- instructional message instead of attempting a binding that hangs.
+--
+-- Only the legacy native filesystem/FFI builds (engine <= 0.1.83) have a
+-- working disk cache on Windows. Every 0.1.84+ Windows build is reported
+-- unsupported. The gate does not depend on an exact "major.minor.patch" parse:
+-- if the engine version cannot be parsed we cannot confirm a working legacy
+-- build, so we stay safe and report unsupported rather than risk the freeze.
+-- The arguments are optional so the title/start menus can probe without a
+-- live game: when omitted the live engine environment is used.
+-- Detect the live engine environment. Wrapped in pcall because the engine
+-- APIs (Version.engine, Platform.detect) may be absent or throw on some
+-- builds; a detection failure must never crash the caller (e.g. the
+-- precache-screen phase decision or the title-menu bind).
+local function detectEnvironment()
+  if compatibilityOverride then
+    return compatibilityOverride.engineVersion, compatibilityOverride.osName
+  end
+  local ok, engineVersion = pcall(function() return Version.engine end)
+  local detected = {}
+  if Platform and Platform.detect then
+    local ok2, d = pcall(Platform.detect)
+    if ok2 and type(d) == "table" then detected = d end
+  end
+  return ok and engineVersion or nil, detected.os
+end
+
+function Disk.storageUnsupported(engineVersion, osName)
+  -- Override: let the player attempt the cache on a normally-disabled build
+  -- (test only). When ON, the gate reports supported so the generator runs.
+  if forcePrecache then return false end
+  if compatibilityOverride then
+    engineVersion, osName = compatibilityOverride.engineVersion,
+                            compatibilityOverride.osName
+  elseif not engineVersion then
+    engineVersion, osName = detectEnvironment()
+  end
+  if not isWindows(osName) then return false end
+  local major, minor, patch = versionParts(engineVersion)
+  if not major then return true end
+  if major == 0 and minor == 1 and patch <= 83 then return false end
+  return true
+end
+
+-- TEST-ONLY switch driven by the PRECACHE DEBUG setting. When enabled the
+-- storage-unsupported gate is lifted so Windows/unsupported builds can try to
+-- generate a disk cache. If the write hangs or freezes, turn it OFF.
+function Disk.setForcePrecache(on)
+  forcePrecache = not not on
+end
+
 function Disk._setCompatibilityForTests(engineVersion, osName)
   compatibilityOverride = engineVersion and {
     engineVersion = engineVersion, osName = osName,
   } or nil
-end
-
-local function environment()
-  if compatibilityOverride then
-    return compatibilityOverride.engineVersion, compatibilityOverride.osName
-  end
-  local detected = Platform.detect and Platform.detect() or {}
-  return Version.engine, detected.os
 end
 
 local function legacyName(key)
@@ -274,7 +336,7 @@ function Disk.bind(game, selected)
   backendKind = nil
   precacheAllowed = false
   knownSizes = {}
-  local engineVersion, osName = environment()
+  local engineVersion, osName = detectEnvironment()
   local allowed, backend = Disk.precachePolicy(engineVersion, osName)
   precacheAllowed = allowed
   if not allowed then return false end
@@ -745,8 +807,13 @@ local function writeChunked(file, record)
 end
 
 local function writePersistent(path, blob)
+  diskLog("voxel cache: write start %s (%d bytes)", tostring(path), #blob)
   local called, ok, code, message = pcall(storage.writeBytes, storage, path, blob)
-  if not called then return false, tostring(ok) end
+  if not called then
+    diskLog("voxel cache: write pcall failed %s", tostring(ok))
+    return false, tostring(ok)
+  end
+  diskLog("voxel cache: write done %s ok=%s", tostring(path), tostring(ok == true))
   return ok == true, ok and nil or tostring(message or code or "storage write failed")
 end
 

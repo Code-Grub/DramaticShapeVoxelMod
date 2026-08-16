@@ -88,6 +88,7 @@ local VoxelTransitionGate = V.require("VoxelTransitionGate")
 local VoxelPrecacheScreen = V.require("VoxelPrecacheScreen")
 local VoxelCacheRamScreen = V.require("VoxelCacheRamScreen")
 local VoxelMeshDisk = V.require("VoxelMeshDisk")
+local ModSetting = V.require("ModSetting")
 local StaticGeometry = V.require("StaticGeometry")
 local VoxelGrid = V.require("VoxelGrid")
 local WorldCurve = V.require("WorldCurve")
@@ -462,7 +463,18 @@ local function stagedBattles()
   return OverworldBattle.enabled()
 end
 
+-- TEST-ONLY: lift the storage-unsupported gate so Windows / other
+-- unsupported builds can attempt to generate a precache from the title menu.
+-- Leave it OFF unless you are actively diagnosing the disk-cache write.
+local PrecacheDebug = ModSetting.new("precacheDebug", "PRECACHE DEBUG",
+  { false, true }, { "OFF", "ON" }, 1)
+VoxelMeshDisk.setForcePrecache(PrecacheDebug:get())
+
 local SETTINGS = {
+  { PrecacheDebug,
+    "TEST ONLY. When ON, builds where the disk cache is normally the only "
+    .. "route may still attempt a precache from the title menu.",
+    full = true },
   { VoxelGrid.setting, "One-pixel wireframe along every voxel edge." },
   { WorldCurve.setting,
     "Bend the world down over the horizon, Animal Crossing style." },
@@ -886,8 +898,10 @@ end)
 mod.hooks:wrap("ui.title_menu.items", function(next, game, items)
   local out = next(game, items)
   if type(out) ~= "table" then return out end
-  -- Static mesh storage has its own mod-private game-version scope, so this
-  -- works before the first NEW GAME as well as beside an existing CONTINUE.
+  -- Always offer PRECACHE from the title screen. Whether this build can
+  -- actually persist a disk cache is decided inside VoxelPrecacheScreen,
+  -- which shows the "not available" message on builds whose storage
+  -- backend would otherwise freeze (e.g. Windows 0.1.84+).
   VoxelMeshDisk.bind(game, true)
   local cacheAvailable = VoxelMeshDisk.available()
   for _, item in ipairs(out) do
@@ -942,8 +956,9 @@ end)
 mod.hooks:wrap("ui.start_menu.items", function(next, game, items)
   local out = next(game, items)
   if type(out) ~= "table" then return out end
+  -- CACHE is always offered; VoxelPrecacheScreen surfaces the
+  -- "not available" message on builds without a usable storage backend.
   VoxelMeshDisk.bind(game, false)
-  if not VoxelMeshDisk.precacheAvailable() then return out end
   for _, item in ipairs(out) do
     if tostring(item and item.label or "") == "CACHE" then return out end
   end
@@ -951,6 +966,10 @@ mod.hooks:wrap("ui.start_menu.items", function(next, game, items)
   local entry = {
     label = "CACHE",
     onSelect = function()
+      if VoxelMeshDisk.storageUnsupported() then
+        game.stack:push(VoxelPrecacheScreen.new(game))
+        return
+      end
       local Menu = require("src.ui.Menu")
       local Screens = require("src.ui.Screens")
       local TextBox = require("src.render.TextBox")
@@ -999,6 +1018,11 @@ mod.events:on("mod.options_changed", function(payload)
   if not (payload and payload.mod == mod.id) then return end
   for _, entry in ipairs(SETTINGS) do
     if payload.key == entry[1].key then entry[1]:sync(payload.value) end
+  end
+  -- PRECACHE DEBUG is a live gate: applying it immediately lets the player
+  -- attempt a cache (or re-protects a frozen build) without a restart.
+  if payload.key == PrecacheDebug.key then
+    VoxelMeshDisk.setForcePrecache(PrecacheDebug:get())
   end
   -- 3D-BTL switched on from the manager's page pins BATTLE LAYOUT exactly as
   -- the OPTIONS row does. The manager persists its own value; this is the one
