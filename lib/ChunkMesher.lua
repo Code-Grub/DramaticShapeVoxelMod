@@ -1201,7 +1201,11 @@ local function runJob(job)
       if not aux then
         aux = buildRawAux(map)
         if not current() then return end
-        MeshDisk.saveAux(map, aux)
+        local savedAux, auxError = MeshDisk.saveAux(map, aux)
+        if not savedAux then
+          print("[warn] voxel aux cache write failed for " .. tostring(job.id)
+                .. ": " .. tostring(auxError))
+        end
         if not current() then
           return
         end
@@ -1245,7 +1249,12 @@ local function runJob(job)
       return
     end
     if terrainRaw and waterRaw then
-      MeshDisk.saveTerrain(map, job.slot, job.masks, terrainRaw, waterRaw)
+      local savedTerrain, terrainError =
+        MeshDisk.saveTerrain(map, job.slot, job.masks, terrainRaw, waterRaw)
+      if not savedTerrain then
+        print("[warn] voxel terrain cache write failed for " .. tostring(job.id)
+              .. " " .. tostring(job.slot) .. ": " .. tostring(terrainError))
+      end
     end
   end
   if not current() then

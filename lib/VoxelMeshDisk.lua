@@ -90,15 +90,24 @@ local function engineAtMost(value, cutoff)
   return patch <= cutoff
 end
 
--- Opaque mod.storage bytes arrived in 0.1.87. Earlier engines keep BAVC blobs
--- on the legacy persistence filesystem; their structured table storage is not
--- suitable for hundreds of megabytes of packed geometry. Windows exposes the
--- generator only through 0.1.83; mobile keeps it on every supported version.
+-- Gate the cache on engine capability, not on the OS. 0.1.83 and older expose
+-- only the legacy native filesystem/FFI path; 0.1.84 and newer expose the
+-- opaque mod.storage byte API, so every platform that reaches 0.1.84 uses the
+-- storage backend. bind() still degrades to a read-only legacy backend when a
+-- given 0.1.84+ build lacks storage writes, which prevents the Windows
+-- 0.1.84+ freeze that a hidden PRECACHE menu used to mask.
+local function engineAtLeast(value, cutoff)
+  local major, minor, patch = versionParts(value)
+  if not major then return false end
+  if major ~= 0 then return major > 0 end
+  if minor ~= 1 then return minor > 1 end
+  return patch >= cutoff
+end
+
 function Disk.precachePolicy(engineVersion, osName)
-  local legacy = engineAtMost(engineVersion, 86)
-  local supportedPlatform = osName == "Android" or osName == "iOS"
-    or (engineAtMost(engineVersion, 83) and osName == "Windows")
-  return supportedPlatform, legacy and "legacy" or "storage"
+  local legacy = engineAtMost(engineVersion, 83)
+  local allowed = legacy or engineAtLeast(engineVersion, 84)
+  return allowed, legacy and "legacy" or "storage"
 end
 
 function Disk._setCompatibilityForTests(engineVersion, osName)
@@ -268,18 +277,17 @@ function Disk.bind(game, selected)
   local engineVersion, osName = environment()
   local allowed, backend = Disk.precachePolicy(engineVersion, osName)
   precacheAllowed = allowed
-  if not allowed and osName == "Windows" then
-    storage = legacyStorage(true)
-    if storage then
-      backendKind = "legacy-read"
-      Disk.DIRECTORY = LOGICAL_DIRECTORY
-      return true
-    end
-    return false
-  end
   if not allowed then return false end
   if backend == "legacy" then return bindLegacy() end
-  return bindStorage(game)
+  if bindStorage(game) then return true end
+  storage = legacyStorage(true)
+  if storage then
+    backendKind = "legacy-read"
+    precacheAllowed = false
+    Disk.DIRECTORY = LOGICAL_DIRECTORY
+    return true
+  end
+  return false
 end
 
 local function u32(n)
@@ -765,7 +773,9 @@ local function encoded(fp, writer)
 end
 
 local function writeFile(path, fp, writer)
-  if not available() then return false end
+  if not available() then
+    return false, "cache backend unavailable (" .. tostring(backendKind) .. ")"
+  end
   -- Preserve the encoder's real exception. The old bare false made an aux
   -- failure invisible, after which the mesher committed an unusable
   -- terrain-only map and the title screen appeared stuck.

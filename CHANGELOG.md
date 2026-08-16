@@ -55,6 +55,25 @@
   align effects to copied live projection anchors without depending on Battle
   Art's internal module layout.
 
+## 1.9.3 — Cache gate by engine, not platform
+
+- **Static mesh cache gated on engine version, not OS.** `Disk.precachePolicy`
+  now allows the cache whenever the engine is legacy (0.1.83 and older, native
+  filesystem/FFI) or 0.1.84 and newer (opaque `mod.storage` byte API). The
+  per-platform allow-list is gone, so every platform that reaches 0.1.84 — Windows,
+  macOS, Linux, Android, and iOS alike — uses the storage backend. `osName` no
+  longer influences the decision.
+- **Windows 0.1.84+ PRECACHE fixed instead of hidden.** Earlier builds hid the
+  PRECACHE action on Windows 0.1.84+ because the cache was gated off, which
+  masked a broken/frozen persistence path. The cache is now enabled there and
+  binds the storage backend; if a specific 0.1.84+ build still lacks storage
+  writes, `bind()` degrades to a read-only legacy backend rather than freezing
+  or silently dropping writes.
+- **Cache write failures no longer silent.** A failed `saveAux`/`saveTerrain`
+  returns its error and the mesher prints a `[warn]` instead of discarding the
+  failure; `writeFile` reports the unavailable-backend reason instead of a bare
+  `false`.
+
 ## 1.8.3 — Illustrated battle arenas
 
 - Added the optional GEN6 location-background collection and an independent
