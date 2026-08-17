@@ -601,9 +601,6 @@ return {
   MISDREAVUS = {
     front = { image = "assets/battle/front-animated/gen2/misdreavus.png", width = 56, height = 56, columns = 9, frames = 9, durations = {380,270,200,200,230,120,120,120,630} },
   },
-  UNOWN = {
-    front = { image = "assets/battle/front-animated/gen2/unown.png", width = 56, height = 56, columns = 16, frames = 17, durations = {80,80,240,80,80,70,70,70,70,70,70,70,130,60,60,60,1000} },
-  },
   WOBBUFFET = {
     front = { image = "assets/battle/front-animated/gen2/wobbuffet.png", width = 56, height = 56, columns = 4, frames = 4, durations = {10,450,150,1030} },
   },
