@@ -44,6 +44,14 @@ local function diskLog(...)
   if ok and L and L.info then pcall(L.info, ...) end
 end
 
+-- Some engine sandboxes do not expose the global collectgarbage (observed as
+-- "attempt to call global 'collectgarbage' (a nil value)"). Call it through
+-- a pcall-guarded wrapper so the forced GC in beginPrecache/dropRam degrades
+-- to a no-op instead of crashing on those builds.
+local function diskGc()
+  pcall(collectgarbage, "collect")
+end
+
 -- Static geometry is shared by every journey through one game version. Keep
 -- it in a mod-private, deterministic storage scope instead of tying hundreds
 -- of map blobs to a save slot. This is only the Game argument supplied to
@@ -445,8 +453,20 @@ local function safeId(id)
   return tostring(id):gsub("[^%w_-]", "_")
 end
 
+-- Windows treats AUX, CON, PRN, NUL, COM1-9 and LPT1-9 as reserved device
+-- names and refuses to create a file whose base name matches,
+-- case-insensitively. Our logical "aux" payload key became a bare "aux"
+-- on-disk segment, so every aux write failed (write_failed/verify_failed)
+-- on Windows while terrain/water in the same directory succeeded. The
+-- internal kind stays "aux" (traces, status, manifest); only the on-disk
+-- segment changes. Mirrors potato_voxel's kindSegment fix (1.7.4).
+local function kindSegment(kind)
+  return kind == "aux" and "deco" or kind
+end
+
 local function pathFor(map, slot, kind)
-  local suffix = kind == "aux" and "aux" or (tostring(slot) .. "-terrain")
+  local suffix = kind == "aux" and kindSegment(kind)
+                 or (tostring(slot) .. "-terrain")
   return Disk.DIRECTORY .. "/" .. safeId(map.id) .. "/" .. suffix
 end
 
@@ -492,7 +512,7 @@ function Disk.beginPrecache()
   ramFiles, ramDirty, ramRejected = {}, {}, {}
   ramBytes = 0
   sessionActive = false
-  collectgarbage("collect")
+  diskGc()
 end
 
 function Disk.loadIntoRam(name)
@@ -538,7 +558,7 @@ function Disk.dropRam()
   ramFiles, ramDirty, ramRejected = {}, {}, {}
   ramBytes = 0
   sessionActive = true
-  collectgarbage("collect")
+  diskGc()
   return stats
 end
 
