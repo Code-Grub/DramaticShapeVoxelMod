@@ -466,7 +466,9 @@ local function stagedBattles()
   return OverworldBattle.enabled()
 end
 
--- One-pixel wireframe along every voxel edge.
+local SETTINGS = {
+  { VoxelGrid.setting,
+    "One-pixel wireframe along every voxel edge." },
   { WorldCurve.setting,
     "Bend the world down over the horizon, Animal Crossing style." },
   { WorldUnderlay.setting,
