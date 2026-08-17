@@ -172,7 +172,13 @@ local function legacyName(key)
   local tail = key:sub(#prefix + 1)
   local id, product = tail:match("^([^/]+)/(.+)$")
   if not id then return nil end
-  if product == "aux" then return LEGACY_ROOT .. "/" .. id .. ".aux.bavc" end
+  -- The aux payload was renamed to "deco" on disk (Windows reserved-name fix,
+  -- 1.7.4/potato_voxel), but the legacy FFI filesystem still stores it as
+  -- ".aux.bavc". Accept both so legacy engines (<= 0.1.83) can read AND write
+  -- the aux segment instead of failing on an unknown "deco" product.
+  if product == "aux" or product == "deco" then
+    return LEGACY_ROOT .. "/" .. id .. ".aux.bavc"
+  end
   if product == "full-terrain" then
     return LEGACY_ROOT .. "/" .. id .. ".full.terrain.bavc"
   end
@@ -184,7 +190,7 @@ end
 
 local function legacyKey(name)
   local id = name:match("^(.-)%.aux%.bavc$")
-  if id then return LOGICAL_DIRECTORY .. "/" .. id .. "/aux" end
+  if id then return LOGICAL_DIRECTORY .. "/" .. id .. "/deco" end
   id = name:match("^(.-)%.full%.terrain%.bavc$")
   if id then return LOGICAL_DIRECTORY .. "/" .. id .. "/full-terrain" end
   id = name:match("^(.-)%.body%.terrain%.bavc$")
