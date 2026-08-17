@@ -1593,6 +1593,32 @@ function ChunkMesher.invalidate(mapId)
   end
 end
 
+-- Void-fill toggle (trees <-> black) changes ONLY the apron ring that lives in
+-- the FULL slot. Disk.fingerprint keeps `void` in the FULL key alone, and
+-- Structures.lua's hullRingOnly gates the ring on TileRenderer.voidFill, while
+-- BODY (built with r=0, no ring) and AUX (grass/flowers/figures) are
+-- void-invariant. A global invalidate() on toggle therefore released the heavy
+-- body/aux GPU meshes for every live map -- the "every map stutters" on
+-- toggle. Keep body/aux drawn and mark only the FULL slot stale; the ring
+-- rebuilds in the background while the body stays on screen, exactly like the
+-- body-only phase of a normal build. Structures must re-analyse (hullRingOnly
+-- is read at analysis time) so the new ring comes out right.
+function ChunkMesher.invalidateVoidRings()
+  for id, c in pairs(cache) do
+    Structures.invalidate(id)
+    gen[id] = (gen[id] or 0) + 1
+    c.stale = c.stale or {}
+    c.stale.full = true
+    for i = #jobs, 1, -1 do
+      local job = jobs[i]
+      if job.id == id and not job.bodyOnly then
+        jobIndex[jobKey(job.id, job.slot)] = nil
+        table.remove(jobs, i)
+      end
+    end
+  end
+end
+
 Assets.register(function() ChunkMesher.invalidate() end)
 
 return ChunkMesher

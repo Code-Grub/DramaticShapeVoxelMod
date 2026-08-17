@@ -43,9 +43,11 @@ local function countKinds(jobs)
 end
 
 function Screen.new(game)
-  -- Builds whose storage backend would freeze (e.g. Windows 0.1.84+) skip
-  -- all the heavy engine setup and land directly on the unsupported message.
-  if MeshDisk.storageUnsupported() then
+  -- Builds whose storage backend cannot persist writes (read-only sandbox,
+  -- no write privilege, a stricter gen1recomp) skip all the heavy engine
+  -- setup and land directly on the "not available" warning instead of letting
+  -- a doomed write hang.
+  if MeshDisk.cacheReadOnly() then
     return setmetatable({
       game = game,
       phase = "unsupported",
@@ -66,7 +68,7 @@ function Screen.new(game)
   local maps, full, body = countKinds(jobs)
   local self = setmetatable({
     game = game,
-    phase = MeshDisk.storageUnsupported() and "unsupported"
+    phase = MeshDisk.cacheReadOnly() and "unsupported"
             or (MeshDisk.available() and "confirm" or "unavailable"),
     jobs = jobs,
     index = 1,

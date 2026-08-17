@@ -173,7 +173,10 @@ function voidFill.check()
   local TileRenderer = require("src.render.TileRenderer")
   local now = TileRenderer.voidFill
   if voidFill.last ~= nil and now ~= voidFill.last then
-    ChunkMesher.invalidate()   -- no map id: every ring on every map is stale
+    -- Only the FULL-slot apron ring depends on void fill (see
+    -- Disk.fingerprint and ChunkMesher.invalidateVoidRings); body/aux stay
+    -- drawn while just the ring rebuilds, so toggling never stutters every map.
+    ChunkMesher.invalidateVoidRings()
   end
   voidFill.last = now
 end
@@ -463,19 +466,7 @@ local function stagedBattles()
   return OverworldBattle.enabled()
 end
 
--- TEST-ONLY: lift the storage-unsupported gate so Windows / other
--- unsupported builds can attempt to generate a precache from the title menu.
--- Leave it OFF unless you are actively diagnosing the disk-cache write.
-local PrecacheDebug = ModSetting.new("precacheDebug", "PRECACHE DEBUG",
-  { false, true }, { "OFF", "ON" }, 1)
-VoxelMeshDisk.setForcePrecache(PrecacheDebug:get())
-
-local SETTINGS = {
-  { PrecacheDebug,
-    "TEST ONLY. When ON, builds where the disk cache is normally the only "
-    .. "route may still attempt a precache from the title menu.",
-    full = true },
-  { VoxelGrid.setting, "One-pixel wireframe along every voxel edge." },
+-- One-pixel wireframe along every voxel edge.
   { WorldCurve.setting,
     "Bend the world down over the horizon, Animal Crossing style." },
   { WorldUnderlay.setting,
@@ -966,7 +957,7 @@ mod.hooks:wrap("ui.start_menu.items", function(next, game, items)
   local entry = {
     label = "CACHE",
     onSelect = function()
-      if VoxelMeshDisk.storageUnsupported() then
+      if VoxelMeshDisk.cacheReadOnly() then
         game.stack:push(VoxelPrecacheScreen.new(game))
         return
       end
@@ -1018,11 +1009,6 @@ mod.events:on("mod.options_changed", function(payload)
   if not (payload and payload.mod == mod.id) then return end
   for _, entry in ipairs(SETTINGS) do
     if payload.key == entry[1].key then entry[1]:sync(payload.value) end
-  end
-  -- PRECACHE DEBUG is a live gate: applying it immediately lets the player
-  -- attempt a cache (or re-protects a frozen build) without a restart.
-  if payload.key == PrecacheDebug.key then
-    VoxelMeshDisk.setForcePrecache(PrecacheDebug:get())
   end
   -- 3D-BTL switched on from the manager's page pins BATTLE LAYOUT exactly as
   -- the OPTIONS row does. The manager persists its own value; this is the one

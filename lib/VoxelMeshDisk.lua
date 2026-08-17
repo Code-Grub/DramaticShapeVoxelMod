@@ -33,10 +33,6 @@ local knownSizes = {}
 local compatibilityOverride
 local backendKind
 local precacheAllowed = false
--- When true, the storage-unsupported gate is overridden so the player can
--- attempt a disk cache on a build where it is normally disabled (e.g. Windows
--- 0.1.84+). TEST-ONLY: if the write hangs/freezes, this must stay OFF.
-local forcePrecache = false
 
 -- Best-effort logger; never throws if the engine offers no Logger.
 local function diskLog(...)
@@ -112,8 +108,8 @@ end
 -- only the legacy native filesystem/FFI path; 0.1.84 and newer expose the
 -- opaque mod.storage byte API, so every platform that reaches 0.1.84 uses the
 -- storage backend. bind() still degrades to a read-only legacy backend when a
--- given 0.1.84+ build lacks storage writes, which prevents the Windows
--- 0.1.84+ freeze that a hidden PRECACHE menu used to mask.
+-- given build lacks storage writes, which avoids attempting a write that
+-- would hang the app.
 local function engineAtLeast(value, cutoff)
   local major, minor, patch = versionParts(value)
   if not major then return false end
@@ -128,25 +124,15 @@ function Disk.precachePolicy(engineVersion, osName)
   return allowed, legacy and "legacy" or "storage"
 end
 
--- Case-insensitive Windows probe: the engine may report the OS as "Windows",
--- "windows", "Win32", etc., so match on a substring rather than an exact
--- string.
-local function isWindows(osName)
-  return type(osName) == "string" and osName:lower():find("win") ~= nil
-end
-
--- Some 0.1.84+ builds ship a mod.storage byte backend that freezes the app
--- when the precache generator writes through it (observed on Windows 0.1.98).
--- For those builds the disk cache is simply unavailable; callers surface the
--- instructional message instead of attempting a binding that hangs.
+-- The precache generator is offered on every platform whose storage backend
+-- can actually persist writes. Whether a build can write is decided by what
+-- bind() managed to bind -- not by the OS or a hard-coded engine-version
+-- cutoff -- so a read-only sandbox, a missing write privilege, or a future
+-- gen1recomp that strips mod.storage writes is all caught the same way:
+-- bind() degrades to the read-only "legacy-read" backend (see bind()) and the
+-- precache screen shows the "not available" warning instead of letting a
+-- doomed write hang. Callers surface the instructional message from there.
 --
--- Only the legacy native filesystem/FFI builds (engine <= 0.1.83) have a
--- working disk cache on Windows. Every 0.1.84+ Windows build is reported
--- unsupported. The gate does not depend on an exact "major.minor.patch" parse:
--- if the engine version cannot be parsed we cannot confirm a working legacy
--- build, so we stay safe and report unsupported rather than risk the freeze.
--- The arguments are optional so the title/start menus can probe without a
--- live game: when omitted the live engine environment is used.
 -- Detect the live engine environment. Wrapped in pcall because the engine
 -- APIs (Version.engine, Platform.detect) may be absent or throw on some
 -- builds; a detection failure must never crash the caller (e.g. the
@@ -164,28 +150,14 @@ local function detectEnvironment()
   return ok and engineVersion or nil, detected.os
 end
 
-function Disk.storageUnsupported(engineVersion, osName)
-  -- Override: let the player attempt the cache on a normally-disabled build
-  -- (test only). When ON, the gate reports supported so the generator runs.
-  if forcePrecache then return false end
-  if compatibilityOverride then
-    engineVersion, osName = compatibilityOverride.engineVersion,
-                            compatibilityOverride.osName
-  elseif not engineVersion then
-    engineVersion, osName = detectEnvironment()
-  end
-  if not isWindows(osName) then return false end
-  local major, minor, patch = versionParts(engineVersion)
-  if not major then return true end
-  if major == 0 and minor == 1 and patch <= 83 then return false end
-  return true
-end
-
--- TEST-ONLY switch driven by the PRECACHE DEBUG setting. When enabled the
--- storage-unsupported gate is lifted so Windows/unsupported builds can try to
--- generate a disk cache. If the write hangs or freezes, turn it OFF.
-function Disk.setForcePrecache(on)
-  forcePrecache = not not on
+-- True only when a backend bound but cannot persist writes: mod.storage
+-- exposed a reader without a writer, the engine sandbox is read-only, the
+-- user lacks write privilege, or a stricter gen1recomp dropped storage writes
+-- entirely. Detected from the bound backend (see bind()'s "legacy-read"
+-- fallback), never from the OS or engine version, so the warning is shown
+-- exactly when a write would fail -- on any platform.
+function Disk.cacheReadOnly()
+  return backendKind == "legacy-read"
 end
 
 function Disk._setCompatibilityForTests(engineVersion, osName)
@@ -437,9 +409,19 @@ function Disk.fingerprint(map, slot, masks, kind)
     "row", tostring(tileset.tilesPerRow),
     "trueColor", tileset.trueColor and "1" or "0",
   }
-  local okTR, TileRenderer = pcall(require, "src.render.TileRenderer")
-  parts[#parts + 1] = "void"
-  parts[#parts + 1] = tostring(okTR and TileRenderer.voidFill or "trees")
+  -- VOID FILL (trees vs black) only changes the apron ring that sits in the
+  -- FULL slot (see Structures.lua hullRingOnly / RING). The BODY slot builds
+  -- r=0 (no ring) so its vertices never vary with void fill, and AUX carries
+  -- only grass/flowers/figures. Keying those on void fill needlessly
+  -- invalidated the heavy slots for every map on each toggle (and main.lua's
+  -- voidFill.check() forces a full mesher rebuild anyway). Keep void only in
+  -- the FULL key so toggling void fill rebuilds just the light ring, not the
+  -- cached body+aux for every map.
+  if slot ~= "body" and slot ~= "aux" then
+    local okTR, TileRenderer = pcall(require, "src.render.TileRenderer")
+    parts[#parts + 1] = "void"
+    parts[#parts + 1] = tostring(okTR and TileRenderer.voidFill or "trees")
+  end
   parts[#parts + 1] = "blocks"
   addList(parts, def.blocks)
   parts[#parts + 1] = "tiles"
