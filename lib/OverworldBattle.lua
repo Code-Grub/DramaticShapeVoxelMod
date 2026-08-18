@@ -1009,7 +1009,11 @@ function OverworldBattle.sideTexture(battle, side)
     g.setColor(1, 1, 1, 1)
     if side == "enemy" and showingTrainer and metric then
       local img = battle:picImage(battle.trainerPic)
-      g.draw(img, ax - metric.center, ay - (metric.y1 + 1))
+      -- Snap to integer canvas texels: the side canvas is nearest-filtered, so a
+      -- half-texel destination (odd canvas width ax=cw/2, or odd sprite center)
+      -- doubles/drops an edge texel that the later billboard upscale magnifies.
+      g.draw(img, math.floor(ax - metric.center),
+             math.floor(ay - (metric.y1 + 1)))
     else
       innerPics(battle, 0, 0, 0)
     end
@@ -1300,8 +1304,12 @@ function OverworldBattle.install()
     local x, y, s = innerBack(w, h, pad, padL, scale)
     if not texturing then return x, y, s end
     if texturingMetric then
-      return texturingAx - texturingMetric.center * scale,
-             texturingAy - (texturingMetric.y1 + 1) * scale, s
+      -- Snap to integer canvas texels. The side canvas is nearest-filtered, so
+      -- a half-texel destination (any odd-width/height sprite: center or y1 is
+      -- fractional) lands each source texel off-centre and the later ~3x
+      -- billboard upscale doubles or drops an edge row/column in the world.
+      return math.floor(texturingAx - texturingMetric.center * scale),
+             math.floor(texturingAy - (texturingMetric.y1 + 1) * scale), s
     end
     return texturingAx - w * scale / 2,
            texturingAy - (h - pad) * scale, s
@@ -1312,8 +1320,8 @@ function OverworldBattle.install()
     local x, y, s = innerFront(ex, ey, w, h, scale)
     if not texturing then return x, y, s end
     if texturingMetric then
-      return texturingAx - texturingMetric.center * scale,
-             texturingAy - (texturingMetric.y1 + 1) * scale, s
+      return math.floor(texturingAx - texturingMetric.center * scale),
+             math.floor(texturingAy - (texturingMetric.y1 + 1) * scale), s
     end
     return texturingAx - w * scale / 2, texturingAy - h * scale, s
   end
@@ -1518,7 +1526,14 @@ function OverworldBattle.install()
     -- former also owns ARENA FILL: WHITE, where white ink would disappear.
     local color = UiBackplates.hudUsesColor()
     local colorShadow = UiBackplates.hudUsesColorShadow()
-    if not (self.dramaticShapeShot and (self.dramaticShapeDark or color)) then
+    -- On iOS the snapped composite is skipped (Canvas-to-Canvas blits render
+    -- upside-down there), so `dramaticShapeDark` is never set on that platform.
+    -- The guard above therefore only let COLOR through on iOS and INVERTED fell
+    -- back to the engine's plain draw -- black glyphs and coloured bars with no
+    -- white-ink flip and no drop-shadow. INVERTED still wants its in-frame flip
+    -- (exactly the path COLOR already takes on iOS), so allow it through there.
+    if not (self.dramaticShapeShot
+            and (self.dramaticShapeDark or color or (isIOS() and not color))) then
       return innerHUDs(self, slide)
     end
     local battle = self
