@@ -57,14 +57,16 @@ $battleDirs = @(Get-ChildItem -LiteralPath $battleRoot -Recurse -Directory |
   })
 $battleDirs += 'assets/battle/'
 
-# Keep contracts/non-art metadata plus the distributable location and boss
-# backdrop sets, while never shipping private BYO Pokemon/trainer collections.
+# Keep contracts/non-art metadata while never shipping private BYO Pokemon/
+# trainer collections. front-static art (gen6, bosses, ...) is NOT shipped:
+# those folders travel only as directory entries (see $battleDirs below) with
+# their README/non-image metadata -- the .jpg/.png/.webp stay out of the clean
+# package, matching the gitignore that blanket-excludes assets/battle/**.
 $battleFiles = @(Get-ChildItem -LiteralPath $battleRoot -Recurse -File -Force |
   Where-Object {
     $relative = Relative-Path $_.FullName
     -not (Test-ExcludedFolder $relative) -and (
-      $_.Extension -notmatch '(?i)^\.(png|jpe?g|webp)$' -or
-      $relative -match '(?i)^assets/battle/front-static/(gen6|bosses)/'
+      $_.Extension -notmatch '(?i)^\.(png|jpe?g|webp)$'
     )
   } |
   ForEach-Object { Relative-Path $_.FullName })
@@ -112,8 +114,7 @@ try {
   $checkArchive.Dispose()
 }
 $privateBattleArt = @($packed | Where-Object {
-  $_ -match '(?i)^assets/battle/.*\.(png|jpe?g|webp)$' -and
-  $_ -notmatch '(?i)^assets/battle/front-static/(gen6|bosses)/'
+  $_ -match '(?i)^assets/battle/.*\.(png|jpe?g|webp)$'
 })
 if ($packed | Where-Object { Test-ExcludedFolder $_ }) {
   throw "clean package unexpectedly contains an _source or backup folder"
