@@ -16,8 +16,7 @@
   "conflicts": [
     "DRAMATIC_SHAPE",
     "DRAMALESS_SHAPE",
-    "potato_voxel",
-	"wild_skies"
+    "potato_voxel"
   ],
   "permissions": [
     "engine_internals"
