@@ -52,21 +52,26 @@ local meshes = {}
 -- the entity's tile centre. That local shift is fixed and shared by every
 -- entity, so a wider card bakes its OWN half-width in here
 -- (x0 = 8 - fw / 2) rather than asking the shared matrices to know each
--- sprite's size -- for fw == 16 that is x0 = 0, the original quad.
+-- sprite's size -- for fw == 16 that is x0 = 0, the original quad. Custom
+-- anchors use the same convention as SpriteRenderer: anchorX measures from
+-- the frame's left edge and anchorY measures down from its top edge.
 local function buildCard(def, frame)
   local ok, img = pcall(Assets.image, def.image)
   if not (ok and img) then return nil end
   local iw, ih = img:getDimensions()
   local fw = def.frameWidth or 16
   local fh = def.frameHeight or 16
+  local anchorX = def.anchorX or fw / 2
+  local anchorY = def.anchorY or fh
   local fy = frame * fh
   if fy + fh > ih then fy = 0 end
   local u0, u1 = 0.02 / iw, (fw - 0.02) / iw
   local v0, v1 = (fy + 0.05) / ih, (fy + fh - 0.05) / ih
-  local x0, x1 = 8 - fw / 2, 8 + fw / 2
+  local x0, x1 = 8 - anchorX, 8 - anchorX + fw
+  local y0, y1 = anchorY - fh, anchorY
   local verts = {
-    { x0, 0, 0, u0, v1, 1 }, { x1, 0, 0, u1, v1, 1 },
-    { x1, fh, 0, u1, v0, 1 }, { x0, fh, 0, u0, v0, 1 },
+    { x0, y0, 0, u0, v1, 1 }, { x1, y0, 0, u1, v1, 1 },
+    { x1, y1, 0, u1, v0, 1 }, { x0, y1, 0, u0, v0, 1 },
   }
   local indices = {}
   Voxel3D.pushQuad(indices, 0)
@@ -83,12 +88,13 @@ end
 -- ground whether or not anything hides it; and the sun must see the same
 -- outline the camera does, or a shadow stops matching what casts it.
 function SpriteBillboards.mesh(def, frame)
-  -- Size is part of the key too: two defs can point at the same sheet
-  -- with different frameWidth/frameHeight (a mod's derived variant of a
-  -- shared asset), and previously that could only alias because every
-  -- card was implicitly 16x16.
+  -- Geometry-affecting sprite metadata is part of the key too: two defs can
+  -- point at the same sheet with different sizes or anchors and must not
+  -- alias the first mesh built for that image/frame pair.
   local key = def.image .. "#" .. frame .. "#"
               .. (def.frameWidth or 16) .. "x" .. (def.frameHeight or 16)
+              .. "@" .. (def.anchorX or "default")
+              .. "," .. (def.anchorY or "default")
   if meshes[key] == nil then
     local ok, m = pcall(buildCard, def, frame)
     meshes[key] = (ok and m) or false
