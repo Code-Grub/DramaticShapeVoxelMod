@@ -953,7 +953,9 @@ mod.hooks:wrap("ui.start_menu.items", function(next, game, items)
   if type(out) ~= "table" then return out end
   -- CACHE is always offered; VoxelPrecacheScreen surfaces the
   -- "not available" message on builds without a usable storage backend.
-  VoxelMeshDisk.bind(game, false)
+  -- Guard bind() so a backend failure can never abort this wrapper and drop
+  -- the row (the engine keeps the vanilla list when the hook throws).
+  pcall(VoxelMeshDisk.bind, game, false)
   for _, item in ipairs(out) do
     if tostring(item and item.label or "") == "CACHE" then return out end
   end

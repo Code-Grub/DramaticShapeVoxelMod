@@ -311,6 +311,37 @@ local function bindStorage(game)
       return api:writeBytes(scope, key, bytes)
     end,
   })
+  -- Self-test the write path. Some engine builds (observed on 0.2.x storage
+  -- backend) accept writeBytes but never persist the bytes: the directory is
+  -- created yet the file body is dropped, so every later launch sees an empty
+  -- cache and the title-screen preloader regenerates the whole world on the
+  -- main thread -- a multi-minute freeze -- while the pause-menu CACHE write
+  -- silently fails. Probe a round-trip and, if it lies, refuse this backend so
+  -- bind() degrades to the read-only legacy-read path instead of using a
+  -- storage backend that cannot hold a single byte.
+  if not storageRoundTrips(storage, scope, api) then
+    diskLog("voxel cache: storage backend accepted writes but did not persist; "
+            .. "degrading to read-only legacy-read")
+    return false
+  end
+  return true
+end
+
+-- Write a sentinel to the bound scope and read it back; the backend is usable
+-- for persistence only if the read returns the exact bytes written. Wrapped in
+-- pcall so a throwing/missing API can never crash bind(). The probe key lives
+-- OUTSIDE LOGICAL_DIRECTORY so ramPlan()/stats() never enumerate or preload it.
+local function storageRoundTrips(store, scope, api)
+  local probe = "cache/__bind_probe_" .. tostring({}):gsub("%W", "")
+  local sentinel = "BAVCbind" .. tostring(os and os.clock and os.clock() or 0)
+  local ok, wrote = pcall(store.writeBytes, store, probe, sentinel)
+  if not ok or wrote ~= true then
+    pcall(store.writeBytes, store, probe, "")
+    return false
+  end
+  local rok, got = pcall(store.readBytes, store, probe)
+  pcall(store.writeBytes, store, probe, "")
+  if not rok or got ~= sentinel then return false end
   return true
 end
 
