@@ -603,7 +603,7 @@ local PLANTER_SPRAY = { rows = 24, depth = 5 }
 -- silhouette that makes it read as leaves.
 local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
                              NYin, spray, baseRows, bodyRows, wellRows,
-                             taperVox)
+                             taperVox, pinBase)
   -- The canvas is NX wide and NX DEEP (a hull is round in plan, so its
   -- depth is its width) by NY tall. NX = 16 is one cell, 32 a 2x2-cell
   -- group; NY defaults to NX -- a ball -- and NY = 2 * NX is a drawing
@@ -1088,7 +1088,12 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
 
   for iy = 0, NY - 1 do
     if loRow[iy] then
-      local yB, yT = NY - 1 - iy, NY - iy
+      -- pinBase: drop the whole drawing to the ground (y=0) when requested,
+      -- so cylinders/trees sit ON the terrain instead of floating at the top
+      -- of the cell. The template is built top-down from NY, so a bottom-of-
+      -- template row at yBot is lowered by (NY-1-yBot) voxels.
+      local drop = (pinBase and yBot) and (NY - 1 - yBot) or 0
+      local yB, yT = NY - 1 - iy - drop, NY - iy - drop
 
       -- front and back: the drawing per-pixel, columns merged where they
       -- share a chord plane; a run never crosses the 8px atlas tile seam
@@ -1360,7 +1365,8 @@ function Structures.buildCylinders(S, map, x0, x1, y0, y1, groundTiles)
             local tpl = roundCache[sig]
             if not tpl then
               local tq, tbg = roundTemplate(S, map, data, cx, cy,
-                                            groundTiles, 32)
+                                            groundTiles, 32, nil, nil, nil,
+                                            nil, nil, nil, true)
               tpl = { quads = tq, bg = tbg }
               roundCache[sig] = tpl
             end
@@ -1454,7 +1460,7 @@ function Structures.buildCylinders(S, map, x0, x1, y0, y1, groundTiles)
           if not tpl then
             local tq, tbg = roundTemplate(S, map, data, cx, cy,
                                           groundTiles, 16, cap, nil, nil,
-                                          base, tall, well, taper)
+                                          base, tall, well, taper, true)
             tpl = { quads = tq, bg = tbg }
             roundCache[sig] = tpl
           end

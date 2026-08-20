@@ -1621,4 +1621,17 @@ end
 
 Assets.register(function() ChunkMesher.invalidate() end)
 
+-- Drop the entire voxel mesh cache -- both the live GPU/RAM meshes (via
+-- invalidate) and the on-disk BAVC files (via Disk.purge) -- so the mesher
+-- rebuilds every area from scratch on the next frame. This is the "DROP MESH
+-- CACHE" pause-menu action: use it after a geometry/grounding change (e.g. the
+-- pinBase cylinder/tree fix) left stale floating meshes baked into the cache.
+-- Fails open; a missing or read-only backend simply leaves the disk as-is.
+function ChunkMesher.purgeCache()
+  ChunkMesher.invalidate()
+  if Disk and Disk.purge then
+    pcall(Disk.purge)
+  end
+end
+
 return ChunkMesher

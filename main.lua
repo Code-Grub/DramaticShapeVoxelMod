@@ -99,6 +99,7 @@ local BattlePresentation = V.require("BattlePresentation")
 local BattleStage = V.require("BattleStage")
 local StadiumModelProvider = V.require("StadiumModelProvider")
 local BattleArt = V.require("BattleArt")
+local InterfaceSprites = V.require("InterfaceSprites")
 local UiBackplates = V.require("UiBackplates")
 local BattleExit = V.require("BattleExit")
 local DayNight = V.require("DayNight")
@@ -496,6 +497,11 @@ local SETTINGS = {
     .. "fallback from free roam and staged battles; UNLIT battle cards also "
     .. "decline shadows even while this global switch is ON.",
     full = true },
+  { InterfaceSprites.setting,
+    "INTERFACE SPRITES: show BATTLE ART's selected-generation FRONT in the "
+    .. "non-battle interfaces (title screen, Pokedex, status/party, hall of "
+    .. "fame), independent of DUPLICATE FIX (which owns only battle pictures). "
+    .. "MODDED leaves the interfaces to another sprite mod or the ROM." },
   -- `full` marks a row FULL does not take away. FULL owns the diorama's own
   -- knobs; what a battle is drawn over, and how it is framed, are not that.
   { OverworldBattle.setting,
@@ -990,10 +996,10 @@ mod.hooks:wrap("ui.start_menu.items", function(next, game, items)
           end
         end },
         { label = "DROP", onSelect = function()
-          local dropped = VoxelMeshDisk.dropRam()
+          local CM = V.require("ChunkMesher")
+          pcall(CM.purgeCache)
           game.stack:push(TextBox.new(game,
-            ("RAM CACHE DROPPED\n%d FILE%s\fAREAS WILL LOAD\nAS NEEDED")
-              :format(dropped.files, dropped.files == 1 and "" or "S")))
+            "MESH CACHE DROPPED\nAREAS REBUILD GROUNDED"))
         end },
       }, { tx = 10, ty = 0, tw = 10, onCancel = reopen }))
     end,
@@ -1253,6 +1259,12 @@ mod.hooks:wrap("pokemon.sprite", function(next, path, ctx)
   local def = ctx.data and ctx.data.pokemon and ctx.data.pokemon[ctx.species]
   return (def and def.spriteFront) or out
 end)
+
+-- Interface sprites: our selected-generation front in the non-battle
+-- interfaces (title, dex, status/party, hall of fame). Registered after the
+-- battle wrap above; it ignores battle contexts and only substitutes for
+-- interface ones.
+InterfaceSprites.install()
 
 -- Every ending path emits this, including a battle skipped before it drew,
 -- so this is where the map's cast comes back.

@@ -17,6 +17,7 @@ local Budget = V.require("BuildBudget")
 local StaticGeometry = V.require("StaticGeometry")
 local Version = require("src.core.Version")
 local Platform = require("src.core.Platform")
+local ModSetting = V.require("ModSetting")
 
 local ffi
 do
@@ -952,6 +953,32 @@ function Disk.saveAux(map, aux)
       Budget.check()
     end
   end)
+end
+
+-- Delete every on-disk static-mesh cache file so the mesher rebuilds from
+-- scratch on the next frame. Used by the "DROP MESH CACHE" pause-menu action
+-- (e.g. after a lift/grounding change left stale floating geometry baked in).
+-- Fails open: every filesystem op is pcall-guarded, and a missing or
+-- read-only backend simply reports zero removed. On the legacy FFI backend
+-- (<0.1.84) the files live under LEGACY_ROOT as .bavc; on the storage
+-- backend they live under LOGICAL_DIRECTORY. Clears the in-RAM mirror too.
+function Disk.purge()
+  local fs = persistenceFilesystem()
+  local removed = 0
+  if fs and fs.getDirectoryItems then
+    for _, root in ipairs({ LEGACY_ROOT, LOGICAL_DIRECTORY }) do
+      local ok, names = pcall(fs.getDirectoryItems, root)
+      if ok then
+        for _, name in ipairs(names or {}) do
+          if pcall(fs.remove, root .. "/" .. name) then
+            removed = removed + 1
+          end
+        end
+      end
+    end
+  end
+  ramFiles, ramDirty, ramBytes, ramRejected = {}, {}, 0, {}
+  return removed
 end
 
 return Disk
