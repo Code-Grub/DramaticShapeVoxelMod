@@ -408,6 +408,7 @@ local neighborhood = { map = nil, count = 0, rows = {} }
 local cachedMasks = {}
 local nbMeshBuf, nbWaterBuf = {}, {}
 local lastCompleteCanvas, lastCompleteW, lastCompleteH = nil, 0, 0
+local lastCompleteMapId = nil
 
 local function neighborhoodChanged(state)
   local nbs = state.neighbors or {}
@@ -484,11 +485,18 @@ function VoxelScene.prefetch(state)
   -- cut out of that build's own geometry (ChunkMesher.pair), so the two
   -- always come from the same slot and a lake is never drawn twice or left
   -- as a hole.
-  ChunkMesher.request(state.map, false, cachedMasks, true)
   local terrain, water = ChunkMesher.pair(state.map, false)
   if not terrain then
     terrain, water = ChunkMesher.pair(state.map, true)
   end
+  -- A cold WARP destination has never been a connected neighbour, so it has
+  -- no body slot waiting for it. Queue that smaller useful-first mesh before
+  -- FULL; request(FULL) then promotes the body job to priority 3 and it lands
+  -- as soon as possible while the border ring continues in the background.
+  if not terrain and not ChunkMesher.slotKnown(state.map, true) then
+    ChunkMesher.request(state.map, true, nil, true)
+  end
+  ChunkMesher.request(state.map, false, cachedMasks, true)
   local nbs = state.neighbors or {}
   local ready = terrain ~= nil
   for i, nb in ipairs(nbs) do
@@ -510,7 +518,11 @@ function VoxelScene.prefetch(state)
   return terrain, nbMeshBuf, water, nbWaterBuf, ready
 end
 
-local function heldFrame(w, h)
+local function heldFrame(w, h, mapId)
+  -- A complete frame is a temporary stand-in only while the SAME map repairs
+  -- a neighbour/body slot.  Reusing it across a door warp freezes the view at
+  -- the exit frame even though the player is already walking on another map.
+  if mapId == nil or lastCompleteMapId ~= mapId then return nil end
   if not (lastCompleteCanvas and lastCompleteW == w and lastCompleteH == h) then
     return nil
   end
@@ -518,6 +530,7 @@ local function heldFrame(w, h)
                             lastCompleteCanvas)
   if not ok or cw ~= w or ch ~= h then
     lastCompleteCanvas, lastCompleteW, lastCompleteH = nil, 0, 0
+    lastCompleteMapId = nil
     return nil
   end
   return lastCompleteCanvas
@@ -525,6 +538,7 @@ end
 
 function VoxelScene.invalidate()
   lastCompleteCanvas, lastCompleteW, lastCompleteH = nil, 0, 0
+  lastCompleteMapId = nil
 end
 
 -- Capture every entity's pose for this frame. pose() advances the hop /
@@ -979,7 +993,7 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
     -- The FULL mesh already suppresses its ring beneath every connected map.
     -- Drawing before those BODY meshes arrive exposes literal holes around the
     -- perimeter. Keep the last complete frame instead and switch atomically.
-    return heldFrame(w, h), true
+    return heldFrame(w, h, state.map and state.map.id), true
   end
 
   local cam = state.camera
@@ -1220,6 +1234,7 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   local finished = Voxel3D.endScene()
   if finished then
     lastCompleteCanvas, lastCompleteW, lastCompleteH = finished, w, h
+    lastCompleteMapId = state.map and state.map.id or nil
   end
   return finished, false
 end

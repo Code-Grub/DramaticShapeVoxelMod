@@ -97,8 +97,8 @@ local RenderDistance = V.require("RenderDistance")
 local OverworldBattle = V.require("OverworldBattle")
 local BattlePresentation = V.require("BattlePresentation")
 local BattleStage = V.require("BattleStage")
-local StadiumModelProvider = V.require("StadiumModelProvider")
 local BattleArt = V.require("BattleArt")
+local StadiumModels = V.require("StadiumModels")
 local InterfaceSprites = V.require("InterfaceSprites")
 local UiBackplates = V.require("UiBackplates")
 local BattleExit = V.require("BattleExit")
@@ -122,7 +122,6 @@ mod.events:on("mods.loaded", function(payload)
   -- Reassert BATTLE ART ownership outside the completed chain so ordinary and
   -- shiny opponent fronts cannot alternate after those providers advance.
   OverworldBattle.refreshSpriteOwnershipHook()
-  StadiumModelProvider.register()
 end)
 
 -- Forward declaration: the voxel pipeline's update hook (registered below)
@@ -498,9 +497,10 @@ local SETTINGS = {
     .. "decline shadows even while this global switch is ON.",
     full = true },
   { InterfaceSprites.setting,
-    "INTERFACE SPRITES: show BATTLE ART's selected-generation FRONT in the "
-    .. "non-battle interfaces (title screen, Pokedex, status/party, hall of "
-    .. "fame), independent of DUPLICATE FIX (which owns only battle pictures). "
+    "INTERFACE SPRITES: show BATTLE ART's regular-form FRONT outside battle. "
+    .. "Title and status support timed atlas animation; other hook-aware "
+    .. "screens use single-image sets or retain ROM art, independent of "
+    .. "DUPLICATE FIX (which owns only battle pictures). "
     .. "MODDED leaves the interfaces to another sprite mod or the ROM." },
   -- `full` marks a row FULL does not take away. FULL owns the diorama's own
   -- knobs; what a battle is drawn over, and how it is framed, are not that.
@@ -523,6 +523,15 @@ local SETTINGS = {
     "Use optional PNGs from assets/battle in fights. Missing art falls "
     .. "back to the ROM. STATIC is the zero-configuration default.",
     when = function() return stagedBattles() end, full = true },
+  { StadiumModels.setting,
+    "Choose Battle Art's existing sprite cards or optional Stadium 2 models "
+    .. "for Pokemon in the voxel arena. Trainers and unavailable models keep "
+    .. "using Battle Art automatically. Use Stadium's MODELS option ON and "
+    .. "its complete BATTLE option OFF.",
+    when = function()
+      return stagedBattles() and StadiumModels.installed()
+    end,
+    provider = true, full = true },
   { BattleArt.trainerSetting,
     "Choose the static opponent trainer collection. A class missing from "
     .. "the selected generation falls back directly to its ROM portrait.",
@@ -648,8 +657,12 @@ local SETTINGS = {
 }
 
 local schema = {}
-for i, entry in ipairs(SETTINGS) do
-  schema[i] = entry[1]:schema(entry[2])
+for _, entry in ipairs(SETTINGS) do
+  -- Provider-only settings should not leave a dead row when the optional
+  -- provider is absent. The in-game row has the same availability guard.
+  if not entry.provider or StadiumModels.installed() then
+    schema[#schema + 1] = entry[1]:schema(entry[2])
+  end
 end
 mod.options:define(schema)
 

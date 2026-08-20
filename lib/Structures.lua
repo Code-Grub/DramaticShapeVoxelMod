@@ -630,6 +630,7 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
   local cls = {}
   for py = 0, NY - 1 do
     for px = 0, NX - 1 do
+      Budget.tick()
       local ax, ay = texel(px, py)
       local r, g, b, a = data:getPixel(ax, ay)
       cls[py * NX + px] = a == 0 and "off"
@@ -653,6 +654,7 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
       seed(py * NX); seed(py * NX + NX - 1)
     end
     while #stack > 0 do
+      Budget.tick()
       local i = table.remove(stack)
       local px, py = i % NX, math.floor(i / NX)
       if px > 0 then seed(i - 1) end
@@ -682,6 +684,7 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
                                light = true, white = true }, y0, y1)
     local enclosed = 0
     for i = y0 * NX, (y1 + 1) * NX - 1 do
+      Budget.tick()
       if not out[i] then
         mask[i] = true
         if cls[i] ~= "black" then enclosed = enclosed + 1 end
@@ -690,12 +693,16 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
     if enclosed < NX * NX / 8 then
       out = floodOutside({ off = true, light = true, white = true }, y0, y1)
       for i = y0 * NX, (y1 + 1) * NX - 1 do
+        Budget.tick()
         mask[i] = (not out[i] and cls[i] ~= "off") or nil
       end
     end
   end
   local any = nil
-  for i = 0, NX * NY - 1 do any = any or mask[i] end
+  for i = 0, NX * NY - 1 do
+    Budget.tick()
+    any = any or mask[i]
+  end
   if not any then return {} end
 
   -- a CAPPED hull (the stump): the top capRows rows of the mask are the
@@ -715,10 +722,16 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
       capY0 = top
       capY1 = math.min(top + capRows - 1, NY - 2)
       for iy = capY0, capY1 do
-        for ix = 0, NX - 1 do mask[iy * NX + ix] = nil end
+        for ix = 0, NX - 1 do
+          Budget.tick()
+          mask[iy * NX + ix] = nil
+        end
       end
       any = nil
-      for i = 0, NX * NY - 1 do any = any or mask[i] end
+      for i = 0, NX * NY - 1 do
+        Budget.tick()
+        any = any or mask[i]
+      end
       if not any then return {} end
     end
   end
@@ -746,13 +759,17 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
       baseArt = {}
       for iy = math.max(bot - baseRows + 1, (capY1 or -1) + 2), bot do
         for ix = 0, NX - 1 do
+          Budget.tick()
           local i = iy * NX + ix
           if mask[i] then baseArt[i] = true end
           mask[i] = nil
         end
       end
       any = nil
-      for i = 0, NX * NY - 1 do any = any or mask[i] end
+      for i = 0, NX * NY - 1 do
+        Budget.tick()
+        any = any or mask[i]
+      end
       if not any then return {} end
     end
   end
@@ -811,6 +828,7 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
       local score, n = 0, 0
       for py = 0, NY - 1 do
         for px = 0, NX - 1 do
+          Budget.tick()
           local i = py * NX + px
           local c = cls[i]
           -- a stripped base row is the OBJECT's own rim, not background:
@@ -842,8 +860,10 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
   local loRow, hiRow = {}, {}
   local yBot = nil
   for iy = 0, NY - 1 do
+    Budget.check()
     local lo, hi = nil, nil
     for ix = 0, NX - 1 do
+      Budget.tick()
       if mask[iy * NX + ix] then
         lo = lo or ix
         hi = ix
@@ -855,6 +875,7 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
       local c = (lo + hi + 1) / 2
       local hw = (hi - lo + 1) / 2
       for ix = lo, hi do
+        Budget.tick()
         local i = iy * NX + ix
         if mask[i] then
           local dx = ix + 0.5 - c
@@ -891,10 +912,12 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
     for iy = 1, math.min(spray.rows, NY) - 1 do
       if loRow[iy] then
         for ix = loRow[iy], hiRow[iy] do
+          Budget.tick()
           local i = iy * NX + ix
           if not z0[i] then
             local covered = false
             for iy2 = 0, iy - 1 do
+              Budget.tick()
               if mask[iy2 * NX + ix] then covered = true break end
             end
             if covered then
@@ -914,6 +937,7 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
   for iy = yBot + 1, NY - 1 do
     loRow[iy], hiRow[iy] = loRow[yBot], hiRow[yBot]
     for ix = loRow[yBot], hiRow[yBot] do
+      Budget.tick()
       local b = yBot * NX + ix
       if z0[b] then
         local i = iy * NX + ix
@@ -948,6 +972,7 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
             hi = lo + 1
           end
           for ix = loRow[iy], hiRow[iy] do
+            Budget.tick()
             if ix < lo or ix > hi then
               local i = iy * NX + ix
               z0[i], z1[i], z2[i], z3[i] = nil, nil, nil, nil
@@ -958,6 +983,7 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
           -- either side, and dropping it leaves the taper's new edge
           -- wearing an interior texel -- a white chip down the rim
           for ix = lo, hi do
+            Budget.tick()
             srcX[iy * NX + ix] = loRow[iy]
               + math.floor((ix - lo) * (hiRow[iy] - loRow[iy])
                            / (hi - lo) + 0.5)
@@ -967,6 +993,7 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
           local c = (lo + hi + 1) / 2
           local hw = (hi - lo + 1) / 2
           for ix = lo, hi do
+            Budget.tick()
             local i = iy * NX + ix
             if z0[i] then
               local dx = ix + 0.5 - c
@@ -999,6 +1026,7 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
     for iy = wellTop or 0, math.min((wellTop or 0) + wellRows - 1, NY - 1) do
       if loRow[iy] then
         for ix = loRow[iy], hiRow[iy] do
+          Budget.tick()
           local i = iy * NX + ix
           if z0[i] and z1[i] - z0[i] > wall * 2 then
             z2[i], z3[i] = z1[i] - wall, z1[i]
@@ -1087,6 +1115,7 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
   local quads = {}
 
   for iy = 0, NY - 1 do
+    Budget.check()
     if loRow[iy] then
       -- pinBase: drop the whole drawing to the ground (y=0) when requested,
       -- so cylinders/trees sit ON the terrain instead of floating at the top
@@ -1100,10 +1129,12 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
       -- (its u range must interpolate inside one tile)
       local ix = loRow[iy]
       while ix <= hiRow[iy] do
+        Budget.tick()
         local i = iy * NX + ix
         if z0[i] then
           local ix2 = ix
           while ix2 + 1 <= hiRow[iy] do
+            Budget.tick()
             local j = iy * NX + ix2 + 1
             -- src too: a can's foot row draws part of its span from the
             -- stripped base rim and the rest from the body band above it,
@@ -1168,6 +1199,7 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
       -- sides, steps, undersides: constant-texel quads over the z runs a
       -- neighbour doesn't cover
       for ix = loRow[iy], hiRow[iy] do
+        Budget.tick()
         local i = iy * NX + ix
         if z0[i] then
           local ax, ay = texel(srcX[i] or ix, src[i])
@@ -1179,9 +1211,11 @@ local function roundTemplate(S, map, data, cx, cy, groundTiles, N, capRows,
           local function chordPieces(nx, ny, emit, zLo, zHi)
             local iz = zLo
             while iz < zHi do
+              Budget.tick()
               if not solidAt(nx, ny, iz) then
                 local iz2 = iz
                 while iz2 + 1 < zHi and not solidAt(nx, ny, iz2 + 1) do
+                  Budget.tick()
                   iz2 = iz2 + 1
                 end
                 emit(iz - N2, iz2 - N2 + 1, iz, iz2)
@@ -1365,8 +1399,17 @@ function Structures.buildCylinders(S, map, x0, x1, y0, y1, groundTiles)
             local tpl = roundCache[sig]
             if not tpl then
               local tq, tbg = roundTemplate(S, map, data, cx, cy,
-                                            groundTiles, 32, nil, nil, nil,
-                                            nil, nil, nil, true)
+                groundTiles,
+                32,  -- N
+                nil, -- capRows
+                nil, -- NYin
+                nil, -- spray
+                nil, -- baseRows
+                nil, -- bodyRows
+                nil, -- wellRows
+                nil, -- taperVox
+                true -- pinBase
+              )
               tpl = { quads = tq, bg = tbg }
               roundCache[sig] = tpl
             end

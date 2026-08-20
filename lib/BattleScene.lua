@@ -40,6 +40,7 @@ local TerrainAtlas = V.require("TerrainAtlas")
 local VoxelScene = V.require("VoxelScene")
 local BattleCam = V.require("BattleCam")
 local BattleBillboard = V.require("BattleBillboard")
+local StadiumModels = V.require("StadiumModels")
 local DayNight = V.require("DayNight")
 local UiBackplates = V.require("UiBackplates")
 local Gen6Backdrop = V.require("Gen6Backdrop")
@@ -216,6 +217,7 @@ local function monCards(arena, groundY, textures)
       local mirror = (side == "player") and not tex.trainer
                      and not tex.noMirror
       out[#out + 1] = { tex = tex.canvas,
+                        side = side,
                         noDayTint = tex.noDayTint,
                         model = monMatrix(tex, cell[1], groundY, cell[2],
                                           mirror) }
@@ -249,7 +251,7 @@ local function shadowSignature(state, arena, terrain, nbMesh, token)
 end
 
 local function castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh,
-                           atlasFor, cards, token, host, neighbors,
+                           atlasFor, cards, models, token, host, neighbors,
                            water, nbWater)
   if not ShadowMap.available() then return end
   local sig = shadowSignature(state, arena, terrain, nbMesh, token)
@@ -290,9 +292,17 @@ local function castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh,
   -- of the selected arena fill.
   if not UiBackplates.spritesUnlit() then
     ShadowMap.sprites(true)
+    local modelShadows = {}
+    for side, placement in pairs(models or {}) do
+      modelShadows[side] = StadiumModels.drawShadow(placement, ShadowMap.clipVP)
+    end
     for _, card in ipairs(cards or {}) do
-      ShadowMap.draw(BattleBillboard.mesh(), card.tex,
-                     ShadowMap.snug(card.model))
+      -- Model/shadow failure is local to one side; its retained card casts
+      -- for this pass rather than leaving that battler without a silhouette.
+      if not modelShadows[card.side] then
+        ShadowMap.draw(BattleBillboard.mesh(), card.tex,
+                       ShadowMap.snug(card.model))
+      end
     end
     ShadowMap.sprites(false)
   end
@@ -447,6 +457,8 @@ function BattleScene.render(state, arena, textures, token, battle, drawActors)
   -- renderer here. In that mode the native cards must not also enter either
   -- the shadow map or the colour pass.
   local cards = drawActors and {} or monCards(arena, groundY, textures)
+  local stadium = drawActors and {}
+    or StadiumModels.placements(arena, groundY, textures, battle)
   Voxel3D.camera = nil
   if flatFill then
     -- WHITE is a genuinely flat stage: there is no visible world receiver,
@@ -456,7 +468,7 @@ function BattleScene.render(state, arena, textures, token, battle, drawActors)
     ShadowMap.discard()
   else
     castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh, atlasFor,
-                cards, drawActors and nil or token,
+                cards, stadium, drawActors and nil or token,
                 host, neighbors, water, nbWater)
   end
 
@@ -553,7 +565,7 @@ function BattleScene.render(state, arena, textures, token, battle, drawActors)
     -- and no glass either: the cards wear the battle screen, not the
     -- tileset atlas, so the mask's coordinates mean nothing on them
     Voxel3D.glass(false)
-    for _, card in ipairs(cards) do
+    local function drawCard(card)
       -- Static front illustrations retain their authored brightness instead
       -- of being dimmed or colour-cast by the clock. Only the hour tint is
       -- neutral here; depth and alpha-shaped lighting/shadows stay active.
@@ -584,6 +596,45 @@ function BattleScene.render(state, arena, textures, token, battle, drawActors)
         Voxel3D.dayTint()
       end
       if card.noDayTint then Voxel3D.dayTint() end
+    end
+
+    -- Trainers, disabled integration and unavailable sides retain the exact
+    -- established card path. Each available model replaces only its own side.
+    for _, card in ipairs(cards) do
+      if not StadiumModels.uses(stadium, card.side) then drawCard(card) end
+    end
+
+    local failedModels = {}
+    local shadowActive = ShadowMap.active()
+    local drawContext = {
+      viewProjection = Voxel3D.vp,
+      view = Mat4.lookAt(Voxel3D.eye, Voxel3D.focus,
+        (cam and cam.up) or { 0, 1, 0 }),
+      tint = Voxel3D.tint,
+      light = {
+        direction = { 0.35, 0.7, 0.62 },
+        ambient = { 0.46, 0.46, 0.46 },
+        diffuse = { 0.72, 0.72, 0.72 },
+      },
+      flashing = flashing,
+      shadowMap = shadowActive and ShadowMap.texture() or nil,
+      shadowVP = shadowActive and ShadowMap.uvVP or nil,
+      shadowDark = Voxel3D.SHADOW_ALPHA,
+      shadowBias = ShadowMap.bias,
+      shadowTexel = shadowActive and ShadowMap.res > 0
+        and { 1 / ShadowMap.res, 1 / ShadowMap.res } or nil,
+    }
+    for _, pass in ipairs({ "opaque", "additive" }) do
+      for side, placement in pairs(stadium) do
+        if not failedModels[side]
+            and not StadiumModels.draw(placement, drawContext, pass) then
+          failedModels[side] = true
+        end
+      end
+    end
+    -- A provider failure cannot strand a missing battler for the frame.
+    for _, card in ipairs(cards) do
+      if failedModels[card.side] then drawCard(card) end
     end
     Voxel3D.glass(true)
     Voxel3D.seams(true)

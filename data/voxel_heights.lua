@@ -2947,6 +2947,34 @@ return {
   -- is sealed by a black threshold row.  Reading it would mean changing
   -- the flood itself, which every model here depends on, for one scenery
   -- placement.
+  -- A building sprite is authored as a front projection.  The model gives
+  -- it a real rear wall, so facade-only tiles need plain material donors on
+  -- that wall instead of being mirrored there.  These OVERWORLD door halves
+  -- are replaced pixel-for-pixel by the adjacent upper/lower wall courses;
+  -- the south facade continues to use the original door art.
+  building_back_tiles = {
+    OVERWORLD = {
+      [11] = { 10, 75 }, [12] = { 10, 75 },
+      [27] = 26, [28] = 26,
+    },
+  },
+  -- Only exterior, enterable everyday buildings use the doorless rear-wall
+  -- treatment.  Interior HOUSE/FACILITY/POKECENTER models are separate
+  -- tilesets and are intentionally untouched; large landmarks/gates also
+  -- keep their individually authored shells.
+  building_back_templates = {
+    OVERWORLD = {
+      gabled_house = true,
+      oaks_lab = true,
+      flat_commercial = true,
+      pokecenter = true,
+      pokemart = true,
+      gabled_cottage = true,
+      gabled_house_wide = true,
+      daycare = true,
+    },
+  },
+
   buildings = {
     OVERWORLD = {
       -- assets/docs/buildings/B30: the POKEMON TOWER -- the one drawing

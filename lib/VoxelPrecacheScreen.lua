@@ -55,6 +55,7 @@ function Screen.new(game)
       index = 1,
       maps = 0, full = 0, body = 0,
       skipped = 0, built = 0, failed = 0,
+      failures = {}, failureLog = nil,
       active = nil,
       loadedId = nil, loadedMap = nil,
       stats = { bytes = 0, files = 0, maps = 0, full = 0, body = 0, aux = 0 },
@@ -78,6 +79,7 @@ function Screen.new(game)
     skipped = 0,
     built = 0,
     failed = 0,
+    failures = {}, failureLog = nil,
     active = nil,
     loadedId = nil,
     loadedMap = nil,
@@ -86,6 +88,27 @@ function Screen.new(game)
     titleUiBox = { 0, 0, 19, 17 },
   }, Screen)
   return self
+end
+
+function Screen:recordFailure(job, stage, detail)
+  detail = detail or {}
+  self.failed = self.failed + 1
+  local writes = MeshDisk.takeWriteFailures()
+  if #writes == 0 then writes = detail end
+  if #writes == 0 then
+    writes = { { stage = stage, error = "cache remained incomplete" } }
+  end
+  for _, row in ipairs(writes) do
+    self.failures[#self.failures + 1] = {
+      map = job and job.id or "-",
+      slot = job and (job.bodyOnly and "body" or "full") or "-",
+      stage = row.stage or stage,
+      path = row.path or "-", physical = row.physical or "-",
+      error = row.error or "unknown error",
+    }
+  end
+  local wrote, path = MeshDisk.writePrecacheFailureLog(self.failures)
+  self.failureLog = wrote and path or "engine log"
 end
 
 function Screen:releaseLoaded(exceptId)
@@ -99,7 +122,9 @@ function Screen:loadMap(id)
   if self.loadedId == id and self.loadedMap then return self.loadedMap end
   self:releaseLoaded(id)
   local ok, map = pcall(StaticGeometry.map, id)
-  if not (ok and map) then return nil end
+  if not (ok and map) then
+    return nil, ok and "map unavailable" or tostring(map)
+  end
   self.loadedId, self.loadedMap = id, map
   return map
 end
@@ -109,6 +134,9 @@ function Screen:finish(phase)
   self.active = nil
   self:releaseLoaded(nil)
   self.stats = MeshDisk.stats()
+  local wrote, path = MeshDisk.writePrecacheFailureLog(self.failures)
+  self.failureLog = wrote and path
+                    or (#self.failures > 0 and "engine log" or nil)
   self.phase = phase
   -- Whole-world generation touches several route-sized FFI buffers. Runtime
   -- meshes are already released above; collect their Lua/cdata owners before
@@ -125,9 +153,11 @@ function Screen:startNext()
       self:finish(self.failed == 0 and "complete" or "incomplete")
       return
     end
-    local map = self:loadMap(job.id)
+    local map, mapError = self:loadMap(job.id)
     if not map then
-      self.failed = self.failed + 1
+      self:recordFailure(job, "map load", { {
+        stage = "map load", error = mapError or "map unavailable",
+      } })
       self.index = self.index + 1
     else
       local masks
@@ -159,6 +189,9 @@ function Screen:update(dt)
   local input = self.game.input
   if self.phase == "confirm" then
     if input:wasPressed("a") or input:wasPressed("start") then
+      MeshDisk.beginFailureCapture()
+      self.failures, self.failureLog = {}, nil
+      MeshDisk.writePrecacheFailureLog({})
       self.phase = "running"
     elseif input:wasPressed("b") then
       self.game.stack:pop()
@@ -183,11 +216,19 @@ function Screen:update(dt)
   if self.active then
     ChunkMesher.pump(true)
     if ChunkMesher.jobPending(self.active.id, self.active.bodyOnly) then return end
-    if MeshDisk.complete(self.active.map, self.active.bodyOnly,
-                         self.active.masks) then
+    local buildError = ChunkMesher.takeJobFailure(
+      self.active.id, self.active.bodyOnly)
+    local complete, details = MeshDisk.completeDetails(
+      self.active.map, self.active.bodyOnly, self.active.masks)
+    if complete then
       self.built = self.built + 1
+      MeshDisk.takeWriteFailures()
     else
-      self.failed = self.failed + 1
+      if buildError then
+        details = { { stage = "mesh build", error = buildError } }
+      end
+      self:recordFailure(self.active,
+        buildError and "mesh build" or "completion check", details)
     end
     self.active = nil
     self.index = self.index + 1
@@ -239,6 +280,7 @@ function Screen:draw()
     put(("AUX: %d"):format(self.stats.aux), 9)
     put(("DISK: %s"):format(sizeText(self.stats.bytes)), 11)
     put(("FAILED: %d"):format(self.failed), 12)
+    if self.failed > 0 then put("DETAILS IN LOG", 14) end
     put("A/B:BACK", 15)
   end
   love.graphics.setColor(1, 1, 1, 1)

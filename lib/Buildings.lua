@@ -149,7 +149,7 @@ local models = {}          -- "<tileset>:<index>" -> prebuilt local quads
 -- topRows (placement is still by `tiles` alone); they exist so the MODEL
 -- is built from the complete drawing and the tower rises to its real
 -- height instead of folding as two half-buildings.
-local function read(t, data, perRow)
+local function read(t, data, perRow, backTiles)
   local tiles = t.tiles
   if t.topRows then
     tiles = {}
@@ -158,18 +158,63 @@ local function read(t, data, perRow)
   end
   local bh, bw = #tiles, #t.tiles[1]
   local W, H = bw * 8, bh * 8
-  local col, ax, ay = {}, {}, {}
+  local col, ax, ay, back = {}, {}, {}, {}
+
+  -- Resolve a donor per TILE occurrence before walking its 64 pixels.  A
+  -- profile entry may be one fixed tile or a preference set.  Preference
+  -- sets let a door continue the course it actually sits in: some houses use
+  -- wall 10 around the entrance, others use the alternate wall 75.  Nearest
+  -- same-row material wins, with the first preference as the fallback for an
+  -- isolated authored/test tile.
+  local rearFor = {}
+  for tr, row in ipairs(tiles) do
+    rearFor[tr] = {}
+    for tc, tile in ipairs(row) do
+      local donor = backTiles and backTiles[tile]
+      if type(donor) == "table" then
+        local allowed = {}
+        for _, id in ipairs(donor) do allowed[id] = true end
+        local found = nil
+        for d = 1, #row do
+          local left, right = row[tc - d], row[tc + d]
+          if left ~= nil and allowed[left] then found = left break end
+          if right ~= nil and allowed[right] then found = right break end
+        end
+        donor = found or donor[1]
+      end
+      rearFor[tr][tc] = donor
+    end
+  end
+
   for sy = 0, H - 1 do
     Budget.tick()
-    local row = tiles[math.floor(sy / 8) + 1]
+    local tr = math.floor(sy / 8) + 1
+    local row = tiles[tr]
     for sx = 0, W - 1 do
-      local tile = row[math.floor(sx / 8) + 1]
+      local tc = math.floor(sx / 8) + 1
+      local tile = row[tc]
       local px = (tile % perRow) * 8 + sx % 8
       local py = math.floor(tile / perRow) * 8 + sy % 8
       local i = sy * W + sx
       ax[i], ay[i] = px, py
       local r, g, b, a = data:getPixel(px, py)
       col[i] = shadeOf(r, g, b, a)
+
+      -- A building drawing is its SOUTH/front projection.  Its north wall
+      -- still needs a visible face, but copying that projection verbatim
+      -- puts the front door on the back of every house.  The profile names
+      -- atlas tiles that have a plain rear-wall counterpart; virtual texel
+      -- indices let the shell keep all of its normal merging/UV logic while
+      -- sampling that counterpart only on the north face.
+      local rearTile = rearFor[tr][tc]
+      if rearTile ~= nil then
+        local ri = W * H + i
+        ax[ri] = (rearTile % perRow) * 8 + sx % 8
+        ay[ri] = math.floor(rearTile / perRow) * 8 + sy % 8
+        back[i] = ri
+      else
+        back[i] = i
+      end
     end
   end
 
@@ -244,7 +289,8 @@ local function read(t, data, perRow)
       end
     end
   end
-  return { W = W, H = H, col = col, ax = ax, ay = ay, inside = inside }
+  return { W = W, H = H, col = col, ax = ax, ay = ay,
+           inside = inside, back = back }
 end
 
 -- --------------------------------------------------------------- measure --
@@ -980,7 +1026,7 @@ local function model(sp, pr, t)
       if pr.recess[i] then return nil end
       return i
     end
-    if z == 0 then return i end
+    if z == 0 then return sp.back[i] or i end
     return pr.interior[i]
   end
 
@@ -1210,6 +1256,10 @@ function Buildings.build(S, map, data, perRow)
   local atlasH = tileset.imageHeight or 48
   local tw, th = map.def.width * 4, map.def.height * 4
   local quads = S.objectQuads
+  local tilesetBack = s.building_back_tiles
+                      and s.building_back_tiles[tileset.id]
+  local rearTemplates = s.building_back_templates
+                        and s.building_back_templates[tileset.id]
 
   for index, t in ipairs(list) do
     if type(t.tiles) == "table" and #t.tiles > 0 then
@@ -1251,7 +1301,11 @@ function Buildings.build(S, map, data, perRow)
                   -- detector they stood as a second half-building.
                   models[key] = {}
                 else
-                  local sp = read(t, data, perRow)
+                  local rear = t.backTiles
+                  if rear == nil and rearTemplates and rearTemplates[t.id] then
+                    rear = tilesetBack
+                  end
+                  local sp = read(t, data, perRow, rear)
                   local pr = measure(sp, t)
                   models[key] = emit(model(sp, pr, t), sp, atlasW, atlasH)
                 end

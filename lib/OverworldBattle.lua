@@ -46,10 +46,10 @@ local BattleDOF = V.require("BattleDOF")
 local BattleHud = V.require("BattleHud")
 local BattlePresentation = V.require("BattlePresentation")
 local UiBackplates = V.require("UiBackplates")
-local RivalDiag = V.require("RivalDiag")
 local TextboxStyle = V.require("TextboxStyle")
 local BattlePics = V.require("BattlePics")
 local BattleArt = V.require("BattleArt")
+local StadiumModels = V.require("StadiumModels")
 local AnimatedBattleArt = V.require("AnimatedBattleArt")
 local Gen6Backdrop = V.require("Gen6Backdrop")
 local Voxel3D = V.require("Voxel3D")
@@ -632,6 +632,7 @@ end
 function OverworldBattle.finish()
   if not session then return end
   AnimatedBattleArt.finish(session.battle)
+  StadiumModels.release()
   restoreCast()
   session = nil
   Voxel3D.camera = nil
@@ -693,6 +694,9 @@ function OverworldBattle.update(dt)
     Gen6Backdrop.snapshot(session.battle)
   end
   AnimatedBattleArt.update(session.battle, dt)
+  -- Optional and presentation-only. The battle remains authoritative for
+  -- visibility, switches and move timing; failures retain the card path.
+  StadiumModels.update(session.battle, dt)
   -- the world pass is hidden behind the battle, so mesh builds get the wide
   -- slice: nothing visible can hitch on them
   ChunkMesher.pump(true)
@@ -1033,16 +1037,6 @@ function OverworldBattle.sideTexture(battle, side)
   end
   local canvas = texCanvasFor(side, cw, ch)
   if not canvas then return nil end
-
-  -- Diagnostic: when an enemy trainer pic would draw, record whether the
-  -- metric resolved. A nil metric means the sprite image is blank/missing --
-  -- exactly the "rival doesn't show" case we want to catch in the log.
-  if side == "enemy" and showingTrainer then
-    RivalDiag.log("sideTexture", "enemyTrainer",
-      "trainerPic=" .. (battle.trainerPic and "set" or "nil"),
-      "metric=" .. (metric and "ok" or "NIL(blank)"),
-      "map=" .. tostring(battle.mapId or battle.areaId or "?"))
-  end
 
   local g = love.graphics
   local prevCanvas = g.getCanvas()

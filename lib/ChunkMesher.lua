@@ -1159,6 +1159,7 @@ end
 
 local jobs = {}       -- FIFO of pending jobs
 local jobIndex = {}   -- "id:slot" -> job
+local jobFailures = {} -- settled coroutine errors, consumed by diagnostics
 
 local clock = (love and love.timer and love.timer.getTime) or os.clock
 
@@ -1167,7 +1168,8 @@ local function jobKey(id, slot)
 end
 
 local function finishJob(job, ok, err)
-  jobIndex[jobKey(job.id, job.slot)] = nil
+  local key = jobKey(job.id, job.slot)
+  jobIndex[key] = nil
   for i, j in ipairs(jobs) do
     if j == job then
       table.remove(jobs, i)
@@ -1181,6 +1183,9 @@ local function finishJob(job, ok, err)
     if (gen[job.id] or 0) == job.gen then
       entry(job.id)[job.slot] = false
     end
+    jobFailures[key] = tostring(err or "unknown mesh build error")
+  else
+    jobFailures[key] = nil
   end
 end
 
@@ -1299,6 +1304,7 @@ function ChunkMesher.request(map, bodyOnly, masks, priority)
   local job = jobIndex[key]
   local requested = priorityValue(priority)
   if not job then
+    jobFailures[key] = nil
     job = { id = map.id, map = map, slot = slot, masks = masks,
             priority = requested, gen = gen[map.id] or 0 }
     jobIndex[key] = job
@@ -1332,6 +1338,17 @@ end
 -- probe; a failed build and a completed build both stop being pending.
 function ChunkMesher.jobPending(mapId, bodyOnly)
   return jobIndex[jobKey(mapId, bodyOnly and "body" or "full")] ~= nil
+end
+
+-- A completed and a failed coroutine both disappear from jobPending(). Keep
+-- the latter's exact exception until the sole consumer (precache diagnostics)
+-- records it. Runtime callers need no special handling: false remains cached
+-- as before and ordinary rendering continues to fail open.
+function ChunkMesher.takeJobFailure(mapId, bodyOnly)
+  local key = jobKey(mapId, bodyOnly and "body" or "full")
+  local err = jobFailures[key]
+  jobFailures[key] = nil
+  return err
 end
 
 -- Small diagnostic used by probes/tests to verify that a queued neighbour was
