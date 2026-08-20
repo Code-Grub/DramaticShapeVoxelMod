@@ -56,10 +56,11 @@ end
 -- playthrough identity.
 local STATIC_PLAYTHROUGH = "bavc_static_mesh_v2"
 
--- Revision 3 changes emitted building UVs: rear faces substitute doorless
--- wall/base texels.  Old revision-2 meshes would otherwise keep mirrored
--- doors until the user manually dropped the cache.
-Disk.CACHE_REVISION = 3
+-- Revision 4 marks enterable south/front building faces with negative shade,
+-- which the scene shader interprets as one-sided while preserving the shade
+-- magnitude. Old revision-3 meshes contain no marker and would keep showing
+-- mirrored facade/door backs during exit transitions.
+Disk.CACHE_REVISION = 4
 -- Patch releases which do not change emitted vertices must keep the existing
 -- world cache usable. This token matches the first static-mesh-cache-v2 build;
 -- CACHE_REVISION, not the public mod version, owns geometry compatibility.

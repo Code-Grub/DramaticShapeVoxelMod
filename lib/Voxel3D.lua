@@ -72,6 +72,7 @@ Voxel3D.FACE_SHADE = {
 
 local SHADER = [[
   varying float vShade;
+  varying float vFacadeBack;
   varying vec3 vSun;          // this fragment's place in the sun's view
   varying vec3 vModelSun;     // optional Stadium model-shadow view
 #ifdef VOXEL_GRID
@@ -93,7 +94,7 @@ local SHADER = [[
   uniform vec3 curve;         // xy = the focus in world XZ, z = k; 0 = off
   attribute float VertexShade;
   vec4 position(mat4 transform_projection, vec4 vertex_position) {
-    vShade = VertexShade;
+    vShade = abs(VertexShade);
 #ifdef VOXEL_GRID
     // MODEL space, deliberately: every mesh here is built a unit per
     // voxel in its own frame, so the seams ride the model however it is
@@ -101,6 +102,10 @@ local SHADER = [[
     vGrid = vertex_position.xyz;
 #endif
     vec4 w = model * vertex_position;
+    // All four vertices of a marked facade lie on one Z plane, so this is
+    // constant across its fragments. Work it out here where `eye` belongs;
+    // the pixel stage only needs the yes/no result.
+    vFacadeBack = step(VertexShade, -0.0001) * step(eye.z, w.z - 0.0001);
     // The shadow lookup runs off `sunModel`, not `model`. For terrain the
     // two are the same matrix, but a character is drawn as a slab LEANING
     // back by the camera's pitch -- a trick played on the viewer, which
@@ -245,6 +250,12 @@ local SHADER = [[
   uniform float glassOn;      // 0 for sprite-sheet draws (see Voxel3D.glass)
 
   vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
+    // Enterable overworld buildings carry their south/front skin as a
+    // one-sided surface. During a door transition the camera can briefly
+    // stand north of that skin; discard its back instead of filling the
+    // lens with mirrored facade/door art. Genuine rear and side walls keep
+    // ordinary positive shade values and remain double-sided.
+    if (vFacadeBack > 0.5) discard;
     vec4 p = Texel(tex, tc);
     // sprite sheets key GB OBJ color 0 to alpha 0; discarding rather than
     // blending keeps those texels out of the depth buffer, so a model never

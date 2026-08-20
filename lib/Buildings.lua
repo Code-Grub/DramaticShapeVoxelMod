@@ -1092,8 +1092,14 @@ local function emit(m, sp, atlasW, atlasH)
            (y0 + 0.05) / atlasH, (y0 + 1 - 0.05) / atlasH
   end
 
-  local function put(c1, c2, c3, c4, uv, shade)
-    quads[#quads + 1] = { c1, c2, c3, c4, uv = uv, shade = shade }
+  local function put(c1, c2, c3, c4, uv, shade, facade)
+    quads[#quads + 1] = {
+      c1, c2, c3, c4, uv = uv, shade = shade,
+      -- A building model is reused at enterable and scenery placements.
+      -- Keep the directional fact on the model; stamp() decides from the
+      -- live map's door cells whether this particular facade is one-sided.
+      facade = facade or nil,
+    }
   end
 
   -- How far a run of exposed faces reaches from `x`, and whether it is a
@@ -1138,7 +1144,8 @@ local function emit(m, sp, atlasW, atlasH)
             if d == 1 then
               put({ x, y, zf }, { x + n, y, zf },
                   { x + n, y + 1, zf }, { x, y + 1, zf },
-                  { { u0, v1 }, { u1, v1 }, { u1, v0 }, { u0, v0 } }, shade)
+                  { { u0, v1 }, { u1, v1 }, { u1, v0 }, { u0, v0 } },
+                  shade, true)
             else
               put({ x + n, y, zf }, { x, y, zf },
                   { x, y + 1, zf }, { x + n, y + 1, zf },
@@ -1382,13 +1389,51 @@ function Buildings.stamp(S, map, quads, tx, ty, bw, bh, t)
 
   local mx, mz = tx * 8, ty * 8
   local out = S.objectQuads
+
+  -- Only an OUTDOOR placement containing an engine-authored door is an
+  -- enterable facade. The same template can describe decorative scenery,
+  -- so this is deliberately placement data rather than a template list.
+  -- Building grids use 8px tiles while door cells are 16px blocks.
+  local oneSidedFacade = false
+  if S.outdoor then
+    local cx0, cy0 = math.floor(tx / 2), math.floor(ty / 2)
+    local cx1 = math.floor((tx + bw - 1) / 2)
+    local cy1 = math.floor((ty + bh - 1) / 2)
+    for cy = cy0, cy1 do
+      for cx = cx0, cx1 do
+        local door = false
+        if type(map.isDoorTileCell) == "function" then
+          local ok, value = pcall(map.isDoorTileCell, map, cx, cy)
+          door = ok and value == true
+        end
+        if not door and map.doorTiles and type(map.cellTile) == "function" then
+          local ok, tile = pcall(map.cellTile, map, cx, cy)
+          door = ok and map.doorTiles[tile] == true
+        end
+        if door then
+          oneSidedFacade = true
+          break
+        end
+      end
+      if oneSidedFacade then break end
+    end
+  end
+
   for _, q in ipairs(quads) do
+    local shade = q.shade
+    if oneSidedFacade and q.facade then
+      -- Negative shade is an internal geometry marker. ChunkMesher's AO
+      -- multiplication preserves the sign; Voxel3D restores its magnitude
+      -- for lighting and discards it only from behind. No vertex-format or
+      -- auxiliary-mesh change is needed.
+      shade = -math.abs(shade)
+    end
     out[#out + 1] = {
       { q[1][1] + mx, q[1][2], q[1][3] + mz },
       { q[2][1] + mx, q[2][2], q[2][3] + mz },
       { q[3][1] + mx, q[3][2], q[3][3] + mz },
       { q[4][1] + mx, q[4][2], q[4][3] + mz },
-      uv = q.uv, shade = q.shade,
+      uv = q.uv, shade = shade,
       -- placements only ever scan the BODY, so a building is always this
       -- map's own structure: the mesher's edge keep-rules must not eat
       -- the parts that poke past the boundary (an edge-row house's eave
