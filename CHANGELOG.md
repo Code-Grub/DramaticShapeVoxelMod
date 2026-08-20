@@ -2,11 +2,24 @@
 
 ## Unreleased
 
-- **Optional Stadium model bridge.** When a Stadium 2 Importer exposing the
-  scene-neutral model API v2 is installed, the opt-in `POKEMON MODEL` row can
-  place its independently owned Pokemon models directly in the staged voxel
-  arena. Battle Art remains the default. Missing providers and per-side load,
-  update, draw, or shadow failures retain the existing card fallback.
+- **Battle Art stages in Stadium-owned battles.** The Stadium 2 Importer scene
+  API now receives Battle Art's selected arena. OFF draws the captured voxel
+  level through Stadium's live camera and publishes its hosted attack anchors;
+  WHITE, GEN6, PNG and boss overrides replace its backdrop. The new BLUE
+  choice selects the importer's blue arena. A separate STADIUM CIRCLE choice
+  draws the platform at full or two-thirds radius, or hides it, and Stadium models
+  cast into voxel terrain independently of that platform. Hidden circles on
+  flat fills use an invisible shadow-only ground catcher; reduced circles use
+  it beyond their edge, so models remain planted without exposing another
+  platform or clipping the shadow. Missing art safely retains Stadium's
+  default background.
+
+- **Automatic Stadium model bridge.** When a Stadium 2 Importer exposing the
+  scene-neutral model API v2 is installed, `STADIUM 2 MODELS` and `STADIUM 2
+  BATTLE` together place independently owned Pokemon models directly in the
+  staged voxel arena. Turning either importer option off restores Battle Art
+  sprites. Missing providers and per-side load, update, draw, or shadow
+  failures retain the existing card fallback.
 
 - **Interface Sprites startup fix.** Installing the non-battle sprite hook now
   calls its namespaced summary helper, tolerates a nil sprite context, preserves

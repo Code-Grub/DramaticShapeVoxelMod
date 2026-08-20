@@ -378,7 +378,8 @@ local function tickTiles()
   pcall(require("src.render.TileRenderer").tick)
 end
 
-function BattleScene.render(state, arena, textures, token, battle, drawActors)
+function BattleScene.render(state, arena, textures, token, battle, drawActors,
+                            externalCamera, externalModelShadow)
   if not (state and state.map and arena) then return nil end
   if not Voxel3D.available() then return nil end
   tickTiles()
@@ -438,8 +439,37 @@ function BattleScene.render(state, arena, textures, token, battle, drawActors)
   end
 
   local groundY = BattleScene.groundY(host, arena)
-  local cam, pitch = BattleCam.rig(arena, groundY)
-  cam.fov = BattleScene.letterboxFov(cam.fov, ph, s)
+  local cam, pitch
+  local externalEye = externalCamera and externalCamera.eye
+  local externalFocus = externalCamera and externalCamera.focus
+  local externalProjection = externalCamera and externalCamera.projection
+  local externalF = type(externalProjection) == "table"
+    and tonumber(externalProjection[6]) or nil
+  if type(externalEye) == "table" and type(externalFocus) == "table"
+      and externalF and math.abs(externalF) > 1e-6 then
+    -- Stadium's actor slots are (0,0,+24) and (0,0,-24). BattleArena uses
+    -- the same 48-unit separation, translated to the selected map patch, so
+    -- translating Stadium's live camera by the arena midpoint and ground
+    -- height makes its models and this terrain share one projection exactly.
+    cam = {
+      eye = { externalEye[1] + arena.mid[1],
+              externalEye[2] + groundY,
+              externalEye[3] + arena.mid[2] },
+      focus = { externalFocus[1] + arena.mid[1],
+                externalFocus[2] + groundY,
+                externalFocus[3] + arena.mid[2] },
+      fov = 2 * math.atan(1 / math.abs(externalF)),
+      curve = 0,
+    }
+    local dx = cam.eye[1] - cam.focus[1]
+    local dy = cam.eye[2] - cam.focus[2]
+    local dz = cam.eye[3] - cam.focus[3]
+    pitch = math.atan2(math.sqrt(dx * dx + dz * dz),
+                       math.max(1e-3, dy))
+  else
+    cam, pitch = BattleCam.rig(arena, groundY)
+    cam.fov = BattleScene.letterboxFov(cam.fov, ph, s)
+  end
 
   local cx, cy = arena.mid[1], arena.mid[2]
   -- the world extents the sun frustum is fitted to; the camera itself is
@@ -456,8 +486,11 @@ function BattleScene.render(state, arena, textures, token, battle, drawActors)
   -- A Battle Presentation host supplies its independently selected actor
   -- renderer here. In that mode the native cards must not also enter either
   -- the shadow map or the colour pass.
-  local cards = drawActors and {} or monCards(arena, groundY, textures)
-  local stadium = drawActors and {}
+  local hostedActors = drawActors and true or false
+  local drawActorPass = type(drawActors) == "table" and drawActors.draw
+    or (type(drawActors) == "function" and drawActors or nil)
+  local cards = hostedActors and {} or monCards(arena, groundY, textures)
+  local stadium = hostedActors and {}
     or StadiumModels.placements(arena, groundY, textures, battle)
   Voxel3D.camera = nil
   if flatFill then
@@ -468,8 +501,7 @@ function BattleScene.render(state, arena, textures, token, battle, drawActors)
     ShadowMap.discard()
   else
     castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh, atlasFor,
-                cards, stadium, drawActors and nil or token,
-                host, neighbors, water, nbWater)
+                cards, stadium, token, host, neighbors, water, nbWater)
   end
 
   -- An opaque void either way. Outdoors the camera is low enough that the
@@ -514,7 +546,17 @@ function BattleScene.render(state, arena, textures, token, battle, drawActors)
     -- above the white too. Requires sprite light UNLIT (see UiBackplates).
     local skyFill = whiteFill and { 1, 1, 1 }
                     or (artImage and { 0, 0, 0 } or sky)
-    if not Voxel3D.beginScene(rw, rh, cx, cy, vw, vh, skyFill, "battle") then
+    local modelShadow = type(externalModelShadow) == "table"
+        and externalModelShadow.map and externalModelShadow.sunVP and {
+          map = externalModelShadow.map,
+          sunVP = externalModelShadow.sunVP,
+          sunDark = externalModelShadow.sunDark,
+          sunBias = externalModelShadow.sunBias,
+          sunTexel = externalModelShadow.sunTexel,
+          origin = { arena.mid[1], groundY, arena.mid[2] },
+        } or nil
+    if not Voxel3D.beginScene(rw, rh, cx, cy, vw, vh, skyFill, "battle",
+        modelShadow) then
       return
     end
     if artImage then
@@ -659,12 +701,12 @@ function BattleScene.render(state, arena, textures, token, battle, drawActors)
                    ShadowMap.snug(Mat4.translate(nb.ox, 0, nb.oy)))
     end
     end
-    if drawActors then
+    if drawActorPass then
       -- Enter the selected model provider while this arena's depth target and
       -- camera are live. The host owns actor shader/state cleanup. Logical
       -- dimensions describe the resolved surface, so projected attachments
       -- remain correct when this pass is supersampled.
-      drawActors({
+      drawActorPass({
         vp = Voxel3D.vp,
         groundY = groundY,
         width = pw,

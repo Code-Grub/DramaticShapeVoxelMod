@@ -28,6 +28,7 @@ local V = ...
 local Mat4 = V.require("Mat4")
 local Voxel = V.require("VoxelState")
 local ShadowMap = V.require("ShadowMap")
+local Shadows = V.require("Shadows")
 local VoxelGrid = V.require("VoxelGrid")
 local WorldCurve = V.require("WorldCurve")
 local Sky = V.require("Sky")
@@ -72,6 +73,7 @@ Voxel3D.FACE_SHADE = {
 local SHADER = [[
   varying float vShade;
   varying vec3 vSun;          // this fragment's place in the sun's view
+  varying vec3 vModelSun;     // optional Stadium model-shadow view
 #ifdef VOXEL_GRID
   // model space, one unit per voxel -- see VoxelGrid. Precision matters
   // here in a way it does not for a colour: the seam is the FRACTIONAL
@@ -84,6 +86,8 @@ local SHADER = [[
   uniform mat4 model;
   uniform mat4 sunModel;      // where the SUN sees this vertex (see below)
   uniform mat4 sunVP;         // world -> the shadow map's unit cube
+  uniform mat4 modelSunVP;    // Stadium-local world -> its shadow unit cube
+  uniform vec3 modelSunOrigin;// map-world origin of Stadium's local arena
   uniform vec3 eye;
   uniform float pull;
   uniform vec3 curve;         // xy = the focus in world XZ, z = k; 0 = off
@@ -108,6 +112,11 @@ local SHADER = [[
     // answered. (The pull below is excluded for the same reason: it is a
     // depth trick aimed at the camera's own buffer.)
     vSun = (sunVP * (sunModel * vertex_position)).xyz;
+    // Stadium owns and completes its live model shadow map before requesting
+    // our environment. Translate this map-world receiver into Stadium's
+    // arena-local coordinates and sample that finished map as a second light
+    // layer; no cross-mod render-target or shader handoff is required.
+    vModelSun = (modelSunVP * vec4(w.xyz - modelSunOrigin, 1.0)).xyz;
     // The curved world (see WorldCurve): drop every vertex by the square
     // of how far its column stands from the camera's focus. Applied AFTER
     // the shadow lookup above and clear of the wireframe's model space, so
@@ -136,6 +145,10 @@ local SHADER = [[
   uniform float sunDark;      // how far into black a shadow goes; 0 = off
   uniform float sunBias;
   uniform vec2 sunTexel;
+  uniform Image modelSunMap;
+  uniform float modelSunDark;
+  uniform float modelSunBias;
+  uniform vec2 modelSunTexel;
 
   // the two-channel pack ShadowMap writes: high byte, then low
   float sunDepth(vec2 uv) {
@@ -167,6 +180,24 @@ local SHADER = [[
               + step(z, sunDepth(p.xy + sunTexel * vec2(-0.5,  0.5)))
               + step(z, sunDepth(p.xy + sunTexel * vec2( 0.5,  0.5)));
     return 1.0 - sunDark * edge * (1.0 - lit * 0.25);
+  }
+
+  float modelSunDepth(vec2 uv) {
+    vec4 c = Texel(modelSunMap, uv);
+    return c.r + c.g * (1.0 / 255.0);
+  }
+
+  float modelSunlight(vec3 p) {
+    if (modelSunDark <= 0.0) return 1.0;
+    if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z > 1.0) {
+      return 1.0;
+    }
+    float z = p.z - modelSunBias;
+    float lit = step(z, modelSunDepth(p.xy + modelSunTexel * vec2(-0.5, -0.5)))
+              + step(z, modelSunDepth(p.xy + modelSunTexel * vec2( 0.5, -0.5)))
+              + step(z, modelSunDepth(p.xy + modelSunTexel * vec2(-0.5,  0.5)))
+              + step(z, modelSunDepth(p.xy + modelSunTexel * vec2( 0.5,  0.5)));
+    return 1.0 - modelSunDark * (1.0 - lit * 0.25);
   }
 
 #ifdef VOXEL_GRID
@@ -236,7 +267,8 @@ local SHADER = [[
 #endif
     // the hour's tint multiplies like the sun terms do: it is LIGHT, the
     // same warm or moonlit cast on every surface, not a palette swap
-    vec3 litRgb = p.rgb * vShade * sunlight(vSun) * dayTint;
+    vec3 litRgb = p.rgb * vShade * sunlight(vSun)
+                * modelSunlight(vModelSun) * dayTint;
     vec3 rgb = litRgb;
 #ifdef VOXEL_GRID
     // darken what is there rather than painting a colour, so a seam across
@@ -724,7 +756,7 @@ end
 -- void transparent, which is what every rung below it wants.
 -- `slot` names which cached canvas to render into (see `slots` above);
 -- omitted is the free-roam world pass.
-function Voxel3D.beginScene(w, h, cx, cy, vw, vh, sky, slot)
+function Voxel3D.beginScene(w, h, cx, cy, vw, vh, sky, slot, modelShadow)
   -- the wireframe variant when the player has it on AND it built; either
   -- answer falls through to the plain scene rather than to no scene
   local grid = VoxelGrid.enabled()
@@ -809,6 +841,22 @@ function Voxel3D.beginScene(w, h, cx, cy, vw, vh, sky, slot)
   pcall(sh.send, sh, "sunBias", ShadowMap.bias)
   local texel = 1 / ShadowMap.res
   pcall(sh.send, sh, "sunTexel", { texel, texel })
+  local external = type(modelShadow) == "table" and modelShadow or nil
+  pcall(sh.send, sh, "modelSunVP", "row",
+    external and external.sunVP or IDENTITY)
+  pcall(sh.send, sh, "modelSunOrigin",
+    external and external.origin or { 0, 0, 0 })
+  if external and external.map then
+    pcall(sh.send, sh, "modelSunMap", external.map)
+  elseif tex then
+    pcall(sh.send, sh, "modelSunMap", tex)
+  end
+  pcall(sh.send, sh, "modelSunDark",
+    external and not Shadows.off() and (tonumber(external.sunDark) or 0) or 0)
+  pcall(sh.send, sh, "modelSunBias",
+    external and (tonumber(external.sunBias) or 0) or 0)
+  pcall(sh.send, sh, "modelSunTexel",
+    external and external.sunTexel or { 1, 1 })
   if grid then
     pcall(sh.send, sh, "gridDark", VoxelGrid.DARK)
     pcall(sh.send, sh, "gridWidth", VoxelGrid.width())

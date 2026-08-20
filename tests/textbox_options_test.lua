@@ -69,4 +69,15 @@ eq(UiBackplates.hudUsesColor(), true,
 eq(UiBackplates.hudUsesColorShadow(), false,
   "the solid white arena does not add COLOR's gray terrain shadow")
 
+settings.arenaFill:sync("BLUE")
+eq(UiBackplates.arenaBlue(), true, "BLUE selects Stadium's native arena")
+eq(UiBackplates.arenaArt(), false,
+  "BLUE is not treated as a Battle Art illustrated plate")
+eq(settings.stadiumCircle:get(), "ON", "Stadium circles default on")
+settings.stadiumCircle:sync("HALF")
+eq(UiBackplates.stadiumCircleScale(), 2 / 3,
+  "HALF uses two-thirds of the ground-circle radius")
+settings.stadiumCircle:sync("OFF")
+eq(UiBackplates.stadiumCircleScale(), 0, "OFF hides Stadium circles")
+
 print("textbox_options_test: PASS")

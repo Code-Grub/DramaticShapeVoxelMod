@@ -99,6 +99,7 @@ local BattlePresentation = V.require("BattlePresentation")
 local BattleStage = V.require("BattleStage")
 local BattleArt = V.require("BattleArt")
 local StadiumModels = V.require("StadiumModels")
+local StadiumBackground = V.require("StadiumBackground")
 local InterfaceSprites = V.require("InterfaceSprites")
 local UiBackplates = V.require("UiBackplates")
 local BattleExit = V.require("BattleExit")
@@ -523,15 +524,6 @@ local SETTINGS = {
     "Use optional PNGs from assets/battle in fights. Missing art falls "
     .. "back to the ROM. STATIC is the zero-configuration default.",
     when = function() return stagedBattles() end, full = true },
-  { StadiumModels.setting,
-    "Choose Battle Art's existing sprite cards or optional Stadium 2 models "
-    .. "for Pokemon in the voxel arena. Trainers and unavailable models keep "
-    .. "using Battle Art automatically. Use Stadium's MODELS option ON and "
-    .. "its complete BATTLE option OFF.",
-    when = function()
-      return stagedBattles() and StadiumModels.installed()
-    end,
-    provider = true, full = true },
   { BattleArt.trainerSetting,
     "Choose the static opponent trainer collection. A class missing from "
     .. "the selected generation falls back directly to its ROM portrait.",
@@ -610,13 +602,20 @@ local SETTINGS = {
     .. "ARENA FILL: WHITE always uses COLOR so the HUD remains visible.",
     when = function() return stagedBattles() end, full = true },
   { UiBackplates.arenaFill,
-    "WHITE draws a solid white layer in front of the voxel world. GEN6 "
+    "OFF uses the voxel level. WHITE draws a solid white arena. GEN6 "
     .. "selects a flat illustrated background by city, route, cave or "
     .. "story location and follows DAWN/DAY/DUSK/NIGHT where variants exist. "
+    .. "BLUE uses Stadium 2's native background and ground circles. "
     .. "Both fill and crop to every window shape, softly defocus the plate, "
     .. "retain the normal battle camera, keep only "
     .. "mons, attacks and menus above it, and force SPRITE LIGHT: UNLIT.",
     when = function() return stagedBattles() end, full = true },
+  { UiBackplates.stadiumCircle,
+    "Control Stadium's ground circles independently of ARENA FILL. ON uses "
+    .. "the normal radius, HALF uses two-thirds radius, and OFF hides them. "
+    .. "This has no effect unless a compatible Stadium scene is installed.",
+    when = function() return StadiumBackground.installed() end,
+    provider = true, full = true },
   { UiBackplates.backdropOffset,
     "Choose how far down into an illustrated background its top crop begins, "
     .. "from 0 to 200 source-image pixels. Larger values reveal lower floor "
@@ -1191,6 +1190,7 @@ end
 -- where the reasoning for each one is written down. Installed once, here,
 -- so this file keeps naming every engine seam the mod touches.
 OverworldBattle.install()
+StadiumBackground.install()
 
 -- ------- the first-person rung's inputs and its walk
 --

@@ -4,15 +4,10 @@
 
 local V = ...
 
-local ModSetting = V.require("ModSetting")
 local Mat4 = V.require("Mat4")
 local BattleArt = V.require("BattleArt")
 
 local StadiumModels = {}
-
-StadiumModels.setting = ModSetting.new(
-  "pokemonModel", "POKEMON MODEL",
-  { "battle_art", "stadium2" }, { "BATTLE ART", "STADIUM 2" })
 
 local providerHandle, providerExports, models
 local actors = { player = {}, enemy = {} }
@@ -63,12 +58,13 @@ local function exportEnabled(exports, name)
 end
 
 function StadiumModels.active()
-  if StadiumModels.setting:get() ~= "stadium2" then return false end
   local api, exports = connect()
   if not api then return false end
-  if exportEnabled(exports, "modelsEnabled") == false then return false end
-  -- Never compete with the importer's optional complete battle scene.
-  if exportEnabled(exports, "battleEnabled") == true then return false end
+  -- The importer toggles are the single source of truth for Pokemon art in a
+  -- staged voxel battle. Both ON selects its scene-neutral model instances;
+  -- either OFF releases them and leaves Battle Art's sprite cards in place.
+  if exportEnabled(exports, "modelsEnabled") ~= true then return false end
+  if exportEnabled(exports, "battleEnabled") ~= true then return false end
   return true
 end
 

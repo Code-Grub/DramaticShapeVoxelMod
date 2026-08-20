@@ -105,6 +105,12 @@ function OverworldBattle.battle()
   return session and session.battle or nil
 end
 
+-- The Stadium background extension renders outside BattleScene, but it still
+-- needs the same captured encounter map used by GEN6/boss backdrop routing.
+function OverworldBattle.map()
+  return session and session.state and session.state.map or nil
+end
+
 -- ------- battle-art view
 --
 -- The staged shot stands BOTH mons on the map, which is the mode's whole
@@ -597,13 +603,16 @@ end
 function OverworldBattle.providerBegin(expectedBattle)
   if not OverworldBattle.providerAvailable(expectedBattle) then return false end
   session.apiHosted = true
+  session.providerShot = nil
   session.shot = nil
   session.snapped = false
   return true
 end
 
-function OverworldBattle.providerRender(expectedBattle, drawActors)
-  if not (session and session.apiHosted and type(drawActors) == "function") then
+function OverworldBattle.providerRender(expectedBattle, drawActors,
+                                        externalCamera, externalModelShadow)
+  if not (session and session.apiHosted
+      and (type(drawActors) == "function" or type(drawActors) == "table")) then
     return nil
   end
   if expectedBattle ~= nil and session.battle ~= nil
@@ -611,20 +620,34 @@ function OverworldBattle.providerRender(expectedBattle, drawActors)
   session.battle = session.battle or expectedBattle
   session.token = (session.token or 0) + 1
   local ok, shot = pcall(BattleScene.render, session.state, session.arena,
-    nil, session.token, session.battle, drawActors)
-  if not (ok and shot and shot.canvas) then return nil end
+    nil, session.token, session.battle, drawActors, externalCamera,
+    externalModelShadow)
+  if not (ok and shot and shot.canvas) then
+    session.providerShot = nil
+    return nil
+  end
   local y1 = shot.ly + shot.player[2] * shot.scale
   local y2 = shot.ly + shot.enemy[2] * shot.scale
   local focusY, band, range = BattleDOF.bandFor(y1, y2, shot.ph)
   local okDof, blurred = pcall(BattleDOF.apply, shot.canvas,
     focusY, band, range)
   if okDof and blurred then shot.canvas = blurred end
+  -- Compatibility consumers need the hosted frame's anchors, but publishing
+  -- them through session.shot would wake Battle Art's normal BattleState
+  -- wrapper and make it compete with the Stadium-owned presentation.
+  session.providerShot = shot
   return shot.canvas
+end
+
+function OverworldBattle.stageShot()
+  if not session or session.broken then return nil end
+  return session.apiHosted and session.providerShot or session.shot
 end
 
 function OverworldBattle.providerFinish()
   if not session then return end
   session.apiHosted = false
+  session.providerShot = nil
   session.shot = nil
   session.snapped = false
 end

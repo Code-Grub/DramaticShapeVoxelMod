@@ -8,15 +8,6 @@ local function identity()
   return {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1}
 end
 
-local settings = {}
-local ModSetting = {}
-function ModSetting.new(key, label, values)
-  local setting = {key=key,label=label,values=values,value=values[1]}
-  function setting:get() return self.value end
-  settings[key] = setting
-  return setting
-end
-
 local Mat4 = assert(loadfile("lib/Mat4.lua"))()
 local BattleArt = {
   speciesFor=function(battler) return battler and battler.mon.species end,
@@ -74,14 +65,14 @@ local V = {mod={
   log=logger,
 }}
 function V.require(name)
-  return assert(({ModSetting=ModSetting,Mat4=Mat4,BattleArt=BattleArt})[name],name)
+  return assert(({Mat4=Mat4,BattleArt=BattleArt})[name],name)
 end
 
 local StadiumModels = assert(loadfile("lib/StadiumModels.lua"))(V)
 ok(StadiumModels.installed(),"detects Stadium model API v2")
-ok(not StadiumModels.active(),"Battle Art remains the default provider")
+ok(not StadiumModels.active(),"Battle Art sprites remain while Stadium battle is off")
 
-settings.pokemonModel.value="stadium2"
+providerBattleEnabled=true
 local battle={
   data={pokemon={EEVEE={dex=133}},moves={THUNDERBOLT={index=85}}},
   player={mon={species=25},shiny=true},
@@ -153,8 +144,8 @@ ok(not status.active and not status.sides.player and not status.sides.enemy,
   "disabled provider releases owned instances")
 
 providerEnabled=true
-providerBattleEnabled=true
+providerBattleEnabled=false
 ok(not StadiumModels.active(),
-  "full Stadium battle ownership is never combined with the voxel scene")
+  "turning Stadium battle off restores Battle Art sprites")
 
 print(("%d checks passed (Battle Art Stadium model bridge)"):format(checks))
