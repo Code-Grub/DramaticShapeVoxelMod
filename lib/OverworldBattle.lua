@@ -53,6 +53,7 @@ local AnimatedBattleArt = V.require("AnimatedBattleArt")
 local Gen6Backdrop = V.require("Gen6Backdrop")
 local Voxel3D = V.require("Voxel3D")
 local ChunkMesher = V.require("ChunkMesher")
+local StadiumModelProvider = V.require("StadiumModelProvider")
 
 local OverworldBattle = {}
 local session = nil
@@ -708,8 +709,13 @@ function OverworldBattle.update(dt)
   local okTex, textures = pcall(OverworldBattle.textures, session.battle)
   if not okTex then textures = nil end
   session.token = (session.token or 0) + 1
+  -- When a Stadium 2 Importer model provider is staging its own Pokemon
+  -- models into this scene, hand BattleScene.render a drawActors callback so
+  -- it draws those (and suppresses the ordinary 2D cards) instead of the
+  -- engine's flat pics. Our HUD stays.
+  local actors = StadiumModelProvider.active and StadiumModelProvider:actors()
   local ok, shot = pcall(BattleScene.render, session.state, session.arena,
-                         textures, session.token, session.battle)
+                         textures, session.token, session.battle, actors)
   if not ok then
     -- One failure retires the arena for THIS battle and nothing else: the
     -- battle screen carries on as the engine's own, the free-roam pipeline

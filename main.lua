@@ -97,7 +97,7 @@ local RenderDistance = V.require("RenderDistance")
 local OverworldBattle = V.require("OverworldBattle")
 local BattlePresentation = V.require("BattlePresentation")
 local BattleStage = V.require("BattleStage")
-local StadiumBattleFxProvider = V.require("StadiumBattleFxProvider")
+local StadiumModelProvider = V.require("StadiumModelProvider")
 local BattleArt = V.require("BattleArt")
 local UiBackplates = V.require("UiBackplates")
 local BattleExit = V.require("BattleExit")
@@ -121,7 +121,7 @@ mod.events:on("mods.loaded", function(payload)
   -- Reassert BATTLE ART ownership outside the completed chain so ordinary and
   -- shiny opponent fronts cannot alternate after those providers advance.
   OverworldBattle.refreshSpriteOwnershipHook()
-  StadiumBattleFxProvider.register()
+  StadiumModelProvider.register()
 end)
 
 -- Forward declaration: the voxel pipeline's update hook (registered below)
@@ -953,9 +953,7 @@ mod.hooks:wrap("ui.start_menu.items", function(next, game, items)
   if type(out) ~= "table" then return out end
   -- CACHE is always offered; VoxelPrecacheScreen surfaces the
   -- "not available" message on builds without a usable storage backend.
-  -- Guard bind() so a backend failure can never abort this wrapper and drop
-  -- the row (the engine keeps the vanilla list when the hook throws).
-  pcall(VoxelMeshDisk.bind, game, false)
+  VoxelMeshDisk.bind(game, false)
   for _, item in ipairs(out) do
     if tostring(item and item.label or "") == "CACHE" then return out end
   end
