@@ -3,6 +3,7 @@
 local V = ...
 
 local ModSetting = V.require("ModSetting")
+local RivalDiag = V.require("RivalDiag")
 local BattleArt = {}
 local SPECIES_BY_DEX = V.data("battle_species_dex_386")
 
@@ -489,8 +490,18 @@ end
 function BattleArt.applyTrainers(battle)
   if not battle then return end
   local enemy = battle.showEnemyTrainer and trainerKey(battle) or nil
-  replaceTrainerField(battle, "trainerPic",
-    enemy and BattleArt.trainerImage(enemy) or nil)
+  local ourImg = enemy and BattleArt.trainerImage(enemy) or nil
+  -- Diagnostic: record how the enemy trainer pic resolved so a missing rival
+  -- sprite is visible in the log instead of silent. trainerKey is what the
+  -- engine/Kanto Ascendant identified; ourImg is nil when the key is not one
+  -- of OUR handled trainer arts (the rival must then keep its own pic).
+  if enemy then
+    RivalDiag.log("applyTrainers", "enemy=" .. tostring(enemy),
+      "showEnemyTrainer=" .. tostring(not not battle.showEnemyTrainer),
+      "ourImg=" .. (ourImg and "set" or "nil"),
+      "trainerPicAfter=" .. (battle.trainerPic and "set" or "nil"))
+  end
+  replaceTrainerField(battle, "trainerPic", ourImg)
 
   local player, playerImage
   if battle.showPlayerBack then

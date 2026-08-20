@@ -46,6 +46,7 @@ local BattleDOF = V.require("BattleDOF")
 local BattleHud = V.require("BattleHud")
 local BattlePresentation = V.require("BattlePresentation")
 local UiBackplates = V.require("UiBackplates")
+local RivalDiag = V.require("RivalDiag")
 local TextboxStyle = V.require("TextboxStyle")
 local BattlePics = V.require("BattlePics")
 local BattleArt = V.require("BattleArt")
@@ -53,7 +54,6 @@ local AnimatedBattleArt = V.require("AnimatedBattleArt")
 local Gen6Backdrop = V.require("Gen6Backdrop")
 local Voxel3D = V.require("Voxel3D")
 local ChunkMesher = V.require("ChunkMesher")
-local StadiumModelProvider = V.require("StadiumModelProvider")
 
 local OverworldBattle = {}
 local session = nil
@@ -709,13 +709,8 @@ function OverworldBattle.update(dt)
   local okTex, textures = pcall(OverworldBattle.textures, session.battle)
   if not okTex then textures = nil end
   session.token = (session.token or 0) + 1
-  -- When a Stadium 2 Importer model provider is staging its own Pokemon
-  -- models into this scene, hand BattleScene.render a drawActors callback so
-  -- it draws those (and suppresses the ordinary 2D cards) instead of the
-  -- engine's flat pics. Our HUD stays.
-  local actors = StadiumModelProvider.active and StadiumModelProvider:actors()
   local ok, shot = pcall(BattleScene.render, session.state, session.arena,
-                         textures, session.token, session.battle, actors)
+                         textures, session.token, session.battle)
   if not ok then
     -- One failure retires the arena for THIS battle and nothing else: the
     -- battle screen carries on as the engine's own, the free-roam pipeline
@@ -1038,6 +1033,16 @@ function OverworldBattle.sideTexture(battle, side)
   end
   local canvas = texCanvasFor(side, cw, ch)
   if not canvas then return nil end
+
+  -- Diagnostic: when an enemy trainer pic would draw, record whether the
+  -- metric resolved. A nil metric means the sprite image is blank/missing --
+  -- exactly the "rival doesn't show" case we want to catch in the log.
+  if side == "enemy" and showingTrainer then
+    RivalDiag.log("sideTexture", "enemyTrainer",
+      "trainerPic=" .. (battle.trainerPic and "set" or "nil"),
+      "metric=" .. (metric and "ok" or "NIL(blank)"),
+      "map=" .. tostring(battle.mapId or battle.areaId or "?"))
+  end
 
   local g = love.graphics
   local prevCanvas = g.getCanvas()
