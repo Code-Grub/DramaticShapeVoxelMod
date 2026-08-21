@@ -15,7 +15,7 @@
   2026-08-21T16:36:55-04:00.
 - Development source: <https://github.com/bryanthaboi/gen1recomp/commit/087a2751895899ad6e79800599ae27a8f40cf1e3>
 - Frozen Voxel Companion API reference dispatcher: byte-exact SHA-256
-  `6150DA890F36666AFA88C7EE2E48D57F6C77D1C9678B7B34C988C24997ADA3A3`.
+  `7860E9A628F65B0252250F5EE564DB99E7D2C34415BBA82BB4380A6C6588E58C`.
 
 The integration does not change the upstream mod identifier, manifest version,
 load priority, permissions, conflicts, or package layout. The existing package
@@ -134,6 +134,14 @@ each draw, including a failed draw. The reference dispatcher isolates callback
 faults, records a bounded diagnostic, disposes the failed extension once, and
 continues later extensions in deterministic order.
 
+The dispatcher never calls conversion callbacks while it labels an untrusted
+table key. It copies validated flat lifecycle callback references during
+registration. Later descriptor changes cannot replace cleanup behavior.
+Validation failures always clear dispatch state, so a bad callback payload does
+not block the next frame. Camera merging is transactional: if finite inputs
+would make an aggregate non-finite, only that contribution is faulted and later
+extensions continue from the last finite aggregate.
+
 The adapter does not replace a global LÖVE callback. It does not retain borrowed
 callback contexts or service leases. Disposal releases adapter GPU resources
 and drops world and activation references.
@@ -166,13 +174,14 @@ Run the focused host test from the repository root:
 luajit tests\voxel_companion_api_v1_test.lua
 ```
 
-It covers descriptor truthfulness, canonical flat callbacks, optional
-capabilities, late registration, direct world/update/camera payloads, defensive
-snapshots, edit coalescing, radian camera input, graphics restoration, exact
-draw results, generic safe keys, KFP producer keys, schema rejection, borrowed
+It covers descriptor truthfulness, canonical flat callbacks, callback snapshots,
+optional capabilities, late registration, direct world/update/camera payloads,
+transactional finite camera aggregation, defensive snapshots, edit coalescing,
+radian camera input, graphics restoration, exact draw results, generic safe
+keys, untrusted-key formatting, KFP producer keys, schema rejection, borrowed
 texture ownership, key-content collision refusal, all shared baseline
-primitives, draw fault isolation, deterministic continuation, disposal, legacy
-refusal, and the no-write rule.
+primitives, draw fault isolation, dispatch recovery, deterministic continuation,
+disposal, legacy refusal, and the no-write rule.
 
 The canonical KFP dispatcher conformance command is:
 
@@ -180,8 +189,8 @@ The canonical KFP dispatcher conformance command is:
 luajit tools\run_tests.lua companion
 ```
 
-At integration time, the focused host test passed 577 checks, the canonical
-companion selector passed 40 tests, and the complete KFP suite passed 196
+At integration time, the focused host test passed 622 checks, the canonical
+companion selector passed 51 tests, and the complete KFP suite passed 212
 tests. The complete 23-command ROM-free draw fixture has SHA-256
 `4CD7A8C9D258B247CB9AE0A9730E56DE3E9541B63358149A2AD09513F655A113`.
 All changed Lua files also compiled with LuaJIT. The large upstream

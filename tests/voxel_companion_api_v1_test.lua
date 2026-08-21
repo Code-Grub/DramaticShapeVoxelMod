@@ -269,6 +269,168 @@ local function wireCommand(kind, phase, sequence, fields)
   return command
 end
 
+do
+  local conversionCalls = 0
+  local hostileKey = setmetatable({}, {
+    __tostring = function()
+      conversionCalls = conversionCalls + 1
+      error("untrusted key conversion ran", 0)
+    end,
+  })
+  local command = wireCommand("mesh", "background", 90, {
+    geometry = { primitive = "plane", width = 1, depth = 1 },
+  })
+  command[hostileKey] = true
+
+  local callOk, valid, validationError = pcall(
+    API.validate_draw_command, command, "mesh")
+  check(callOk, "draw validation contains hostile keys without throwing")
+  equal(valid, nil, "draw validation rejects an unknown hostile key")
+  contains(validationError, "<table key>",
+    "draw validation labels a hostile key without converting it")
+
+  command[hostileKey] = nil
+  command.kind = hostileKey
+  callOk, valid, validationError = pcall(
+    API.validate_draw_command, command, "mesh")
+  check(callOk, "draw kind validation contains hostile values without throwing")
+  equal(valid, nil, "draw validation rejects a hostile kind")
+  contains(validationError, "<table key>",
+    "draw kind validation labels a hostile value without converting it")
+
+  local dispatcher = API.new({ capabilities = {} })
+  callOk, valid, validationError = pcall(
+    dispatcher.dispatch, dispatcher, hostileKey, {})
+  check(callOk, "dispatch phase validation contains hostile values without throwing")
+  equal(valid, nil, "dispatch rejects a hostile phase")
+  contains(validationError, "<table key>",
+    "dispatch labels a hostile phase without converting it")
+  equal(conversionCalls, 0, "untrusted key conversion callbacks never run")
+end
+
+do
+  local lifecycleCalls = {}
+  local spec = {
+    api = 1,
+    id = "test.flat-callback-snapshot",
+    invalidate = function(reason)
+      lifecycleCalls[#lifecycleCalls + 1] = "invalidate:" .. reason
+    end,
+    dispose = function()
+      lifecycleCalls[#lifecycleCalls + 1] = "dispose"
+    end,
+  }
+  local dispatcher = API.new({ capabilities = {} })
+  local handle, registerError = dispatcher:register(spec)
+  check(handle, registerError or "flat callback snapshot registers")
+  spec.invalidate = function() error("mutated invalidate callback ran", 0) end
+  spec.dispose = function() error("mutated dispose callback ran", 0) end
+  check(dispatcher:attach({}), "flat callback snapshot dispatcher attaches")
+  check(dispatcher:start({}), "flat callback snapshot dispatcher starts")
+  local report = dispatcher:invalidate({}, "map")
+  equal(report.succeeded, 1, "captured invalidate callback succeeds")
+  check(dispatcher:dispose({}, "shutdown"), "captured dispose callback succeeds")
+  equal(#lifecycleCalls, 2, "only the captured lifecycle callbacks run")
+  equal(lifecycleCalls[1], "invalidate:map", "captured invalidate receives its reason")
+  equal(lifecycleCalls[2], "dispose", "captured dispose runs exactly once")
+end
+
+do
+  local noDraw = function() return true end
+  local services = {
+    materials = {},
+    draw = { mesh = noDraw, instances = noDraw, billboards = noDraw },
+  }
+  local validContext = {
+    world = {}, camera = {}, frame = {},
+    materials = services.materials, draw = services.draw,
+  }
+  local calls = 0
+  local dispatcher = API.new({ capabilities = { API.CAPABILITIES.RENDER_PHASES } })
+  local handle, registerError = dispatcher:register({
+    api = 1,
+    id = "test.dispatch-validation-recovery",
+    render = { background = function() calls = calls + 1 end },
+  })
+  check(handle, registerError or "dispatch validation recovery registers")
+  check(dispatcher:attach(services), "dispatch validation recovery attaches")
+  check(dispatcher:start(validContext), "dispatch validation recovery starts")
+
+  local report, dispatchError = dispatcher:dispatch("background", {})
+  equal(report, nil, "missing render context is rejected")
+  contains(dispatchError, "world", "missing render context identifies world")
+
+  local hostileContext = setmetatable({}, {
+    __index = function() error("validation proxy access failed", 0) end,
+  })
+  report, dispatchError = dispatcher:dispatch("background", hostileContext)
+  equal(report, nil, "throwing render context is rejected")
+  contains(dispatchError, "validation proxy access failed",
+    "throwing render context reports its validation fault")
+
+  report, dispatchError = dispatcher:dispatch("background", validContext)
+  check(report, dispatchError or "dispatch recovers after validation faults")
+  equal(report.succeeded, 1, "recovered dispatch succeeds")
+  equal(calls, 1, "recovered dispatch invokes its handler once")
+  check(dispatcher:dispose({}, "test"), "dispatch validation recovery disposes")
+end
+
+do
+  local dispatcher = API.new({ capabilities = { API.CAPABILITIES.CAMERA_DELTA } })
+  local first = dispatcher:register({
+    api = 1,
+    id = "test.camera-large-first",
+    priority = 0,
+    camera = function()
+      return {
+        positionDelta = { x = 1e308 },
+        rotationDelta = { yaw = 1e308 },
+        fovDelta = 1e308,
+      }
+    end,
+  })
+  check(first, "first large finite camera contribution registers")
+  local overflow = dispatcher:register({
+    api = 1,
+    id = "test.camera-large-overflow",
+    priority = 1,
+    camera = function()
+      return { positionDelta = { x = 1e308, y = 50 } }
+    end,
+  })
+  check(overflow, "overflowing camera contribution registers")
+  local recovery = dispatcher:register({
+    api = 1,
+    id = "test.camera-large-recovery",
+    priority = 2,
+    camera = function()
+      return {
+        positionDelta = { x = -1e308, y = 2 },
+        rotationDelta = { yaw = -1e308 },
+        fovDelta = -1e308,
+      }
+    end,
+  })
+  check(recovery, "camera recovery contribution registers")
+  check(dispatcher:attach({}), "camera overflow dispatcher attaches")
+  check(dispatcher:start({}), "camera overflow dispatcher starts")
+
+  local result, report = dispatcher:dispatch_camera({})
+  equal(result.positionDelta.x, 0, "finite camera position aggregate is preserved")
+  equal(result.positionDelta.y, 2, "overflowing camera contribution is transactional")
+  equal(result.rotationDelta.yaw, 0, "finite camera rotation aggregate is preserved")
+  equal(result.fovDelta, 0, "finite camera FOV aggregate is preserved")
+  equal(report.succeeded, 2, "two finite camera contributions succeed")
+  equal(report.failed, 1, "only the overflowing camera contribution fails")
+  equal(#report.contributors, 2, "camera report contains only finite contributors")
+  equal(report.contributors[1], "test.camera-large-first",
+    "first finite camera contributor remains")
+  equal(report.contributors[2], "test.camera-large-recovery",
+    "later finite camera contributor still runs")
+  check(overflow:status().faulted, "overflowing camera extension is faulted")
+  check(dispatcher:dispose({}, "test"), "camera overflow dispatcher disposes")
+end
+
 equal(provider.api, 1, "provider reports API v1")
 equal(provider.host.id, "BATTLE_ART_VOXEL_FORK", "provider reports stable host id")
 equal(provider.host.version, "1.9.7", "provider preserves upstream version")
