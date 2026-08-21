@@ -42,6 +42,37 @@ local API = assert(loadfile("lib/VoxelCompanionAPI.lua"))()
 equal(API.VERSION, 1, "vendored dispatcher reports API v1")
 local DrawFixture = assert(loadfile("tests/fixtures/voxel_companion_draw_v1.lua"))()
 
+local function newRunningDispatcher()
+  local dispatcher = API.new({ capabilities = {} })
+  check(dispatcher:attach({}), "fault-cleanup dispatcher attaches")
+  check(dispatcher:start({}), "fault-cleanup dispatcher starts")
+  return dispatcher
+end
+
+local function attemptCleanupReentry(dispatcher, id)
+  local attempts = {}
+  attempts.dispatch, attempts.dispatchError = dispatcher:dispatch("update", {})
+  attempts.register, attempts.registerError = dispatcher:register({
+    api = 1,
+    id = "cleanup.reentry." .. id,
+    lifecycle = { start = function() end },
+  }, {})
+  attempts.dispose, attempts.disposeError = dispatcher:dispose({}, "cleanup-reentry")
+  return attempts
+end
+
+local function expectCleanupReentryBlocked(attempts)
+  equal(attempts.dispatch, nil, "fault cleanup cannot reenter dispatch")
+  contains(attempts.dispatchError, "reentrant dispatch",
+    "fault cleanup reports blocked dispatch reentry")
+  equal(attempts.register, nil, "fault cleanup cannot register an extension")
+  contains(attempts.registerError, "register during dispatch",
+    "fault cleanup reports blocked registration")
+  equal(attempts.dispose, nil, "fault cleanup cannot dispose the dispatcher")
+  contains(attempts.disposeError, "dispose during dispatch",
+    "fault cleanup reports blocked dispatcher disposal")
+end
+
 local graphicsState = { color = "host", depth = "host", blend = "host" }
 local graphicsStack = {}
 local pushCount, popCount = 0, 0
@@ -333,6 +364,76 @@ do
   equal(#lifecycleCalls, 2, "only the captured lifecycle callbacks run")
   equal(lifecycleCalls[1], "invalidate:map", "captured invalidate receives its reason")
   equal(lifecycleCalls[2], "dispose", "captured dispose runs exactly once")
+end
+
+do
+  local dispatcher = newRunningDispatcher()
+  local attempts
+  local handle, registerError = dispatcher:register({
+    api = 1,
+    id = "test.fault-guard-hot-attach",
+    lifecycle = {
+      attach = function() error("expected hot attach fault", 0) end,
+      dispose = function()
+        attempts = attemptCleanupReentry(dispatcher, "hot.attach")
+      end,
+    },
+  }, {})
+  check(handle, registerError or "hot attach fault registration returns its handle")
+  check(handle:status().faulted, "hot attach failure faults only its extension")
+  expectCleanupReentryBlocked(attempts)
+  equal(dispatcher:status().state, "running",
+    "hot attach fault cleanup leaves the dispatcher running")
+  check(dispatcher:dispose({}, "test-end"),
+    "hot attach fault-cleanup dispatcher disposes normally")
+end
+
+do
+  local dispatcher = newRunningDispatcher()
+  local attempts
+  local handle, registerError = dispatcher:register({
+    api = 1,
+    id = "test.fault-guard-hot-start",
+    lifecycle = {
+      start = function() error("expected hot start fault", 0) end,
+      dispose = function()
+        attempts = attemptCleanupReentry(dispatcher, "hot.start")
+      end,
+    },
+  }, {})
+  check(handle, registerError or "hot start fault registration returns its handle")
+  check(handle:status().faulted, "hot start failure faults only its extension")
+  expectCleanupReentryBlocked(attempts)
+  equal(dispatcher:status().state, "running",
+    "hot start fault cleanup leaves the dispatcher running")
+  check(dispatcher:dispose({}, "test-end"),
+    "hot start fault-cleanup dispatcher disposes normally")
+end
+
+do
+  local dispatcher = newRunningDispatcher()
+  local attempts
+  local handle, registerError = dispatcher:register({
+    api = 1,
+    id = "test.fault-guard-handle-invalidate",
+    lifecycle = {
+      invalidate = function() error("expected handle invalidate fault", 0) end,
+      dispose = function()
+        attempts = attemptCleanupReentry(dispatcher, "handle.invalidate")
+      end,
+    },
+  }, {})
+  check(handle, registerError or "handle invalidate fault extension registers")
+  local invalidated, invalidateError = handle:invalidate({}, "test")
+  equal(invalidated, nil, "handle invalidate failure is reported")
+  contains(invalidateError, "expected handle invalidate fault",
+    "handle invalidate returns the callback failure")
+  check(handle:status().faulted, "handle invalidate failure faults only its extension")
+  expectCleanupReentryBlocked(attempts)
+  equal(dispatcher:status().state, "running",
+    "handle invalidate fault cleanup leaves the dispatcher running")
+  check(dispatcher:dispose({}, "test-end"),
+    "handle invalidate fault-cleanup dispatcher disposes normally")
 end
 
 do
