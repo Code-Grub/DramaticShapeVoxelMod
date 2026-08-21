@@ -6,10 +6,14 @@
   `fcbe541676cd7f245fa73df3d01dcbabec37a1fe`, dated
   2026-08-21T07:49:50+02:00.
 - Host source: <https://github.com/absol89/DramaticShapeVoxelMod/commit/fcbe541676cd7f245fa73df3d01dcbabec37a1fe>
-- Gen1recomp compatibility audit: commit
-  `06e06e305bbcefe97c216a31bb25265ffb5e6b18`, dated
-  2026-08-21T14:38:54-04:00.
-- Gen1recomp source: <https://github.com/bryanthaboi/gen1recomp/commit/06e06e305bbcefe97c216a31bb25265ffb5e6b18>
+- Gen1recomp stable audit: v0.2.18 commit
+  `70d7b6383e2c005857013dc897fd096886b08f0b`, dated
+  2026-08-21T17:10:00-04:00.
+- Stable source: <https://github.com/bryanthaboi/gen1recomp/commit/70d7b6383e2c005857013dc897fd096886b08f0b>
+- Gen1recomp development audit: commit
+  `087a2751895899ad6e79800599ae27a8f40cf1e3`, dated
+  2026-08-21T16:36:55-04:00.
+- Development source: <https://github.com/bryanthaboi/gen1recomp/commit/087a2751895899ad6e79800599ae27a8f40cf1e3>
 - Frozen Voxel Companion API reference dispatcher: byte-exact SHA-256
   `6150DA890F36666AFA88C7EE2E48D57F6C77D1C9678B7B34C988C24997ADA3A3`.
 
@@ -80,11 +84,13 @@ protected calls per cell. Player movement does not rebuild the full map.
 
 The draw facade implements the three v1 draw methods:
 
-- `mesh` for a box, plane, and centered world apron
+- `mesh` for box, plane, centered world apron, panorama, cloud layer, and
+  rainbow geometry
 - `instances` for bounded batches of box, plane, door frame, window, poster,
   rail, fixture, sconce, cave roof, grass clump, canopy, vine, umbrella,
   mountain, and hood prototypes
-- `billboards` for bounded explicit camera-facing items
+- `billboards` for bounded explicit camera-facing items and deterministic
+  procedural stars
 
 Extensions call each method with the canonical dot-call form
 `draw.<kind>(command, context)`. A draw returns exactly `true` when the host
@@ -104,6 +110,17 @@ command tables, texture handles, or derived command geometry.
 draw callback. A string path is refused. The adapter can pass the borrowed
 texture to `Voxel3D.draw`, then unbinds it before returning. It never stores,
 releases, or substitutes ownership of that texture.
+
+Panorama uses a fixed 32-segment host-owned cylinder and its callback-borrowed
+texture. Cloud layers use one fixed eight-quad host mesh. Rainbow uses one fixed
+24-segment ribbon. Required declarative fields select bounded transforms,
+density, parallax, and deterministic placement. These are conservative API
+baseline visuals. They do not claim rich parity with KFP 1.x sky art or weather.
+
+Procedural stars expand to at most 2,048 temporary camera-facing items with a
+local Park-Miller stream. The stream is seeded only from the command. It does
+not call or reseed the global random generator. Generated items and resource
+handles are not retained.
 
 One phase accepts at most 2,048 items per packet and 4,096 draws per frame.
 Geometry positions and primitive sizes are finite and limited to 65,536 host
@@ -163,10 +180,10 @@ The canonical KFP dispatcher conformance command is:
 luajit tools\run_tests.lua companion
 ```
 
-At integration time, the focused host test passed 263 checks, the canonical
-companion selector passed 38 tests, and the complete KFP suite passed 191
-tests. The shared ROM-free draw fixture has SHA-256
-`A817618D9BAD3C3849B71DF02C255ECA53CBC74B0660A38031EC8399D22FE6A5`.
+At integration time, the focused host test passed 577 checks, the canonical
+companion selector passed 40 tests, and the complete KFP suite passed 196
+tests. The complete 23-command ROM-free draw fixture has SHA-256
+`4CD7A8C9D258B247CB9AE0A9730E56DE3E9541B63358149A2AD09513F655A113`.
 All changed Lua files also compiled with LuaJIT. The large upstream
 `tests/battle_art_voxel_fork_test.lua` cannot compile as one LuaJIT chunk
 because its main function already exceeds LuaJIT's 200-local limit. This is an

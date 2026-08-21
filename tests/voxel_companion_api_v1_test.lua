@@ -19,6 +19,25 @@ local function contains(text, fragment, message)
   check(type(text) == "string" and text:find(fragment, 1, true) ~= nil, message)
 end
 
+local function treeSignature(value)
+  if type(value) ~= "table" then
+    if type(value) == "number" then return string.format("%.12g", value) end
+    return tostring(value)
+  end
+  local out = { "[" }
+  for index = 1, #value do out[#out + 1] = treeSignature(value[index]) end
+  out[#out + 1] = "]"
+  return table.concat(out, ",")
+end
+
+local function findTagged(value, tag, out)
+  out = out or {}
+  if type(value) ~= "table" then return out end
+  if value[1] == tag then out[#out + 1] = value end
+  for index = 1, #value do findTagged(value[index], tag, out) end
+  return out
+end
+
 local API = assert(loadfile("lib/VoxelCompanionAPI.lua"))()
 equal(API.VERSION, 1, "vendored dispatcher reports API v1")
 local DrawFixture = assert(loadfile("tests/fixtures/voxel_companion_draw_v1.lua"))()
@@ -346,7 +365,8 @@ healthy, err = provider.register({
         texture = borrowedTexture,
       }), context)
       if not accepted then error(drawError, 0) end
-      calls.borrowedMeshCleared = fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog].mesh.texture == nil
+      calls.borrowedMeshDraw = fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog]
+      calls.borrowedMeshCleared = calls.borrowedMeshDraw.mesh.texture == nil
       accepted, drawError = context.draw.mesh(wireCommand("mesh", "background", 3, {
         geometry = { primitive = "world_apron", width = 32, depth = 32,
           skirtDepth = 16 },
@@ -381,9 +401,11 @@ collisionProbe, err = provider.register({
       })
       local accepted, drawError = context.draw.mesh(first, context)
       calls.collisionFirst = accepted
+      calls.collisionFirstModel = fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog].model
       if not accepted then error(drawError, 0) end
       accepted, drawError = context.draw.mesh(first, context)
       calls.collisionRepeat = accepted
+      calls.collisionRepeatModel = fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog].model
       if not accepted then error(drawError, 0) end
       accepted, drawError = context.draw.mesh(second, context)
       calls.collisionSecond = accepted
@@ -456,6 +478,95 @@ equal(accepted, false, "missing callback context returns exactly false")
 contains(rejection, "borrowed render context", "missing context explains the rejection")
 equal(fakeVoxel3D.draws, rejectedDraws, "rejected commands never reach Voxel3D.draw")
 
+local invalidBaseline = {
+  wireCommand("mesh", "background", 24, {
+    cacheKey = "other.extension:panorama-no-texture",
+    geometry = { primitive = "panorama", sourceWidth = 4096, targetWidth = 2048 },
+  }),
+  wireCommand("mesh", "background", 25, {
+    cacheKey = "other.extension:cloud-bad-density",
+    geometry = { primitive = "cloud_layer", layer = 1, parallax = 0.2,
+      density = 2, seed = 1 },
+  }),
+  wireCommand("mesh", "background", 26, {
+    cacheKey = "other.extension:rainbow-bad-seed",
+    geometry = { primitive = "rainbow", seed = 0 / 0 },
+  }),
+  wireCommand("billboards", "background", 27, {
+    cacheKey = "other.extension:stars-empty",
+    material = "sky:stars",
+    procedural = { kind = "stars", count = 0, seed = 1 },
+  }),
+}
+for _, command in ipairs(invalidBaseline) do
+  accepted, rejection = companion.draw[command.kind](command, companion:_context())
+  equal(accepted, false, "invalid complete-baseline command returns exactly false")
+  check(type(rejection) == "string" and rejection ~= "",
+    "invalid complete-baseline command explains its rejection")
+end
+equal(fakeVoxel3D.draws, rejectedDraws,
+  "invalid complete-baseline commands never reach Voxel3D.draw")
+
+local starTexture = {
+  releases = 0,
+  release = function(self) self.releases = self.releases + 1 end,
+}
+local stars = wireCommand("billboards", "background", 28, {
+  cacheKey = "other.extension:procedural-stars",
+  material = "sky:stars",
+  texture = starTexture,
+  procedural = {
+    kind = "stars", count = 24, seed = 1234.5,
+    twinkle = true, nebula = true, shootingStars = true,
+  },
+})
+local oldRandom, oldRandomSeed = math.random, math.randomseed
+math.random = function() error("procedural stars touched global random", 0) end
+math.randomseed = function() error("procedural stars reseeded global random", 0) end
+local firstStarStart = #fakeVoxel3D.drawLog + 1
+local callOk, firstAccepted, firstError = pcall(
+  companion.draw.billboards, stars, companion:_context())
+local firstStarEnd = #fakeVoxel3D.drawLog
+local secondStarStart = firstStarEnd + 1
+local secondCallOk, secondAccepted, secondError = pcall(
+  companion.draw.billboards, stars, companion:_context())
+local secondStarEnd = #fakeVoxel3D.drawLog
+math.random, math.randomseed = oldRandom, oldRandomSeed
+check(callOk, firstAccepted or "procedural stars avoid global random")
+check(secondCallOk, secondAccepted or "repeat procedural stars avoid global random")
+equal(firstAccepted, true, firstError or "procedural stars are accepted")
+equal(secondAccepted, true, secondError or "repeat procedural stars are accepted")
+equal(firstStarEnd - firstStarStart + 1, 24,
+  "star procedure expands to the requested bounded item count")
+equal(secondStarEnd - secondStarStart + 1, 24,
+  "repeat star procedure keeps the requested item count")
+for offset = 0, 23 do
+  local firstDraw = fakeVoxel3D.drawLog[firstStarStart + offset]
+  local secondDraw = fakeVoxel3D.drawLog[secondStarStart + offset]
+  equal(treeSignature(firstDraw.model), treeSignature(secondDraw.model),
+    "star expansion is repeatable for item " .. tostring(offset + 1))
+  local translations = findTagged(firstDraw.model, "translate")
+  local scales = findTagged(firstDraw.model, "scale")
+  equal(#translations, 1, "star model has one bounded translation")
+  equal(#scales, 1, "star model has one bounded scale")
+  for coordinate = 2, 4 do
+    check(translations[1][coordinate] >= -65536
+      and translations[1][coordinate] <= 65536,
+      "star coordinate stays inside the host world bound")
+  end
+  check(scales[1][2] >= 0.25 and scales[1][2] <= 8,
+    "star width stays inside the host primitive bound")
+  check(scales[1][3] >= 0.25 and scales[1][3] <= 8,
+    "star height stays inside the host primitive bound")
+  equal(firstDraw.texture, starTexture,
+    "procedural star draw uses the callback-borrowed texture")
+  equal(firstDraw.mesh.texture, nil,
+    "procedural star texture is unbound before callback return")
+end
+equal(starTexture.releases, 0,
+  "procedural star texture is neither retained nor released")
+graphicsState = { color = "host", depth = "host", blend = "host" }
+
 local updateReport = companion:update(0.016, state)
 check(updateReport and updateReport.succeeded >= 1, "canonical update dispatch succeeds")
 equal(calls.world, 1, "initial world identity dispatches one snapshot")
@@ -492,6 +603,7 @@ equal(delta.positionDelta.y, 2, "canonical camera delta is returned")
 equal(delta.rotationDelta.yaw, 0.1, "camera rotation remains in radians")
 equal(delta.fovDelta, 0.04, "camera FOV delta remains in radians")
 
+local renderLogStart = #fakeVoxel3D.drawLog
 local renderReport = companion:render("background", state)
 check(renderReport, "background render dispatch returns a report")
 equal(renderReport.called, 3, "all active render extensions are called")
@@ -499,23 +611,24 @@ equal(renderReport.failed, 1, "one extension draw fault is contained")
 equal(renderReport.succeeded, 2, "later extensions render after an earlier fault")
 equal(calls.faultyDispose, 1, "faulted extension is disposed exactly once")
 equal(calls.healthyRender, 1, "healthy extension rendered")
-equal(fakeVoxel3D.drawLog[2].texture, borrowedTexture,
+equal(calls.borrowedMeshDraw.texture, borrowedTexture,
   "extension texture is passed directly to Voxel3D.draw")
 equal(calls.borrowedMeshCleared, true,
   "borrowed texture is unbound before draw.mesh returns")
 check(companion.texture ~= borrowedTexture,
   "extension texture is not retained as the adapter fallback")
 equal(borrowedTexture.releases, 0, "adapter does not release the borrowed texture")
-equal(fakeVoxel3D.drawLog[4].model[2][2], 1,
+equal(calls.collisionFirstModel[2][2], 1,
   "first same-key command uses its own declarative width")
-equal(fakeVoxel3D.drawLog[5].model[2][2], 1,
+equal(calls.collisionRepeatModel[2][2], 1,
   "an identical same-key command remains valid")
 equal(calls.collisionFirst, true, "first key and content pair is accepted")
 equal(calls.collisionRepeat, true, "same key and content pair is accepted again")
 equal(calls.collisionSecond, false, "same key with different content fails closed")
 contains(calls.collisionError, "content collision",
   "same-key content mismatch reports a collision")
-equal(#fakeVoxel3D.drawLog, 5, "colliding declarative content is not drawn")
+equal(#fakeVoxel3D.drawLog - renderLogStart, 5,
+  "colliding declarative content is not drawn")
 equal(fakeVoxel3D.glassState, true, "host shader selector is restored after draw fault")
 equal(pushCount, 1, "graphics state is pushed once for the phase")
 equal(popCount, 1, "graphics state is popped once for the phase")
@@ -530,6 +643,7 @@ local fixturePhaseIds = {
 }
 local fixtureTexture
 local fixtureValidated = 0
+local fixtureMeshPrimitives = {}
 for _, phase in ipairs({
   "background", "opaque_after_terrain", "translucent_after_actors",
 }) do
@@ -548,28 +662,58 @@ for _, phase in ipairs({
     equal(#content, 16, "KFP fixture content digest has sixteen lowercase hex digits")
     check(#command.cacheKey <= 64, "KFP fixture key stays within the host limit")
     if command.texture then fixtureTexture = command.texture end
+    if command.kind == "mesh" then
+      fixtureMeshPrimitives[command.geometry.primitive] = true
+    end
     fixtureValidated = fixtureValidated + 1
   end
 end
 equal(fixtureValidated, DrawFixture.commandCount,
   "shared fixture covers every declared baseline command")
+equal(DrawFixture.commandCount, 23,
+  "shared fixture locks the complete 23-command API baseline")
 equal(#DrawFixture.instancePrimitives, 15,
   "shared fixture covers every common instance primitive")
+for _, primitive in ipairs({
+  "box", "plane", "panorama", "cloud_layer", "rainbow", "world_apron",
+}) do
+  check(fixtureMeshPrimitives[primitive],
+    "shared fixture covers mesh primitive " .. primitive)
+end
 check(fixtureTexture, "shared fixture includes an opaque poster texture")
+fixtureTexture.releases = 0
+fixtureTexture.release = function(self) self.releases = self.releases + 1 end
 
 local fixtureRender = {}
+calls.fixturePrimitiveAccepted = {}
+calls.fixtureTextureCleared = true
 for _, phase in ipairs({
   "background", "opaque_after_terrain", "translucent_after_actors",
 }) do
   local phaseName = phase
   fixtureRender[phaseName] = function(context)
     for _, command in ipairs(DrawFixture.phases[phaseName]) do
+      local beforeDraws = #fakeVoxel3D.drawLog
       local accepted, drawError = context.draw[command.kind](command, context)
       if accepted ~= true then error(drawError or "fixture draw rejected", 0) end
       calls.fixtureAccepted = (calls.fixtureAccepted or 0) + 1
+      local primitive = command.geometry and command.geometry.primitive
+        or command.procedural and command.procedural.kind
+        or command.prototype and command.prototype.primitive
+        or "explicit_billboards"
+      calls.fixturePrimitiveAccepted[primitive] =
+        (calls.fixturePrimitiveAccepted[primitive] or 0) + 1
+      if command.procedural then
+        calls.fixtureStarsExpanded = (calls.fixtureStarsExpanded or 0)
+          + (#fakeVoxel3D.drawLog - beforeDraws)
+      end
       if command.texture then
-        calls.fixtureTextureCleared = fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog]
-          .mesh.texture == nil
+        calls.fixtureTextureCleared = calls.fixtureTextureCleared
+          and fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog].mesh.texture == nil
+        if primitive == "panorama" then
+          calls.panoramaTextureUsed = fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog]
+            .texture == command.texture
+        end
       end
     end
   end
@@ -584,21 +728,43 @@ fixtureHandle, err = provider.register({
   render = fixtureRender,
 })
 check(fixtureHandle, err or "shared fixture extension registers")
-local fixtureBackground = companion:render("background", state)
-local fixtureOpaque = companion:render("opaque_after_terrain", state)
-local fixtureTranslucent = companion:render("translucent_after_actors", state)
-check(fixtureBackground and fixtureBackground.failed == 0,
-  "shared background mesh commands render")
-check(fixtureOpaque and fixtureOpaque.failed == 0,
-  "shared world apron and instance commands render")
-check(fixtureTranslucent and fixtureTranslucent.failed == 0,
-  "shared explicit billboard command renders")
-equal(calls.fixtureAccepted, DrawFixture.commandCount,
-  "host accepts every shared baseline fixture command")
+for pass = 1, 2 do
+  local fixtureBackground = companion:render("background", state)
+  local fixtureOpaque = companion:render("opaque_after_terrain", state)
+  local fixtureTranslucent = companion:render("translucent_after_actors", state)
+  check(fixtureBackground and fixtureBackground.failed == 0,
+    "shared background commands render on pass " .. pass)
+  check(fixtureOpaque and fixtureOpaque.failed == 0,
+    "shared world apron and instance commands render on pass " .. pass)
+  check(fixtureTranslucent and fixtureTranslucent.failed == 0,
+    "shared explicit billboard command renders on pass " .. pass)
+end
+equal(calls.fixtureAccepted, DrawFixture.commandCount * 2,
+  "host accepts and cache-validates every baseline command twice")
+for _, primitive in ipairs({ "panorama", "cloud_layer", "rainbow" }) do
+  equal(calls.fixturePrimitiveAccepted[primitive], 2,
+    primitive .. " is accepted with identical cached content twice")
+end
+equal(calls.fixturePrimitiveAccepted.stars, 2,
+  "procedural stars are accepted with identical cached content twice")
+equal(calls.fixtureStarsExpanded, 48,
+  "the fixture expands 24 deterministic stars on each pass")
+equal(calls.panoramaTextureUsed, true,
+  "panorama uses its callback-borrowed texture")
 equal(calls.fixtureTextureCleared, true,
-  "shared poster texture is unbound before the draw call returns")
+  "shared panorama and poster textures are unbound before return")
 check(companion.texture ~= fixtureTexture,
   "shared fixture texture is not retained as a host fallback")
+equal(fixtureTexture.releases, 0,
+  "shared panorama and poster texture is not released")
+check(#companion.meshes.panorama.vertices <= 128,
+  "panorama uses bounded host-owned geometry")
+check(#companion.meshes.cloud_layer.vertices <= 32,
+  "cloud layer uses bounded host-owned geometry")
+check(#companion.meshes.rainbow.vertices <= 96,
+  "rainbow uses bounded host-owned geometry")
+equal(companion.meshes.panorama.texture, nil,
+  "panorama mesh does not retain its borrowed texture")
 
 local lateUpdates = 0
 local late
@@ -622,6 +788,10 @@ companion:dispose("test-dispose")
 equal(calls.disposed, 1, "healthy extension is disposed exactly once")
 equal(borrowedTexture.releases, 0,
   "adapter never releases a borrowed texture during invalidation or disposal")
+equal(starTexture.releases, 0,
+  "adapter never releases a procedural-star texture during disposal")
+equal(fixtureTexture.releases, 0,
+  "adapter never releases shared panorama/poster texture during disposal")
 equal(companion.state, nil, "adapter drops retained world state on dispose")
 equal(companion.startContext, nil, "adapter drops retained activation context on dispose")
 equal(love.update, sentinelUpdate, "adapter does not replace global callbacks")

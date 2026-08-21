@@ -42,11 +42,18 @@ local MAX_PRIMITIVE_SIZE = 65536
 local MAX_COMMAND_SIGNATURES = 4096
 local MAX_SIGNATURE_NODES = 32768
 local MAX_SIGNATURE_BYTES = 256 * 1024
+local MAX_SKY_LAYER = 16
+local PANORAMA_SEGMENTS = 32
+local CLOUD_PATCHES = 8
+local RAINBOW_SEGMENTS = 24
 
 local MESH_PRIMITIVES = {
   box = true,
   plane = true,
   world_apron = true,
+  panorama = true,
+  cloud_layer = true,
+  rainbow = true,
 }
 
 local INSTANCE_PRIMITIVES = {
@@ -118,6 +125,10 @@ local COLORS = {
   water = { 0.26, 0.55, 0.78, 0.64 },
   puddle = { 0.35, 0.62, 0.80, 0.50 },
   rain = { 0.70, 0.84, 0.96, 0.70 },
+  panorama = { 1.00, 1.00, 1.00, 1.00 },
+  cloud = { 0.93, 0.96, 1.00, 0.22 },
+  rainbow = { 0.96, 0.62, 0.84, 0.48 },
+  star = { 1.00, 0.98, 0.78, 0.90 },
   shadow = { 0.04, 0.05, 0.07, 0.28 },
   light = { 1.00, 0.88, 0.55, 0.72 },
   firefly = { 0.90, 1.00, 0.45, 0.88 },
@@ -290,6 +301,73 @@ local function buildBillboard()
   return Voxel3D.newMesh(vertices, indices)
 end
 
+-- These conservative host-owned sky meshes implement the API v1 baseline.
+-- They are bounded visual proxies, not a claim of legacy panorama or weather
+-- parity. Declarative commands and callback-borrowed textures stay outside all
+-- host caches; only these fixed meshes are retained by the adapter.
+local function buildPanorama()
+  local vertices, indices = {}, {}
+  for segment = 0, PANORAMA_SEGMENTS - 1 do
+    local a0 = segment * math.pi * 2 / PANORAMA_SEGMENTS
+    local a1 = (segment + 1) * math.pi * 2 / PANORAMA_SEGMENTS
+    local x0, z0 = math.cos(a0) * 0.5, math.sin(a0) * 0.5
+    local x1, z1 = math.cos(a1) * 0.5, math.sin(a1) * 0.5
+    local u0, u1 = segment / PANORAMA_SEGMENTS,
+      (segment + 1) / PANORAMA_SEGMENTS
+    local quad = #vertices / 4
+    vertices[#vertices + 1] = { x0, -0.5, z0, u0, 1, 1 }
+    vertices[#vertices + 1] = { x1, -0.5, z1, u1, 1, 1 }
+    vertices[#vertices + 1] = { x1,  0.5, z1, u1, 0, 1 }
+    vertices[#vertices + 1] = { x0,  0.5, z0, u0, 0, 1 }
+    Voxel3D.pushQuad(indices, quad)
+  end
+  return Voxel3D.newMesh(vertices, indices)
+end
+
+local function buildCloudLayer()
+  local patches = {
+    { -0.38, -0.25, 0.24 }, { -0.08, -0.34, 0.20 },
+    {  0.25, -0.24, 0.27 }, {  0.39,  0.03, 0.19 },
+    {  0.16,  0.31, 0.25 }, { -0.18,  0.34, 0.22 },
+    { -0.40,  0.17, 0.18 }, {  0.02,  0.02, 0.30 },
+  }
+  local vertices, indices = {}, {}
+  for index = 1, math.min(CLOUD_PATCHES, #patches) do
+    local x, z, radius = patches[index][1], patches[index][2], patches[index][3]
+    local quad = #vertices / 4
+    vertices[#vertices + 1] = { x - radius, 0, z - radius, 0, 0, 1 }
+    vertices[#vertices + 1] = { x + radius, 0, z - radius, 1, 0, 1 }
+    vertices[#vertices + 1] = { x + radius, 0, z + radius, 1, 1, 1 }
+    vertices[#vertices + 1] = { x - radius, 0, z + radius, 0, 1, 1 }
+    Voxel3D.pushQuad(indices, quad)
+  end
+  return Voxel3D.newMesh(vertices, indices)
+end
+
+local function buildRainbow()
+  local vertices, indices = {}, {}
+  for segment = 0, RAINBOW_SEGMENTS - 1 do
+    local a0 = segment * math.pi / RAINBOW_SEGMENTS
+    local a1 = (segment + 1) * math.pi / RAINBOW_SEGMENTS
+    local outer, inner = 0.5, 0.39
+    local quad = #vertices / 4
+    vertices[#vertices + 1] = {
+      math.cos(a0) * outer, math.sin(a0) * outer, 0, 0, 0, 1,
+    }
+    vertices[#vertices + 1] = {
+      math.cos(a0) * inner, math.sin(a0) * inner, 0, 0, 1, 1,
+    }
+    vertices[#vertices + 1] = {
+      math.cos(a1) * inner, math.sin(a1) * inner, 0, 1, 1, 1,
+    }
+    vertices[#vertices + 1] = {
+      math.cos(a1) * outer, math.sin(a1) * outer, 0, 1, 0, 1,
+    }
+    Voxel3D.pushQuad(indices, quad)
+  end
+  return Voxel3D.newMesh(vertices, indices)
+end
+
 local function colorFor(material)
   local text = tostring(material or ""):lower()
   for key, color in pairs(COLORS) do
@@ -311,6 +389,76 @@ local function billboardTransform(item, width, height)
   local yaw = math.atan2((eye[1] or x) - x, (eye[3] or z + 1) - z)
   return Mat4.mul(Mat4.mul(Mat4.translate(x, y, z), Mat4.rotateY(yaw)),
                   Mat4.scale(width, height, 1))
+end
+
+local function eyePosition()
+  local eye = Voxel3D.eye
+  if type(eye) ~= "table" and type(Voxel3D.camera) == "table" then
+    eye = Voxel3D.camera.eye
+  end
+  eye = type(eye) == "table" and eye or {}
+  return clamp(eye[1], -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0),
+    clamp(eye[2], -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0),
+    clamp(eye[3], -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
+end
+
+local RANDOM_MODULUS = 2147483647
+local function localSeed(value)
+  local number = finite(value, nil)
+  if number == nil then return nil end
+  local folded = math.fmod(math.abs(number), RANDOM_MODULUS - 1)
+  return math.floor(folded * 1000 + 0.5) % (RANDOM_MODULUS - 1) + 1
+end
+
+local function nextUnit(state)
+  state = state * 48271 % RANDOM_MODULUS
+  return state, state / RANDOM_MODULUS
+end
+
+local function starItems(procedural)
+  if type(procedural) ~= "table" or procedural.kind ~= "stars" then
+    return nil, "billboard procedural kind must be stars"
+  end
+  local count = integer(procedural.count, nil)
+  local state = localSeed(procedural.seed)
+  if not count or count < 1 or count > MAX_PACKET_ITEMS or not state then
+    return nil, "star procedure needs a bounded count and finite seed"
+  end
+  for _, key in ipairs({ "twinkle", "nebula", "shootingStars" }) do
+    if procedural[key] ~= nil and type(procedural[key]) ~= "boolean" then
+      return nil, "star procedure " .. key .. " must be Boolean"
+    end
+  end
+
+  local eyeX, eyeY, eyeZ = eyePosition()
+  local items = {}
+  for index = 1, count do
+    local azimuth, elevation, radial, sizeNoise
+    state, azimuth = nextUnit(state)
+    state, elevation = nextUnit(state)
+    state, radial = nextUnit(state)
+    state, sizeNoise = nextUnit(state)
+    local angle = azimuth * math.pi * 2
+    local lift = 0.22 + elevation * 0.58
+    local radius = 96 + radial * 160
+    local size = procedural.twinkle and (0.55 + sizeNoise * 1.25) or 1
+    if procedural.nebula and index % 11 == 0 then size = size * 1.5 end
+    local width, height = size, size
+    if procedural.shootingStars and index % 19 == 0 then
+      width, height = size * 3.5, math.max(0.25, size * 0.45)
+    end
+    items[index] = {
+      x = clamp(eyeX + math.cos(angle) * radius,
+        -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0),
+      y = clamp(eyeY + 32 + math.sin(lift) * radius,
+        -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0),
+      z = clamp(eyeZ + math.sin(angle) * radius,
+        -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0),
+      width = clamp(width, 0.25, 8, 1),
+      height = clamp(height, 0.25, 8, 1),
+    }
+  end
+  return items
 end
 
 local function playerCell(state)
@@ -391,6 +539,9 @@ local function ensureMesh(self, kind)
   local mesh
   if kind == "plane" then mesh = buildPlane()
   elseif kind == "billboard" then mesh = buildBillboard()
+  elseif kind == "panorama" then mesh = buildPanorama()
+  elseif kind == "cloud_layer" then mesh = buildCloudLayer()
+  elseif kind == "rainbow" then mesh = buildRainbow()
   else mesh = buildBox() end
   self.meshes[kind] = mesh or false
   return mesh
@@ -423,6 +574,72 @@ local function drawVoxel(mesh, texture, model, borrowed)
   if not ok then error(err, 3) end
 end
 
+local function skyPrimitive(self, prototype)
+  local primitive = prototype.primitive
+  local eyeX, eyeY, eyeZ = eyePosition()
+  if primitive == "panorama" then
+    local sourceWidth = clamp(prototype.sourceWidth, 1,
+      MAX_PRIMITIVE_SIZE * 64, 4096)
+    local targetWidth = clamp(prototype.targetWidth, 16,
+      MAX_PRIMITIVE_SIZE, 1024)
+    local resample = clamp(targetWidth / sourceWidth, 0.125, 4, 1)
+    local height = clamp(targetWidth * (0.16 + resample * 0.08),
+      16, MAX_PRIMITIVE_SIZE, 128)
+    if prototype.deepSkirt == true then height = math.min(height * 1.35,
+      MAX_PRIMITIVE_SIZE) end
+    local y = clamp(
+      eyeY - height * (prototype.deepSkirt == true and 0.32 or 0.18),
+      -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
+    local color = prototype.distanceHaze == true
+      and { 0.92, 0.94, 0.98, 0.94 } or COLORS.panorama
+    return ensureMesh(self, "panorama"),
+      transform(eyeX, y, eyeZ, targetWidth, height, targetWidth), color
+  end
+
+  if primitive == "cloud_layer" then
+    local layer = clamp(integer(prototype.layer, 1), 1, MAX_SKY_LAYER, 1)
+    local parallax = clamp(prototype.parallax, -2, 2, 0)
+    local density = clamp(prototype.density, 0, 1, 0.5)
+    local state = localSeed(prototype.seed) or 1
+    local offsetX, offsetZ, angle
+    state, offsetX = nextUnit(state)
+    state, offsetZ = nextUnit(state)
+    state, angle = nextUnit(state)
+    local span = 128 + density * 512
+    local x = eyeX * (1 - parallax) + (offsetX - 0.5) * 48
+    local z = eyeZ * (1 - parallax) + (offsetZ - 0.5) * 48
+    local model = Mat4.mul(Mat4.translate(
+      clamp(x, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0),
+      clamp(eyeY + 48 + layer * 24,
+        -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0),
+      clamp(z, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)),
+      Mat4.mul(Mat4.rotateY(angle * math.pi * 2), Mat4.scale(span, 1, span)))
+    return ensureMesh(self, "cloud_layer"), model,
+      { 0.93, 0.96, 1.00, 0.04 + density * 0.22 }
+  end
+
+  if primitive == "rainbow" then
+    local state = localSeed(prototype.seed) or 1
+    local angle, distanceNoise, sizeNoise
+    state, angle = nextUnit(state)
+    state, distanceNoise = nextUnit(state)
+    state, sizeNoise = nextUnit(state)
+    local radians = angle * math.pi * 2
+    local distance = 96 + distanceNoise * 96
+    local item = {
+      x = clamp(eyeX + math.cos(radians) * distance,
+        -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0),
+      y = clamp(eyeY + 12 + sizeNoise * 24,
+        -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0),
+      z = clamp(eyeZ + math.sin(radians) * distance,
+        -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0),
+    }
+    return ensureMesh(self, "rainbow"),
+      billboardTransform(item, 96 + sizeNoise * 64, 72 + sizeNoise * 32),
+      COLORS.rainbow
+  end
+end
+
 local function drawItem(self, prototype, item, material, borrowedTexture)
   if shouldCutaway(self, prototype, item) then return false end
   local primitive, width, height, depth = primitiveDimensions(prototype, item)
@@ -432,14 +649,21 @@ local function drawItem(self, prototype, item, material, borrowedTexture)
   if not texture then error("companion material texture is unavailable", 3) end
   local color = colorFor(material)
   local ok, err = xpcall(function()
-    setMaterial(color)
     Voxel3D.glass(false)
-    if primitive == "billboard" then
+    if primitive == "panorama" or primitive == "cloud_layer"
+        or primitive == "rainbow" then
+      local mesh, model, skyColor = skyPrimitive(self, prototype)
+      if not mesh then error("companion sky mesh is unavailable", 0) end
+      setMaterial(skyColor or color)
+      drawVoxel(mesh, texture, model, borrowedTexture ~= nil)
+    elseif primitive == "billboard" then
+      setMaterial(color)
       local mesh = ensureMesh(self, "billboard")
       if not mesh then error("companion billboard mesh is unavailable", 0) end
       drawVoxel(mesh, texture, billboardTransform(item, width, height),
         borrowedTexture ~= nil)
     else
+      setMaterial(color)
       local meshKind = primitive == "plane" and "plane" or "box"
       local mesh = ensureMesh(self, meshKind)
       if not mesh then error("companion primitive mesh is unavailable", 0) end
@@ -590,9 +814,26 @@ local function validateMeshGeometry(geometry)
     if not (positive(geometry.width) and positive(geometry.depth)) then
       return false, "plane geometry needs positive width and depth"
     end
-  elseif not (positive(geometry.width) and positive(geometry.depth)
-      and positive(geometry.skirtDepth)) then
-    return false, "world_apron geometry needs positive width, depth, and skirtDepth"
+  elseif primitive == "world_apron" then
+    if not (positive(geometry.width) and positive(geometry.depth)
+        and positive(geometry.skirtDepth)) then
+      return false, "world_apron geometry needs positive width, depth, and skirtDepth"
+    end
+  elseif primitive == "panorama" then
+    if not (positive(geometry.sourceWidth) and positive(geometry.targetWidth)) then
+      return false, "panorama geometry needs positive sourceWidth and targetWidth"
+    end
+  elseif primitive == "cloud_layer" then
+    local layer = finite(geometry.layer, nil)
+    local density = finite(geometry.density, nil)
+    if not (layer and layer >= 1 and layer == math.floor(layer)
+        and finite(geometry.parallax, nil) ~= nil
+        and density and density >= 0 and density <= 1
+        and finite(geometry.seed, nil) ~= nil) then
+      return false, "cloud_layer geometry needs an integer layer, finite parallax/seed, and unit density"
+    end
+  elseif finite(geometry.seed, nil) == nil then
+    return false, "rainbow geometry needs a finite seed"
   end
   return true
 end
@@ -697,18 +938,22 @@ local function makeDrawFacade(self)
     billboards = function(packet, context)
       local valid, validationError = validateDrawCommand(packet, "billboards", context)
       if not valid then return false, validationError end
-      if type(packet) ~= "table" or type(packet.items) ~= "table" then
-        return false, "billboard command needs explicit items"
+      local items = packet.items
+      if packet.procedural ~= nil then
+        items, validationError = starItems(packet.procedural)
+        if not items then return false, validationError end
+      elseif type(items) ~= "table" then
+        return false, "billboard command needs explicit items or procedural stars"
       end
-      if #packet.items < 1 or #packet.items > MAX_PACKET_ITEMS then
+      if #items < 1 or #items > MAX_PACKET_ITEMS then
         return false, "billboard command item count must be 1.." .. MAX_PACKET_ITEMS
       end
-      for _, item in ipairs(packet.items) do
+      for _, item in ipairs(items) do
         if type(item) ~= "table" then return false, "billboard item must be a table" end
       end
       valid, validationError = validateCommandSignature(self, packet)
       if not valid then return false, validationError end
-      local budgeted, budgetError = useDrawBudget(self, #packet.items)
+      local budgeted, budgetError = useDrawBudget(self, #items)
       if not budgeted then return false, budgetError end
       local baseWidth, baseHeight = 3, 5
       local material = tostring(packet.material or "")
@@ -717,7 +962,7 @@ local function makeDrawFacade(self)
       if material:find("rain", 1, true) then baseWidth, baseHeight = 0.6, 8 end
       if material:find("sun_shaft", 1, true) then baseWidth = 8 end
       return runDraw(function()
-        for _, item in ipairs(packet.items) do
+        for _, item in ipairs(items) do
           local prototype = {
             primitive = "billboard",
             width = finite(item.width, baseWidth),
