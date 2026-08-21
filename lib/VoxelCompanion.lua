@@ -1,0 +1,949 @@
+-- Voxel Companion API v1 adapter for Battle Art Voxel Fork.
+--
+-- The dispatcher owns extension lifecycle and fault isolation. This adapter
+-- owns the real Battle Art seams: copied world facts, additive camera deltas,
+-- three ordered overworld phases, a bounded draw facade, and integrity data.
+-- It does not advertise terrain, shadow, or battle capabilities.
+
+local V = ...
+
+local API = V.require("VoxelCompanionAPI")
+local Mat4 = V.require("Mat4")
+local TileShape = V.require("TileShape")
+local Voxel = V.require("VoxelState")
+local Voxel3D = V.require("Voxel3D")
+local DayNight = V.require("DayNight")
+local Map = require("src.world.Map")
+
+local VoxelCompanion = {}
+VoxelCompanion.__index = VoxelCompanion
+
+local CAPABILITIES = {
+  "world_snapshot",
+  "camera_delta",
+  "render_phases",
+  "quality_tier",
+  "integrity_status",
+}
+
+local WORLD_PHASES = {
+  background = true,
+  opaque_after_terrain = true,
+  translucent_after_actors = true,
+}
+
+local MAX_CELLS = 262144
+local MAX_ACTORS = 2048
+local MAX_NEIGHBORS = 8
+local MAX_PACKET_ITEMS = 2048
+local MAX_DRAWS_PER_FRAME = 4096
+local MAX_WORLD_COORDINATE = 65536
+local MAX_PRIMITIVE_SIZE = 65536
+
+-- These are exact literals written by released KFP 1.x patchers. Only known
+-- host targets are scanned, so this scanner cannot match its own vocabulary.
+local LEGACY_MARKERS = {
+  ["lib/VoxelScene.lua"] = {
+    "pcall(Ceiling.draw",
+    "pcall(Flora.draw",
+    "pcall(Backdrop.draw",
+    "pcall(SkyLayer.draw",
+    "local function __dsMod(name, statusKey)",
+    "__ds_ceiling_status",
+  },
+  ["lib/FirstPerson.lua"] = {
+    'V.require("Jump")',
+    "Jump.eyeOffset(me)",
+    "Jump.swayX(me)",
+    "Jump.swayZ(me)",
+  },
+  ["lib/Structures.lua"] = {
+    "__ds_tree_lift",
+    "__ds_round_key",
+    "__ds_round_tomb",
+    'rawget(_G, "__ds_ceiling_config")',
+  },
+  ["lib/ChunkMesher.lua"] = {
+    "ds_fp_ceilings __ds_round_base",
+    "ds_fp_ceilings fastchunks",
+    'rawget(_G, "__ds_round_base")',
+  },
+  ["main.lua"] = {
+    "Ceiling.setting",
+    "__ds_ceiling_config",
+  },
+  ["lib/Ceiling.lua"] = { "payload-version:", "__ds_ceiling_config" },
+  ["lib/Backdrop.lua"] = { "payload-version:", "__ds_ceiling_config" },
+  ["lib/SkyLayer.lua"] = { "payload-version:", "__ds_ceiling_config" },
+  ["lib/Flora.lua"] = { "payload-version:", "__ds_ceiling_config" },
+  ["lib/Jump.lua"] = { "payload-version:", "Jump.eyeOffset" },
+}
+
+local COLORS = {
+  interior = { 0.82, 0.76, 0.67, 1 },
+  cave = { 0.42, 0.39, 0.45, 1 },
+  rock = { 0.48, 0.47, 0.52, 1 },
+  stone = { 0.52, 0.52, 0.56, 1 },
+  grass = { 0.28, 0.62, 0.31, 1 },
+  tree = { 0.20, 0.48, 0.25, 1 },
+  canopy = { 0.16, 0.43, 0.22, 1 },
+  vine = { 0.23, 0.55, 0.25, 0.92 },
+  water = { 0.26, 0.55, 0.78, 0.64 },
+  puddle = { 0.35, 0.62, 0.80, 0.50 },
+  rain = { 0.70, 0.84, 0.96, 0.70 },
+  shadow = { 0.04, 0.05, 0.07, 0.28 },
+  light = { 1.00, 0.88, 0.55, 0.72 },
+  firefly = { 0.90, 1.00, 0.45, 0.88 },
+  smoke = { 0.70, 0.72, 0.76, 0.52 },
+  default = { 0.68, 0.70, 0.72, 1 },
+}
+
+local function finite(value, fallback)
+  value = tonumber(value)
+  if not value or value ~= value or value == math.huge or value == -math.huge then
+    return fallback
+  end
+  return value
+end
+
+local function integer(value, fallback)
+  value = finite(value, fallback)
+  return value == nil and nil or math.floor(value)
+end
+
+local function clamp(value, minimum, maximum, fallback)
+  value = finite(value, fallback)
+  if value < minimum then return minimum end
+  if value > maximum then return maximum end
+  return value
+end
+
+local function boundedText(value, fallback, limit)
+  if type(value) ~= "string" or value == "" then return fallback end
+  return value:sub(1, limit or 128)
+end
+
+local function shallowCopy(source)
+  local out = {}
+  for key, value in pairs(source or {}) do out[key] = value end
+  return out
+end
+
+local function copyTags(source)
+  local out = {}
+  for key, value in pairs(source or {}) do
+    if type(key) == "string" and value == true then out[key] = true end
+  end
+  return out
+end
+
+local function copySnapshot(source)
+  if type(source) ~= "table" then return nil end
+  local out = shallowCopy(source)
+  out.tags = copyTags(source.tags)
+  out.player = shallowCopy(source.player)
+  out.cells, out.actors, out.neighbors = {}, {}, {}
+  for index, cell in ipairs(source.cells or {}) do
+    local copy = shallowCopy(cell)
+    copy.tags = copyTags(cell.tags)
+    copy.metadata = shallowCopy(cell.metadata)
+    out.cells[index] = copy
+  end
+  for index, actor in ipairs(source.actors or {}) do
+    local copy = shallowCopy(actor)
+    copy.pose = shallowCopy(actor.pose)
+    copy.tags = copyTags(actor.tags)
+    out.actors[index] = copy
+  end
+  for index, neighbor in ipairs(source.neighbors or {}) do
+    local copy = shallowCopy(neighbor)
+    copy.tags = copyTags(neighbor.tags)
+    out.neighbors[index] = copy
+  end
+  return out
+end
+
+local function loggerCall(mod, level, message)
+  local log = mod and mod.log
+  local callback = type(log) == "table" and log[level]
+  if type(callback) == "function" then
+    pcall(callback, log, "%s", tostring(message))
+  end
+end
+
+local function rememberDiagnostic(self, message)
+  self.diagnostics[#self.diagnostics + 1] = tostring(message)
+  if #self.diagnostics > 64 then table.remove(self.diagnostics, 1) end
+end
+
+local function scanIntegrity(mod)
+  local findings = {}
+  for path, markers in pairs(LEGACY_MARKERS) do
+    local ok, source = pcall(mod.read, mod, path)
+    if ok and type(source) == "string" then
+      for _, marker in ipairs(markers) do
+        if source:find(marker, 1, true) then
+          findings[#findings + 1] = { path = path, marker = marker }
+        end
+      end
+    end
+  end
+  table.sort(findings, function(a, b)
+    if a.path ~= b.path then return a.path < b.path end
+    return a.marker < b.marker
+  end)
+  return {
+    clean = #findings == 0,
+    legacyMarkers = #findings > 0,
+    findings = findings,
+    policy = "read-only-refusal",
+  }
+end
+
+local function copyIntegrity(status)
+  local out = {
+    clean = status.clean,
+    legacyMarkers = status.legacyMarkers,
+    policy = status.policy,
+    findings = {},
+  }
+  for index, finding in ipairs(status.findings or {}) do
+    out.findings[index] = { path = finding.path, marker = finding.marker }
+  end
+  return out
+end
+
+local function platformName()
+  if love and love.system and type(love.system.getOS) == "function" then
+    local ok, value = pcall(love.system.getOS)
+    if ok and type(value) == "string" then return value:upper() end
+  end
+  return "UNKNOWN"
+end
+
+local function face(mesh, indices, direction)
+  local corners = Voxel3D.FACE_CORNERS[direction]
+  local shade = Voxel3D.FACE_SHADE[direction] or 1
+  local quad = #mesh / 4
+  for index = 1, 4 do
+    local corner = corners[index]
+    mesh[#mesh + 1] = { corner[1] - 0.5, corner[2] - 0.5,
+      corner[3] - 0.5, 0.5, 0.5, shade }
+  end
+  Voxel3D.pushQuad(indices, quad)
+end
+
+local function buildBox()
+  local vertices, indices = {}, {}
+  for direction = 1, 6 do face(vertices, indices, direction) end
+  return Voxel3D.newMesh(vertices, indices)
+end
+
+local function buildPlane()
+  local vertices = {
+    { -0.5, 0, -0.5, 0.5, 0.5, 1 },
+    {  0.5, 0, -0.5, 0.5, 0.5, 1 },
+    {  0.5, 0,  0.5, 0.5, 0.5, 1 },
+    { -0.5, 0,  0.5, 0.5, 0.5, 1 },
+  }
+  local indices = {}
+  Voxel3D.pushQuad(indices, 0)
+  return Voxel3D.newMesh(vertices, indices)
+end
+
+local function buildBillboard()
+  local vertices = {
+    { -0.5, 0, 0, 0.5, 0.5, 1 },
+    {  0.5, 0, 0, 0.5, 0.5, 1 },
+    {  0.5, 1, 0, 0.5, 0.5, 1 },
+    { -0.5, 1, 0, 0.5, 0.5, 1 },
+  }
+  local indices = {}
+  Voxel3D.pushQuad(indices, 0)
+  return Voxel3D.newMesh(vertices, indices)
+end
+
+local function colorFor(material)
+  local text = tostring(material or ""):lower()
+  for key, color in pairs(COLORS) do
+    if key ~= "default" and text:find(key, 1, true) then return color end
+  end
+  return COLORS.default
+end
+
+local function transform(x, y, z, width, height, depth)
+  return Mat4.mul(Mat4.translate(x, y, z),
+                  Mat4.scale(width, height, depth))
+end
+
+local function billboardTransform(item, width, height)
+  local x = clamp(item.x, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
+  local y = clamp(item.y, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
+  local z = clamp(item.z, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
+  local eye = Voxel3D.eye or { x, y, z + 1 }
+  local yaw = math.atan2((eye[1] or x) - x, (eye[3] or z + 1) - z)
+  return Mat4.mul(Mat4.mul(Mat4.translate(x, y, z), Mat4.rotateY(yaw)),
+                  Mat4.scale(width, height, 1))
+end
+
+local function playerCell(state)
+  local player = state and state.player
+  if type(player) ~= "table" then return nil, nil end
+  return integer(player.cellX, nil), integer(player.cellY, nil)
+end
+
+local function shouldCutaway(self, prototype, item)
+  if not (prototype and prototype.cutaway and prototype.role == "ceiling") then
+    return false
+  end
+  local px, pz = playerCell(self.state)
+  local cx, cz = integer(item.cellX, nil), integer(item.cellZ, nil)
+  if not (px and pz and cx and cz) then return false end
+  return math.abs(px - cx) <= 4 and math.abs(pz - cz) <= 4
+end
+
+local function primitiveDimensions(prototype, item)
+  local primitive = tostring(prototype.primitive or "box")
+  local width = clamp(prototype.width or item.width, 0.01,
+    MAX_PRIMITIVE_SIZE, 8)
+  local height = clamp(prototype.height or item.height, 0,
+    MAX_PRIMITIVE_SIZE, 8)
+  local depth = clamp(prototype.depth or item.depth, 0.01,
+    MAX_PRIMITIVE_SIZE, width)
+
+  if primitive == "plane" then height = 0 end
+  if primitive == "door_frame" then width, height, depth = 12, 24, 2 end
+  if primitive == "window" then width, height, depth = 10, 9, 1 end
+  if primitive == "poster" then width, height, depth = 9, 11, 1 end
+  if primitive == "rail" then width, height, depth = 16, 3, 1 end
+  if primitive == "fixture" then width, height, depth = 4, 3, 4 end
+  if primitive == "cave_roof" then height = 3 end
+  if primitive == "sconce" then width, height, depth = 3, 6, 3 end
+  if primitive == "raised_structure" then width, height, depth = 15, 24, 15 end
+  if primitive == "mountain" then width, height, depth = 18, 26, 18 end
+  if primitive == "hood" then width, height, depth = 18, 10, 18 end
+  if primitive == "grass_clump" then width, height, depth = width, 5, width end
+  if primitive == "canopy" then width, height, depth = width * 1.5, 8, width * 1.5 end
+  if primitive == "vine" then width, height, depth = 3, 16, 3 end
+  if primitive == "umbrella" then width, height, depth = 14, 2, 14 end
+  if primitive == "world_apron" then height = 1 end
+  return primitive, clamp(width, 0.01, MAX_PRIMITIVE_SIZE, 8),
+    clamp(height, 0, MAX_PRIMITIVE_SIZE, 8),
+    clamp(depth, 0.01, MAX_PRIMITIVE_SIZE, 8)
+end
+
+local function useDrawBudget(self, count)
+  count = math.max(0, math.floor(tonumber(count) or 0))
+  if self.frameDraws + count > MAX_DRAWS_PER_FRAME then
+    error("voxel companion frame draw limit reached", 3)
+  end
+  self.frameDraws = self.frameDraws + count
+end
+
+local function ensureTexture(self)
+  if self.texture ~= nil then return self.texture or nil end
+  if not (love and love.image and love.image.newImageData
+      and love.graphics and love.graphics.newImage) then
+    self.texture = false
+    return nil
+  end
+  local ok, texture = pcall(function()
+    local data = love.image.newImageData(1, 1)
+    data:setPixel(0, 0, 1, 1, 1, 1)
+    local image = love.graphics.newImage(data)
+    image:setFilter("nearest", "nearest")
+    return image
+  end)
+  self.texture = ok and texture or false
+  return self.texture or nil
+end
+
+local function ensureMesh(self, kind)
+  if self.meshes[kind] ~= nil then return self.meshes[kind] or nil end
+  local mesh
+  if kind == "plane" then mesh = buildPlane()
+  elseif kind == "billboard" then mesh = buildBillboard()
+  else mesh = buildBox() end
+  self.meshes[kind] = mesh or false
+  return mesh
+end
+
+local function setMaterial(color)
+  love.graphics.setColor(color[1], color[2], color[3], color[4])
+  if color[4] < 1 then
+    love.graphics.setBlendMode("alpha", "alphamultiply")
+    love.graphics.setDepthMode("lequal", false)
+  else
+    love.graphics.setDepthMode("lequal", true)
+  end
+end
+
+local function drawItem(self, prototype, item, material)
+  if shouldCutaway(self, prototype, item) then return false end
+  local primitive, width, height, depth = primitiveDimensions(prototype, item)
+  local texture = ensureTexture(self)
+  if not texture then error("companion material texture is unavailable", 3) end
+  local color = colorFor(material)
+  local ok, err = xpcall(function()
+    setMaterial(color)
+    Voxel3D.glass(false)
+    if primitive == "billboard" then
+      local mesh = ensureMesh(self, "billboard")
+      if not mesh then error("companion billboard mesh is unavailable", 0) end
+      Voxel3D.draw(mesh, texture, billboardTransform(item, width, height))
+    else
+      local meshKind = primitive == "plane" and "plane" or "box"
+      local mesh = ensureMesh(self, meshKind)
+      if not mesh then error("companion primitive mesh is unavailable", 0) end
+      local x = clamp(item.x, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
+      local y = clamp(item.y, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
+      local z = clamp(item.z, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
+      Voxel3D.draw(mesh, texture, transform(x, y, z, width,
+        math.max(height, 0.01), depth))
+    end
+  end, function(message) return tostring(message) end)
+  -- Voxel3D keeps its active material shader outside LÖVE's graphics stack.
+  -- Restore that host-owned selector even when an extension draw faults.
+  pcall(Voxel3D.glass, true)
+  if not ok then error(err, 3) end
+  return true
+end
+
+local function makeDrawFacade(self)
+  return {
+    mesh = function(_, packet)
+      if type(packet) ~= "table" or type(packet.geometry) ~= "table" then
+        error("mesh packet needs geometry", 2)
+      end
+      local primitive = packet.geometry.primitive
+      if primitive ~= "world_apron" and primitive ~= "box"
+          and primitive ~= "plane" then
+        error("unsupported Battle Art mesh primitive: " .. tostring(primitive), 2)
+      end
+      useDrawBudget(self, 1)
+      local geometry = packet.geometry
+      if primitive == "world_apron" then
+        local baseWidth = clamp(geometry.width, 0.01,
+          MAX_PRIMITIVE_SIZE, 16)
+        local baseDepth = clamp(geometry.depth, 0.01,
+          MAX_PRIMITIVE_SIZE, 16)
+        local skirt = clamp(geometry.skirtDepth, 0,
+          MAX_PRIMITIVE_SIZE * 0.5, 0)
+        geometry = shallowCopy(geometry)
+        geometry.primitive = "plane"
+        geometry.width = baseWidth + skirt * 2
+        geometry.depth = baseDepth + skirt * 2
+        geometry.x = finite(geometry.x, baseWidth * 0.5)
+        geometry.y = finite(geometry.y, -0.5)
+        geometry.z = finite(geometry.z, baseDepth * 0.5)
+      end
+      drawItem(self, geometry, geometry, packet.material)
+      return true
+    end,
+    instances = function(_, packet)
+      if type(packet) ~= "table" or type(packet.prototype) ~= "table"
+          or type(packet.items) ~= "table" then
+        error("instance packet needs prototype and items", 2)
+      end
+      if #packet.items > MAX_PACKET_ITEMS then error("instance packet limit exceeded", 2) end
+      useDrawBudget(self, #packet.items)
+      for _, item in ipairs(packet.items) do
+        if type(item) ~= "table" then error("instance item must be a table", 2) end
+        drawItem(self, packet.prototype, item, packet.material)
+      end
+      return true
+    end,
+    billboards = function(_, packet)
+      if type(packet) ~= "table" or type(packet.items) ~= "table" then
+        error("billboard packet needs items", 2)
+      end
+      if #packet.items > MAX_PACKET_ITEMS then error("billboard packet limit exceeded", 2) end
+      useDrawBudget(self, #packet.items)
+      local prototype = { primitive = "billboard", width = 3, height = 5 }
+      local material = tostring(packet.material or "")
+      if material:find("bird", 1, true) then prototype.width, prototype.height = 5, 3 end
+      if material:find("aircraft", 1, true) then prototype.width, prototype.height = 12, 4 end
+      if material:find("rain", 1, true) then prototype.width, prototype.height = 0.6, 8 end
+      if material:find("sun_shaft", 1, true) then prototype.width = 8 end
+      for _, item in ipairs(packet.items) do
+        if type(item) ~= "table" then error("billboard item must be a table", 2) end
+        if finite(item.height, nil) then prototype.height = finite(item.height, 5) end
+        drawItem(self, prototype, item, packet.material)
+      end
+      return true
+    end,
+  }
+end
+
+local function cellClass(map, shapes, x, z)
+  local tile = map:cellTile(x, z)
+  local shape = tile ~= nil and shapes[tile] or nil
+  return tile, shape and shape.class or "ground", shape and shape.h or 0
+end
+
+local function addWorldTags(tags, map)
+  local def = map and map.def or {}
+  local mapId = tostring(map and map.id or ""):upper()
+  local tilesetId = tostring(map and map.tileset and map.tileset.id
+    or def.tileset or ""):upper()
+  local outdoor = false
+  local ok, result = pcall(Map.isOutdoor, def)
+  if ok then outdoor = result == true end
+  local cave = tilesetId:find("CAVERN", 1, true)
+    or tilesetId:find("CAVE", 1, true)
+    or mapId:find("ROCK_TUNNEL", 1, true)
+  if cave then tags.cave = true
+  elseif outdoor then tags.outdoor = true
+  else tags.interior, tags.building = true, true end
+  if DayNight.isCanopy(map) or mapId:find("FOREST", 1, true) then
+    tags.forest, tags.canopy = true, true
+  end
+  if mapId:find("LAVENDER", 1, true) or mapId:find("POKEMON_TOWER", 1, true) then
+    tags.lavender = true
+  end
+  if DayNight.tod() == "NIGHT" then tags.night = true end
+end
+
+local function cellRecord(map, shapes, x, z, worldTags)
+  local tile, class, shapeHeight = cellClass(map, shapes, x, z)
+  local walkable = map:isWalkableCell(x, z) == true
+  local water = map:isWaterCell(x, z) == true
+  local grass = map:isGrassCell(x, z) == true
+  local warp = map:warpAtCell(x, z) or map:isWarpTileCell(x, z)
+  local tags = { [class] = true }
+  if worldTags.interior then tags.interior, tags.room = true, true end
+  if worldTags.cave then tags.cave = true end
+  if worldTags.forest then tags.forest = true end
+  if water then tags.water = true end
+  if grass then tags.grass = true end
+  if warp then tags.door = true end
+  if class == "tree" or class == "canopy" or class == "cylinder" then
+    tags.tree = true
+  end
+  if class == "cliff" or class == "rock" then tags.mountain = true end
+  if class == "flower" then tags.flower = true end
+  if class == "wall" or class == "tree" or class == "cliff" then
+    tags.object = true
+  end
+  return {
+    x = x,
+    z = z,
+    worldY = math.max(0, finite(shapeHeight, 0)),
+    height = finite(shapeHeight, 0),
+    kind = class,
+    material = table.concat({ "tileset", tostring(map.tileset and map.tileset.id
+      or "unknown"), class, tostring(tile or -1) }, ":"),
+    solid = not walkable and not water,
+    walkable = walkable,
+    tags = tags,
+    metadata = { tile = tile, class = class },
+  }
+end
+
+local function poseOf(entity)
+  entity = type(entity) == "table" and entity or {}
+  local px = finite(entity.px, finite(entity.x, 0))
+  local pz = finite(entity.py, finite(entity.y, 0))
+  return {
+    x = px + 8,
+    y = finite(entity.gh, 0) + finite(entity.lift, 0),
+    z = pz + 8,
+    cellX = integer(entity.cellX, math.floor(px / 16)),
+    cellZ = integer(entity.cellY, math.floor(pz / 16)),
+    facing = boundedText(entity.facing, "down", 16),
+  }
+end
+
+local function currentGameVersion()
+  local ok, Game = pcall(require, "src.core.Game")
+  local version = ok and Game and Game.save and Game.save.version
+  if version == "red" or version == "blue" or version == "yellow" then
+    return version
+  end
+  return nil
+end
+
+local function snapshotFor(self)
+  local state, map = self.state, self.state and self.state.map
+  if not (state and map and map.id and map.tileset) then
+    return nil, "overworld map is unavailable"
+  end
+  local game = currentGameVersion()
+  if not game then return nil, "Gen 1 game identity is unavailable" end
+  local width = integer(map.widthCells, nil)
+    or integer(map.def and map.def.width, 0) * 2
+  local height = integer(map.heightCells, nil)
+    or integer(map.def and map.def.height, 0) * 2
+  if width < 1 or height < 1 or width * height > MAX_CELLS then
+    return nil, "world dimensions exceed the companion limit"
+  end
+
+  local tags = {}
+  addWorldTags(tags, map)
+  local shapes = TileShape.forMap(map)
+  local cells = {}
+  for z = 0, height - 1 do
+    for x = 0, width - 1 do
+      cells[#cells + 1] = cellRecord(map, shapes, x, z, tags)
+    end
+  end
+
+  local actors = {}
+  for index, entity in ipairs(state.entities or {}) do
+    if entity ~= state.player and #actors < MAX_ACTORS then
+      actors[#actors + 1] = {
+        id = boundedText(entity.id or entity.objectId, tostring(index), 128),
+        kind = boundedText(entity.kind, "npc", 64),
+        pose = poseOf(entity),
+        tags = {},
+      }
+    end
+  end
+
+  local neighbors = {}
+  for index = 1, math.min(#(state.neighbors or {}), MAX_NEIGHBORS) do
+    local neighbor = state.neighbors[index]
+    if neighbor and neighbor.map and neighbor.map.id then
+      neighbors[#neighbors + 1] = {
+        id = tostring(neighbor.map.id),
+        revision = self.revision,
+        offsetX = finite(neighbor.ox, 0),
+        offsetZ = finite(neighbor.oy, 0),
+        atlas = tostring(neighbor.map.tileset and neighbor.map.tileset.id or ""),
+        tilesetRevision = tostring(neighbor.map.tileset and neighbor.map.tileset.id or "0"),
+        tags = {},
+      }
+    end
+  end
+
+  local mode = "diorama"
+  if Voxel.isFirstPerson() then mode = "first_person"
+  elseif Voxel.isThirdPerson() then mode = "third_person" end
+  return {
+    id = tostring(map.id),
+    revision = self.revision,
+    game = game,
+    width = width,
+    height = height,
+    cellSize = 16,
+    paletteRevision = tostring(DayNight.tod()),
+    tilesetRevision = tostring(map.tileset.id or "0"),
+    atlasRevision = tostring(map.tileset.image or map.tileset.id or "0"),
+    mode = mode,
+    tags = tags,
+    player = poseOf(state.player),
+    actors = actors,
+    neighbors = neighbors,
+    cells = cells,
+    time = finite(DayNight.time(), 0),
+    weather = "clear",
+  }
+end
+
+local function cameraContext(self)
+  local camera = Voxel3D.camera
+  local mode = Voxel.isFirstPerson() and "first_person"
+    or (Voxel.isThirdPerson() and "third_person" or "diorama")
+  return {
+    mode = mode,
+    eye = camera and { camera.eye[1], camera.eye[2], camera.eye[3] } or nil,
+    focus = camera and { camera.focus[1], camera.focus[2], camera.focus[3] } or nil,
+    fov = camera and camera.fov or Voxel3D.fovY,
+  }
+end
+
+local function updateFrame(self, dt)
+  local state, player = self.state, self.state and self.state.player
+  local px = player and finite(player.px, nil)
+  local pz = player and finite(player.py, nil)
+  local speed = 0
+  if px and pz and self.lastPlayerX and self.lastPlayerZ and dt > 0 then
+    local dx, dz = px - self.lastPlayerX, pz - self.lastPlayerZ
+    speed = math.sqrt(dx * dx + dz * dz) / dt
+  end
+  self.lastPlayerX, self.lastPlayerZ = px, pz
+  return {
+    index = self.frameIndex,
+    dt = dt,
+    qualityTier = "BALANCED",
+    platform = self.platform,
+    playerSpeed = speed,
+    mapId = state and state.map and state.map.id or nil,
+    time = DayNight.time(),
+  }
+end
+
+function VoxelCompanion.new(options)
+  options = options or {}
+  local mod = options.mod or V.mod
+  assert(type(mod) == "table" and type(mod.read) == "function",
+    "VoxelCompanion needs a mod reader")
+
+  local self = setmetatable({
+    mod = mod,
+    integrity = scanIntegrity(mod),
+    platform = platformName(),
+    state = nil,
+    mapIdentity = nil,
+    timeIdentity = nil,
+    revision = 0,
+    snapshot = nil,
+    worldPending = false,
+    started = false,
+    attached = false,
+    startContext = nil,
+    frame = { dt = 0, qualityTier = "BALANCED", platform = platformName() },
+    frameDraws = 0,
+    meshes = {},
+    texture = nil,
+    diagnostics = {},
+    clock = 0,
+    frameIndex = 0,
+    nextSnapshotAttempt = 0,
+    lastSnapshotError = nil,
+  }, VoxelCompanion)
+
+  self.draw = makeDrawFacade(self)
+  self.materials = {
+    color = function(_, id)
+      local color = colorFor(id)
+      return { color[1], color[2], color[3], color[4] }
+    end,
+  }
+  self.world = {
+    snapshot = function()
+      if not self.snapshot then
+        local ok, source, err = pcall(snapshotFor, self)
+        if not ok then return nil, tostring(source) end
+        if not source then return nil, err end
+        self.snapshot = source
+      end
+      return copySnapshot(self.snapshot)
+    end,
+  }
+  self.quality = {
+    tier = "BALANCED",
+    platform = self.platform,
+    getTier = function() return "BALANCED" end,
+    getPlatform = function() return self.platform end,
+  }
+  self.integrityFacade = {
+    status = function() return copyIntegrity(self.integrity) end,
+  }
+
+  self.dispatcher = API.new({
+    host_id = "BATTLE_ART_VOXEL_FORK",
+    host_version = "1.9.7",
+    capabilities = CAPABILITIES,
+    max_extensions = 32,
+    max_errors = 64,
+    logger = function(event)
+      local message = type(event) == "table" and event.message or tostring(event)
+      rememberDiagnostic(self, message)
+      loggerCall(mod, "error", "Voxel Companion: " .. tostring(message))
+    end,
+  })
+
+  local raw = self.dispatcher:provider()
+  self.provider = raw
+  local register = raw.register
+  raw.register = function(spec)
+    self.integrity = scanIntegrity(mod)
+    if not self.integrity.clean then
+      local finding = self.integrity.findings[1]
+      local message = "legacy KFP splice markers detected"
+      if finding then message = message .. " in " .. finding.path end
+      loggerCall(mod, "error", "Voxel Companion registration refused: " .. message)
+      return nil, message .. "; reinstall a clean voxel host"
+    end
+    local phases = type(spec) == "table" and spec.phases or nil
+    local render = type(spec) == "table" and spec.render or nil
+    if (type(phases) == "table" and phases.shadow_casters ~= nil)
+        or (type(render) == "table" and render.shadow_casters ~= nil) then
+      return nil, "shadow_casters requires unavailable shadow_pass capability"
+    end
+    if (type(phases) == "table" and phases.battle_opaque ~= nil)
+        or (type(render) == "table" and render.battle_opaque ~= nil) then
+      return nil, "battle_opaque requires unavailable battle_pass capability"
+    end
+    -- Use the reference provider closure. It joins an already-running host
+    -- with the dispatcher's retained activation context.
+    return register(spec)
+  end
+  return self
+end
+
+function VoxelCompanion:_context()
+  return {
+    world = self.world,
+    camera = cameraContext(self),
+    frame = self.frame,
+    materials = self.materials,
+    draw = self.draw,
+  }
+end
+
+function VoxelCompanion:start()
+  if self.started then return true end
+  if not self.attached then
+    local ok, err = self.dispatcher:attach({
+      world = self.world,
+      materials = self.materials,
+      draw = self.draw,
+      quality = self.quality,
+      integrity = self.integrityFacade,
+    })
+    if not ok then return nil, err end
+    self.attached = true
+  end
+  self.startContext = self:_context()
+  local report, err = self.dispatcher:start(self.startContext)
+  if not report then return nil, err end
+  self.started = true
+  return report
+end
+
+function VoxelCompanion:_observeState(state)
+  if type(state) == "table" and type(state.map) == "table" then self.state = state end
+  local map = self.state and self.state.map
+  local mapIdentity = map and (tostring(map.id) .. ":" .. tostring(map)) or "none"
+  local timeIdentity = tostring(DayNight.tod())
+  local changed = mapIdentity ~= self.mapIdentity
+    or timeIdentity ~= self.timeIdentity
+  if changed then
+    self.mapIdentity, self.timeIdentity = mapIdentity, timeIdentity
+    self:worldChanged("observed_world_identity")
+  end
+  return changed
+end
+
+-- Mark copied world facts stale without touching host geometry or adapter GPU
+-- resources. Repeated edits before the next update coalesce into one revision
+-- and one canonical worldChanged callback.
+function VoxelCompanion:worldChanged(reason)
+  if not self.worldPending then self.revision = self.revision + 1 end
+  self.snapshot = nil
+  self.worldPending = true
+  self.nextSnapshotAttempt = 0
+  self.worldChangeReason = boundedText(reason, "host_world_changed", 128)
+  return true
+end
+
+function VoxelCompanion:update(dt, state)
+  dt = math.max(0, math.min(0.1, finite(dt, 0)))
+  self.clock = self.clock + dt
+  self.frameIndex = self.frameIndex + 1
+  local changed = self:_observeState(state)
+  self.frame = updateFrame(self, dt)
+  self.frameDraws = 0
+  if not self.started then return false end
+  if (changed or self.worldPending) and self.state and self.state.map
+      and self.clock >= self.nextSnapshotAttempt then
+    local snapshot, snapshotError = self.world.snapshot()
+    if snapshot then
+      local report, dispatchError = self.dispatcher:world_changed(snapshot)
+      if report then
+        self.worldPending = false
+        self.worldChangeReason = nil
+        self.lastSnapshotError = nil
+      else
+        snapshotError = dispatchError
+      end
+    end
+    if not snapshot or self.worldPending then
+      self.nextSnapshotAttempt = self.clock + 1
+      snapshotError = tostring(snapshotError or "snapshot dispatch failed")
+      if snapshotError ~= self.lastSnapshotError then
+        self.lastSnapshotError = snapshotError
+        rememberDiagnostic(self, "world snapshot: " .. snapshotError)
+        loggerCall(self.mod, "warn", "Voxel Companion world snapshot: "
+          .. snapshotError)
+      end
+    end
+  end
+  return self.dispatcher:update(self.frame)
+end
+
+function VoxelCompanion:cameraDelta(state)
+  self:_observeState(state)
+  if not self.started then return nil end
+  local delta = self.dispatcher:modifyCamera(cameraContext(self))
+  return delta
+end
+
+function VoxelCompanion:render(phase, state)
+  if not WORLD_PHASES[phase] then return nil, "unsupported world phase" end
+  self:_observeState(state)
+  if not self.started then return false end
+  local graphics = love and love.graphics
+  if not (graphics and type(graphics.push) == "function"
+      and type(graphics.pop) == "function") then
+    return nil, "graphics state isolation is unavailable"
+  end
+  local pushed = pcall(graphics.push, "all")
+  if not pushed then return nil, "could not isolate graphics state" end
+  local ok, report, err = pcall(self.dispatcher.render, self.dispatcher,
+    phase, self:_context())
+  local popped, popError = pcall(graphics.pop)
+  if not popped then
+    loggerCall(self.mod, "error", "Voxel Companion graphics restore failed: "
+      .. tostring(popError))
+  end
+  if not ok then return nil, tostring(report) end
+  return report, err
+end
+
+function VoxelCompanion:invalidate(reason)
+  self:worldChanged(reason or "host_invalidated")
+  for key, mesh in pairs(self.meshes) do
+    if mesh and mesh.release then pcall(mesh.release, mesh) end
+    self.meshes[key] = nil
+  end
+  if self.texture and self.texture.release then pcall(self.texture.release, self.texture) end
+  self.texture = nil
+  if self.started then
+    return self.dispatcher:invalidate(self:_context(), reason or "host_invalidated")
+  end
+  return true
+end
+
+function VoxelCompanion:dispose(reason)
+  self:invalidate(reason or "host_dispose")
+  local result, err = true, nil
+  if self.started then
+    result, err = self.dispatcher:dispose(self:_context(), reason or "host_dispose")
+  end
+  self.started = false
+  self.attached = false
+  self.startContext = nil
+  self.state = nil
+  self.snapshot = nil
+  self.worldPending = false
+  self.worldChangeReason = nil
+  self.mapIdentity = nil
+  self.timeIdentity = nil
+  self.lastSnapshotError = nil
+  self.nextSnapshotAttempt = 0
+  return result, err
+end
+
+function VoxelCompanion:status()
+  local status = self.dispatcher:status()
+  status.integrity = copyIntegrity(self.integrity)
+  status.revision = self.revision
+  status.diagnostics = {}
+  for index, message in ipairs(self.diagnostics) do status.diagnostics[index] = message end
+  return status
+end
+
+VoxelCompanion.CAPABILITIES = CAPABILITIES
+VoxelCompanion.LEGACY_MARKERS = LEGACY_MARKERS
+VoxelCompanion.LIMITS = {
+  cells = MAX_CELLS,
+  actors = MAX_ACTORS,
+  neighbors = MAX_NEIGHBORS,
+  packetItems = MAX_PACKET_ITEMS,
+  frameDraws = MAX_DRAWS_PER_FRAME,
+}
+
+return VoxelCompanion

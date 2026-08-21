@@ -114,6 +114,14 @@ local FreeMove = V.require("FreeMove")
 local PoisonFlash = V.require("PoisonFlash")
 local MomHealFlash = V.require("MomHealFlash")
 local TransformCompat = V.require("TransformCompat")
+local VoxelCompanion = V.require("VoxelCompanion")
+
+-- The public provider is created while this mod loads, before consumers resolve
+-- optional dependencies. The dispatcher starts at mods.loaded; a consumer that
+-- registers later in that event joins the running dispatcher automatically.
+local Companion = VoxelCompanion.new({ mod = mod })
+V.companion = Companion
+local companionUpdateFault = false
 
 -- `mods.loaded` is the first point at which every content mod has finished
 -- patching the registries and the last point before a save can mutate live map
@@ -125,6 +133,10 @@ mod.events:on("mods.loaded", function(payload)
   -- shiny opponent fronts cannot alternate after those providers advance.
   OverworldBattle.refreshSpriteOwnershipHook()
   StadiumBattleFxProvider.register()
+  local started, err = Companion:start()
+  if not started and mod.log and mod.log.error then
+    mod.log:error("Voxel Companion host did not start: %s", tostring(err))
+  end
 end)
 
 -- Forward declaration: the voxel pipeline's update hook (registered below)
@@ -244,6 +256,15 @@ mod.content.render_pipelines:register("voxel", {
     -- battles and menus, and a CYCLE evening falls mid-fight exactly as it
     -- would mid-walk
     DayNight.update(dt)
+    -- Companion work is additive and fault-contained. It runs with the mode
+    -- off so a newly selected voxel rung can use an already compiled scene.
+    local companionOk, companionError = pcall(Companion.update, Companion, dt,
+      Game and Game.overworld)
+    if not companionOk and not companionUpdateFault
+        and mod.log and mod.log.error then
+      companionUpdateFault = true
+      mod.log:error("Voxel Companion update failed: %s", tostring(companionError))
+    end
     -- The overworld battle rides this hook rather than owning a pipeline of
     -- its own, because it owns no pass of the FRAME: it draws under a battle
     -- screen the engine composites, which is not a stage the registry has.
@@ -351,6 +372,7 @@ mod.content.render_pipelines:register("voxel", {
     AntiAlias.invalidate()
     VoxelLoadingVeil.invalidate()
     ChunkMesher.invalidate()   -- no map id = every cached mesh
+    pcall(Companion.invalidate, Companion, "render_pipeline")
   end,
 })
 
@@ -1062,7 +1084,10 @@ end)
 -- instead of blinking the whole scene down to the flat 2D path
 mod.events:on("world.block_replaced", function(payload)
   local mapId = payload and (payload.mapId or (payload.map and payload.map.id))
-  if mapId then ChunkMesher.refresh(mapId) end
+  if mapId then
+    ChunkMesher.refresh(mapId)
+    Companion:worldChanged("world.block_replaced")
+  end
 end)
 
 -- The event above is the ANNOUNCED edit -- OverworldState:replaceBlock
@@ -1099,6 +1124,7 @@ do
       setBlock(self, bx, by, block)
       if self.id and self:blockAt(bx, by) ~= before then
         ChunkMesher.refresh(self.id)
+        Companion:worldChanged("map.setBlock")
       end
     end
     Map.dramaticShapeBlockHook = true
@@ -1126,6 +1152,7 @@ end
 -- new colours land on the diorama already on screen, in one frame, which is
 -- what a palette toggle should look like from inside voxel mode.
 mod.events:on("map.reloaded", function(payload)
+  Companion:worldChanged("map.reloaded")
   if payload and payload.reason == "colors" then return end
   local mapId = payload and (payload.mapId or (payload.map and payload.map.id))
   if mapId then ChunkMesher.evictRuntime(mapId) end
@@ -1368,6 +1395,7 @@ end)
 mod.exports.version = "1.9.7"
 mod.exports.battlePresentation = BattlePresentation.export()
 mod.exports.battleStage = BattleStage.export(OverworldBattle)
+mod.exports.voxel_companion = Companion.provider
 -- exposed so a companion mod can pin its own tiles' shapes or read the
 -- camera without reaching into this mod's file layout
 mod.exports.lib = V

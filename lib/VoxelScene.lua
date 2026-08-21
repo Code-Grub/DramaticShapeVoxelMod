@@ -1070,6 +1070,16 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   local fpRig, fpCx, fpCy = FirstPerson.frame(me, cx, cy, vw, vh)
   if fpRig then cx, cy = fpCx, fpCy end
 
+  -- The host camera remains authoritative. A companion can return only a
+  -- finite additive delta, which Voxel3D copies and bounds before projection.
+  local companion = V.companion
+  local cameraDelta = nil
+  if companion and type(companion.cameraDelta) == "function" then
+    local ok, value = pcall(companion.cameraDelta, companion, state)
+    if ok then cameraDelta = value end
+  end
+  Voxel3D.setCompanionCameraDelta(cameraDelta)
+
   -- The sun's box, pushed along the first-person look so it covers the
   -- ground THIS camera sees (a no-op at blend zero): the orbit's fit
   -- reaches far north and barely south, which is right for every rung
@@ -1086,7 +1096,15 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
               water, nbWater)
 
   if not Voxel3D.beginScene(w, h, cx, cy, vw, vh, skyFor(state.map)) then
+    Voxel3D.setCompanionCameraDelta(nil)
     return nil
+  end
+
+  -- Extension backgrounds run after the host has opened its isolated 3D
+  -- target and before any host terrain. Adapter and extension failures are
+  -- contained; the base scene continues either way.
+  if companion and type(companion.render) == "function" then
+    pcall(companion.render, companion, "background", state)
   end
 
   -- One material-coloured plane below the whole loaded neighborhood closes
@@ -1105,6 +1123,12 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
   -- stand only on world cells outside the root/connected-map rectangles,
   -- so no billboard can poke through valid terrain or block the player.
   WorldFillProps.draw(state, cx, cy, vw, vh)
+
+  -- The first additive world seam: base terrain and distant host props are
+  -- complete, while actors, water, and translucent work have not drawn.
+  if companion and type(companion.render) == "function" then
+    pcall(companion.render, companion, "opaque_after_terrain", state)
+  end
 
   -- Without a shadow map (headless, or a driver that could not make the
   -- canvas) the old flat decals stand in: ground-only, characters only,
@@ -1237,7 +1261,17 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
     end
   end
 
+  -- The second additive world seam: host actors, water, grass, and flowers
+  -- are complete. The companion may add bounded blended packets before the
+  -- host closes and resolves its scene canvas.
+  if companion and type(companion.render) == "function" then
+    pcall(companion.render, companion, "translucent_after_actors", state)
+  end
+
   local finished = Voxel3D.endScene()
+  -- The delta belongs only to this overworld render. Do not let it reach a
+  -- later battle or another owner of Voxel3D's placed-camera seam.
+  Voxel3D.setCompanionCameraDelta(nil)
   if finished then
     lastCompleteCanvas, lastCompleteW, lastCompleteH = finished, w, h
     lastCompleteMapId = state.map and state.map.id or nil

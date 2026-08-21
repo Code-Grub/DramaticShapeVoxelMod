@@ -573,6 +573,101 @@ end
 -- way either way.
 Voxel3D.camera = nil
 
+-- One-frame additive camera input from a Voxel Companion extension. The
+-- host retains the base rig and applies only finite, bounded deltas. A fresh
+-- value is supplied for every rendered frame, including a zero result.
+Voxel3D.companionCameraDelta = nil
+
+local function finiteDelta(value)
+  value = tonumber(value)
+  if not value or value ~= value or value == math.huge or value == -math.huge then
+    return 0
+  end
+  return value
+end
+
+function Voxel3D.setCompanionCameraDelta(delta)
+  if type(delta) ~= "table" then
+    Voxel3D.companionCameraDelta = nil
+    return
+  end
+  local position = type(delta.positionDelta) == "table" and delta.positionDelta or {}
+  local rotation = type(delta.rotationDelta) == "table" and delta.rotationDelta or {}
+  Voxel3D.companionCameraDelta = {
+    positionDelta = {
+      x = math.max(-32, math.min(32, finiteDelta(position.x))),
+      y = math.max(-32, math.min(32, finiteDelta(position.y))),
+      z = math.max(-32, math.min(32, finiteDelta(position.z))),
+    },
+    rotationDelta = {
+      yaw = math.max(-0.5, math.min(0.5, finiteDelta(rotation.yaw))),
+      pitch = math.max(-0.5, math.min(0.5, finiteDelta(rotation.pitch))),
+      roll = math.max(-0.5, math.min(0.5, finiteDelta(rotation.roll))),
+    },
+    fovDelta = finiteDelta(delta.fovDelta),
+  }
+end
+
+local function normalize3(value, fallback)
+  local x, y, z = value[1] or 0, value[2] or 0, value[3] or 0
+  local length = math.sqrt(x * x + y * y + z * z)
+  if length < 1e-6 then return fallback[1], fallback[2], fallback[3] end
+  return x / length, y / length, z / length
+end
+
+local function cross3(ax, ay, az, bx, by, bz)
+  return ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx
+end
+
+local function rotateAxis(x, y, z, ax, ay, az, angle)
+  if math.abs(angle) < 1e-9 then return x, y, z end
+  local c, s = math.cos(angle), math.sin(angle)
+  local dot = x * ax + y * ay + z * az
+  local cx, cy, cz = cross3(ax, ay, az, x, y, z)
+  return x * c + cx * s + ax * dot * (1 - c),
+         y * c + cy * s + ay * dot * (1 - c),
+         z * c + cz * s + az * dot * (1 - c)
+end
+
+local function cameraWithDelta(camera)
+  local delta = Voxel3D.companionCameraDelta
+  if not delta then return camera end
+  local eye, focus = camera.eye, camera.focus
+  if not (type(eye) == "table" and type(focus) == "table") then return camera end
+  local px, py, pz = delta.positionDelta.x, delta.positionDelta.y,
+    delta.positionDelta.z
+  local ex, ey, ez = eye[1] + px, eye[2] + py, eye[3] + pz
+  local dx, dy, dz = focus[1] - eye[1], focus[2] - eye[2], focus[3] - eye[3]
+  local distance = math.max(1e-3, math.sqrt(dx * dx + dy * dy + dz * dz))
+  dx, dy, dz = dx / distance, dy / distance, dz / distance
+
+  local rotation = delta.rotationDelta
+  dx, dy, dz = rotateAxis(dx, dy, dz, 0, 1, 0, rotation.yaw)
+  local rx, ry, rz = cross3(dx, dy, dz, 0, 1, 0)
+  rx, ry, rz = normalize3({ rx, ry, rz }, { 1, 0, 0 })
+  local baseUp = camera.up or { 0, 1, 0 }
+  local ux, uy, uz = normalize3(baseUp, { 0, 1, 0 })
+  dx, dy, dz = rotateAxis(dx, dy, dz, rx, ry, rz, rotation.pitch)
+  ux, uy, uz = rotateAxis(ux, uy, uz, rx, ry, rz, rotation.pitch)
+
+  ux, uy, uz = rotateAxis(ux, uy, uz, dx, dy, dz, rotation.roll)
+
+  -- Voxel Companion API v1 defines both base FOV and additive FOV in radians.
+  local baseFov = finiteDelta(camera.fov)
+  if baseFov <= 0 then baseFov = math.rad(65) end
+  local fovDelta = delta.fovDelta
+  local fov = math.max(math.rad(20), math.min(math.rad(120),
+    baseFov + math.max(-math.rad(30),
+      math.min(math.rad(30), fovDelta))))
+  return {
+    eye = { ex, ey, ez },
+    focus = { ex + dx * distance, ey + dy * distance, ez + dz * distance },
+    up = { ux, uy, uz },
+    fov = fov,
+    curve = camera.curve,
+  }
+end
+
 -- ------- which way, and how steeply, this camera looks
 --
 -- Two facts about the view direction, set alongside the eye and the focus
@@ -613,6 +708,7 @@ end
 function Voxel3D.viewProjection(cx, cy, vw, vh)
   local cam = Voxel3D.camera
   if cam then
+    cam = cameraWithDelta(cam)
     local eye, focus = cam.eye, cam.focus
     Voxel3D.eye = eye
     -- kept beside the eye for horizonY: where the sky's pale end goes is a
@@ -1419,6 +1515,7 @@ end
 
 -- Drop the GPU objects (window resize, hot reload).
 function Voxel3D.invalidate()
+  Voxel3D.companionCameraDelta = nil
   for name, slotHeld in pairs(slots) do
     releaseSlot(slotHeld)
     slots[name] = nil
