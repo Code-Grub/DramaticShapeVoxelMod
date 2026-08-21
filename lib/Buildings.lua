@@ -149,7 +149,7 @@ local models = {}          -- "<tileset>:<index>" -> prebuilt local quads
 -- topRows (placement is still by `tiles` alone); they exist so the MODEL
 -- is built from the complete drawing and the tower rises to its real
 -- height instead of folding as two half-buildings.
-local function read(t, data, perRow)
+local function read(t, data, perRow, backTiles)
   local tiles = t.tiles
   if t.topRows then
     tiles = {}
@@ -158,18 +158,63 @@ local function read(t, data, perRow)
   end
   local bh, bw = #tiles, #t.tiles[1]
   local W, H = bw * 8, bh * 8
-  local col, ax, ay = {}, {}, {}
+  local col, ax, ay, back = {}, {}, {}, {}
+
+  -- Resolve a donor per TILE occurrence before walking its 64 pixels.  A
+  -- profile entry may be one fixed tile or a preference set.  Preference
+  -- sets let a door continue the course it actually sits in: some houses use
+  -- wall 10 around the entrance, others use the alternate wall 75.  Nearest
+  -- same-row material wins, with the first preference as the fallback for an
+  -- isolated authored/test tile.
+  local rearFor = {}
+  for tr, row in ipairs(tiles) do
+    rearFor[tr] = {}
+    for tc, tile in ipairs(row) do
+      local donor = backTiles and backTiles[tile]
+      if type(donor) == "table" then
+        local allowed = {}
+        for _, id in ipairs(donor) do allowed[id] = true end
+        local found = nil
+        for d = 1, #row do
+          local left, right = row[tc - d], row[tc + d]
+          if left ~= nil and allowed[left] then found = left break end
+          if right ~= nil and allowed[right] then found = right break end
+        end
+        donor = found or donor[1]
+      end
+      rearFor[tr][tc] = donor
+    end
+  end
+
   for sy = 0, H - 1 do
     Budget.tick()
-    local row = tiles[math.floor(sy / 8) + 1]
+    local tr = math.floor(sy / 8) + 1
+    local row = tiles[tr]
     for sx = 0, W - 1 do
-      local tile = row[math.floor(sx / 8) + 1]
+      local tc = math.floor(sx / 8) + 1
+      local tile = row[tc]
       local px = (tile % perRow) * 8 + sx % 8
       local py = math.floor(tile / perRow) * 8 + sy % 8
       local i = sy * W + sx
       ax[i], ay[i] = px, py
       local r, g, b, a = data:getPixel(px, py)
       col[i] = shadeOf(r, g, b, a)
+
+      -- A building drawing is its SOUTH/front projection.  Its north wall
+      -- still needs a visible face, but copying that projection verbatim
+      -- puts the front door on the back of every house.  The profile names
+      -- atlas tiles that have a plain rear-wall counterpart; virtual texel
+      -- indices let the shell keep all of its normal merging/UV logic while
+      -- sampling that counterpart only on the north face.
+      local rearTile = rearFor[tr][tc]
+      if rearTile ~= nil then
+        local ri = W * H + i
+        ax[ri] = (rearTile % perRow) * 8 + sx % 8
+        ay[ri] = math.floor(rearTile / perRow) * 8 + sy % 8
+        back[i] = ri
+      else
+        back[i] = i
+      end
     end
   end
 
@@ -244,7 +289,8 @@ local function read(t, data, perRow)
       end
     end
   end
-  return { W = W, H = H, col = col, ax = ax, ay = ay, inside = inside }
+  return { W = W, H = H, col = col, ax = ax, ay = ay,
+           inside = inside, back = back }
 end
 
 -- --------------------------------------------------------------- measure --
@@ -980,7 +1026,7 @@ local function model(sp, pr, t)
       if pr.recess[i] then return nil end
       return i
     end
-    if z == 0 then return i end
+    if z == 0 then return sp.back[i] or i end
     return pr.interior[i]
   end
 
@@ -1046,8 +1092,14 @@ local function emit(m, sp, atlasW, atlasH)
            (y0 + 0.05) / atlasH, (y0 + 1 - 0.05) / atlasH
   end
 
-  local function put(c1, c2, c3, c4, uv, shade)
-    quads[#quads + 1] = { c1, c2, c3, c4, uv = uv, shade = shade }
+  local function put(c1, c2, c3, c4, uv, shade, facade)
+    quads[#quads + 1] = {
+      c1, c2, c3, c4, uv = uv, shade = shade,
+      -- A building model is reused at enterable and scenery placements.
+      -- Keep the directional fact on the model; stamp() decides from the
+      -- live map's door cells whether this particular facade is one-sided.
+      facade = facade or nil,
+    }
   end
 
   -- How far a run of exposed faces reaches from `x`, and whether it is a
@@ -1092,7 +1144,8 @@ local function emit(m, sp, atlasW, atlasH)
             if d == 1 then
               put({ x, y, zf }, { x + n, y, zf },
                   { x + n, y + 1, zf }, { x, y + 1, zf },
-                  { { u0, v1 }, { u1, v1 }, { u1, v0 }, { u0, v0 } }, shade)
+                  { { u0, v1 }, { u1, v1 }, { u1, v0 }, { u0, v0 } },
+                  shade, true)
             else
               put({ x + n, y, zf }, { x, y, zf },
                   { x, y + 1, zf }, { x + n, y + 1, zf },
@@ -1210,6 +1263,10 @@ function Buildings.build(S, map, data, perRow)
   local atlasH = tileset.imageHeight or 48
   local tw, th = map.def.width * 4, map.def.height * 4
   local quads = S.objectQuads
+  local tilesetBack = s.building_back_tiles
+                      and s.building_back_tiles[tileset.id]
+  local rearTemplates = s.building_back_templates
+                        and s.building_back_templates[tileset.id]
 
   for index, t in ipairs(list) do
     if type(t.tiles) == "table" and #t.tiles > 0 then
@@ -1251,9 +1308,34 @@ function Buildings.build(S, map, data, perRow)
                   -- detector they stood as a second half-building.
                   models[key] = {}
                 else
-                  local sp = read(t, data, perRow)
+                  local rear = t.backTiles
+                  if rear == nil and rearTemplates and rearTemplates[t.id] then
+                    rear = tilesetBack
+                  end
+                  local sp = read(t, data, perRow, rear)
                   local pr = measure(sp, t)
                   models[key] = emit(model(sp, pr, t), sp, atlasW, atlasH)
+                  -- Route gate buildings are entered through an authored
+                  -- pair of side-edge warp cells, but the top-down exterior
+                  -- drawing paints no east/west door. Reuse the OVERWORLD
+                  -- atlas's normal exterior front-door cell for that missing
+                  -- projection; stamp() decides per placement whether such
+                  -- a side opening actually exists.
+                  -- One continuous 16x16 UV rectangle over tiles 11/12 and
+                  -- 27/28. Keeping the four atlas tiles in one quad prevents
+                  -- their joins from reading as half / whole / half doors.
+                  local px0 = (11 % perRow) * 8
+                  local px1 = (12 % perRow) * 8 + 8
+                  local py0 = math.floor(11 / perRow) * 8
+                  local py1 = math.floor(27 / perRow) * 8 + 8
+                  local u0, u1 = (px0 + 0.05) / atlasW,
+                                 (px1 - 0.05) / atlasW
+                  local v0, v1 = (py0 + 0.05) / atlasH,
+                                 (py1 - 0.05) / atlasH
+                  models[key].sideDoorUV = {
+                    { u0, v1 }, { u1, v1 },
+                    { u1, v0 }, { u0, v0 },
+                  }
                 end
               end
               built = models[key]
@@ -1328,13 +1410,51 @@ function Buildings.stamp(S, map, quads, tx, ty, bw, bh, t)
 
   local mx, mz = tx * 8, ty * 8
   local out = S.objectQuads
+
+  -- Only an OUTDOOR placement containing an engine-authored door is an
+  -- enterable facade. The same template can describe decorative scenery,
+  -- so this is deliberately placement data rather than a template list.
+  -- Building grids use 8px tiles while door cells are 16px blocks.
+  local oneSidedFacade = false
+  if S.outdoor then
+    local cx0, cy0 = math.floor(tx / 2), math.floor(ty / 2)
+    local cx1 = math.floor((tx + bw - 1) / 2)
+    local cy1 = math.floor((ty + bh - 1) / 2)
+    for cy = cy0, cy1 do
+      for cx = cx0, cx1 do
+        local door = false
+        if type(map.isDoorTileCell) == "function" then
+          local ok, value = pcall(map.isDoorTileCell, map, cx, cy)
+          door = ok and value == true
+        end
+        if not door and map.doorTiles and type(map.cellTile) == "function" then
+          local ok, tile = pcall(map.cellTile, map, cx, cy)
+          door = ok and map.doorTiles[tile] == true
+        end
+        if door then
+          oneSidedFacade = true
+          break
+        end
+      end
+      if oneSidedFacade then break end
+    end
+  end
+
   for _, q in ipairs(quads) do
+    local shade = q.shade
+    if oneSidedFacade and q.facade then
+      -- Negative shade is an internal geometry marker. ChunkMesher's AO
+      -- multiplication preserves the sign; Voxel3D restores its magnitude
+      -- for lighting and discards it only from behind. No vertex-format or
+      -- auxiliary-mesh change is needed.
+      shade = -math.abs(shade)
+    end
     out[#out + 1] = {
       { q[1][1] + mx, q[1][2], q[1][3] + mz },
       { q[2][1] + mx, q[2][2], q[2][3] + mz },
       { q[3][1] + mx, q[3][2], q[3][3] + mz },
       { q[4][1] + mx, q[4][2], q[4][3] + mz },
-      uv = q.uv, shade = q.shade,
+      uv = q.uv, shade = shade,
       -- placements only ever scan the BODY, so a building is always this
       -- map's own structure: the mesher's edge keep-rules must not eat
       -- the parts that poke past the boundary (an edge-row house's eave
@@ -1343,6 +1463,82 @@ function Buildings.stamp(S, map, quads, tx, ty, bw, bh, t)
       -- opened the roof rim into the sky from across the seam)
       own = true,
     }
+  end
+
+  -- A connective gate house can be entered through its east or west wall.
+  -- Gen 1's top-down exterior only draws the threshold cells there; it has
+  -- no side elevation to contribute a visible door. Detect those openings
+  -- from the engine-authored warp list and overlay the atlas's real gate
+  -- door on the matching model flank. Two consecutive warp cells form one
+  -- 32px double-door assembly. A lone warp is deliberately ignored: normal
+  -- houses and front entrances stay under the ordinary facade path above.
+  if S.outdoor and quads.sideDoorUV and map.def and map.def.warps then
+    local bySide = { west = {}, east = {} }
+    for _, warp in ipairs(map.def.warps) do
+      local cx, cy = tonumber(warp.x), tonumber(warp.y)
+      if cx and cy then
+        local wy0, wy1 = cy * 2, (cy + 1) * 2
+        if wy0 >= ty and wy1 <= ty + bh then
+          -- The warp cell is the walkable apron immediately OUTSIDE the
+          -- building footprint; its far edge meets the wall plane.
+          if (cx + 1) * 2 == tx then
+            bySide.west[cy] = true
+          elseif cx * 2 == tx + bw then
+            bySide.east[cy] = true
+          end
+        end
+      end
+    end
+
+    -- Manual side-door tuning. `wallInset` moves the target plane inward to
+    -- the visible voxel wall. `wallBias` leaves a fractional gap outside that
+    -- plane to prevent z-fighting. `alongWall` moves across the facade in
+    -- world Z; facing west reverses its screen direction.
+    local wallInset = { west = 5, east = 4 }
+    local wallBias = { west = 0.005, east = 0.005 }
+    local alongWall = { west = -4, east = -3 }
+    local function emitRun(side, cy0, cells)
+      local inset = wallInset[side]
+      local bias = wallBias[side]
+      local x = side == "west" and (mx + inset - bias)
+                                   or (mx + bw * 8 - inset + bias)
+      local zShift = alongWall[side]
+      for cell = 0, cells - 1 do
+        -- Warp coordinates address the complete 16px map cell occupied by
+        -- each threshold. Keep the projected complete-door quad on that
+        -- same cell span.
+        local zCell = (cy0 + cell) * 16 + zShift
+        local y0, y1, z0, z1 = 0, 16, zCell, zCell + 16
+        local q
+        if side == "west" then
+          q = { { x, y0, z0 }, { x, y0, z1 },
+                { x, y1, z1 }, { x, y1, z0 } }
+        else
+          q = { { x, y0, z1 }, { x, y0, z0 },
+                { x, y1, z0 }, { x, y1, z1 } }
+        end
+        q.uv, q.shade, q.own = quads.sideDoorUV, SHADE.side, true
+        out[#out + 1] = q
+      end
+    end
+
+    for _, side in ipairs({ "west", "east" }) do
+      local cells = bySide[side]
+      local ys = {}
+      for cy in pairs(cells) do ys[#ys + 1] = cy end
+      table.sort(ys)
+      local i = 1
+      while i <= #ys do
+        local first, last = ys[i], ys[i]
+        while i + 1 <= #ys and ys[i + 1] == last + 1 do
+          i = i + 1
+          last = ys[i]
+        end
+        local count = last - first + 1
+        if count >= 2 then emitRun(side, first, count) end
+        i = i + 1
+      end
+    end
   end
 end
 

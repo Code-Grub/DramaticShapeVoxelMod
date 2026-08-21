@@ -30,6 +30,7 @@ local ramDirty, ramRejected = {}, {}
 local ramBytes = 0
 local storage
 local knownSizes = {}
+local writeFailures = {}
 local compatibilityOverride
 local backendKind
 local precacheAllowed = false
@@ -55,13 +56,18 @@ end
 -- playthrough identity.
 local STATIC_PLAYTHROUGH = "bavc_static_mesh_v2"
 
-Disk.CACHE_REVISION = 2
+-- Revision 5 includes one-sided enterable south/front building facades and
+-- authored side-door geometry for connective gate houses. Older meshes either
+-- show mirrored facade backs or omit the side entrances entirely.
+Disk.CACHE_REVISION = 5
 -- Patch releases which do not change emitted vertices must keep the existing
 -- world cache usable. This token matches the first static-mesh-cache-v2 build;
 -- CACHE_REVISION, not the public mod version, owns geometry compatibility.
 Disk.CACHE_FAMILY = "1.8.1"
 local LOGICAL_DIRECTORY = "cache/static-mesh-v2"
 Disk.DIRECTORY = LOGICAL_DIRECTORY
+Disk.PRECACHE_FAILURE_FILE =
+  "mod-derived/BATTLE_ART_VOXEL_FORK/precache-failures.tsv"
 
 local LEGACY_ROOT =
   "mod-derived/BATTLE_ART_VOXEL_FORK/static-mesh-cache-v2"
@@ -284,6 +290,10 @@ local function mergeLegacyReads(primary)
   }
 end
 
+-- Forward-declared because bindStorage performs the probe. Without this local
+-- in scope there, Lua resolves the later definition as an unrelated global.
+local storageRoundTrips
+
 local function bindStorage(game)
   local api = V.mod and V.mod.storage
   if not api or type(api.list) ~= "function" then return false end
@@ -311,6 +321,39 @@ local function bindStorage(game)
       return api:writeBytes(scope, key, bytes)
     end,
   })
+  -- Self-test the write path. Some engine builds (observed on 0.2.x storage
+  -- backend) accept writeBytes but never persist the bytes: the directory is
+  -- created yet the file body is dropped, so every later launch sees an empty
+  -- cache and the title-screen preloader regenerates the whole world on the
+  -- main thread -- a multi-minute freeze -- while the pause-menu CACHE write
+  -- silently fails. Probe a round-trip and, if it lies, refuse this backend so
+  -- bind() degrades to the read-only legacy-read path instead of using a
+  -- storage backend that cannot hold a single byte.
+  if not storageRoundTrips(storage, scope, api) then
+    diskLog("voxel cache: storage backend accepted writes but did not persist; "
+            .. "degrading to read-only legacy-read")
+    return false
+  end
+  return true
+end
+
+-- Write a sentinel to the bound scope and read it back; the backend is usable
+-- for persistence only if the read returns the exact bytes written. Wrapped in
+-- pcall so a throwing/missing API can never crash bind(). The probe key lives
+-- OUTSIDE LOGICAL_DIRECTORY so ramPlan()/stats() never enumerate or preload it.
+storageRoundTrips = function(store, scope, api)
+  -- A fixed key avoids leaving one empty tombstone per launch on storage
+  -- implementations where writing "" is the only available invalidation.
+  local probe = "cache/__bind_probe"
+  local sentinel = "BAVCbind" .. tostring(os and os.clock and os.clock() or 0)
+  local ok, wrote = pcall(store.writeBytes, store, probe, sentinel)
+  if not ok or wrote ~= true then
+    pcall(store.writeBytes, store, probe, "")
+    return false
+  end
+  local rok, got = pcall(store.readBytes, store, probe)
+  pcall(store.writeBytes, store, probe, "")
+  if not rok or got ~= sentinel then return false end
   return true
 end
 
@@ -458,6 +501,29 @@ local function pathFor(map, slot, kind)
   return Disk.DIRECTORY .. "/" .. safeId(map.id) .. "/" .. suffix
 end
 
+local function physicalPath(path)
+  return legacyName(path) or path
+end
+
+local function recordWriteFailure(path, stage, err)
+  writeFailures[#writeFailures + 1] = {
+    path = tostring(path or "-"),
+    physical = tostring(physicalPath(path or "") or "-"),
+    stage = tostring(stage or "write"),
+    error = tostring(err or "unknown error"),
+  }
+end
+
+function Disk.beginFailureCapture()
+  writeFailures = {}
+end
+
+function Disk.takeWriteFailures()
+  local out = writeFailures
+  writeFailures = {}
+  return out
+end
+
 -- Forget a broken/session-stale container without touching persistent storage.
 -- Gameplay is deliberately RAM-only; CACHE -> SAVE is the sole runtime path
 -- which writes the canonical disk cache.
@@ -597,9 +663,12 @@ end
 -- the fixed header and exact fingerprint.  The ordinary load path still fully
 -- validates every stream before gameplay uses it.
 local function headerMatches(path, expected, map)
-  if not available() then return false end
+  if not available() then return false, "cache backend unavailable" end
   local ok, blob = pcall(storage.readBytes, storage, path)
-  if not ok or type(blob) ~= "string" then return false end
+  if not ok then return false, "read error: " .. tostring(blob) end
+  if type(blob) ~= "string" or #blob == 0 then
+    return false, "missing or empty cache record"
+  end
   knownSizes[path] = #blob
   local pos, actual = parseHeader(blob, expected)
   local matches = pos ~= nil
@@ -607,7 +676,11 @@ local function headerMatches(path, expected, map)
     reportMismatch(map, path, actual, expected,
       actual and nil or "invalid BAVC header/format")
   end
-  return ok and matches or false
+  if not matches then
+    return false, actual and fingerprintDifference(actual, expected)
+                  or "invalid BAVC header/format"
+  end
+  return true
 end
 
 -- Whether one map/slot has both persistent products the renderer will ask
@@ -619,6 +692,36 @@ function Disk.complete(map, bodyOnly, masks)
                        Disk.fingerprint(map, "aux", nil, "aux"), map)
      and headerMatches(pathFor(map, slot, "terrain"),
                        Disk.fingerprint(map, slot, masks, "terrain"), map)
+end
+
+
+function Disk.completeDetails(map, bodyOnly, masks)
+  if not map then
+    return false, { { kind = "map", path = "-", physical = "-",
+                      error = "map unavailable" } }
+  end
+  if not Disk.staticEligible(map) then
+    return false, { { kind = "map", path = tostring(map.id or "-"),
+                      physical = "-", error = "map is not static-cache eligible" } }
+  end
+  local slot = bodyOnly and "body" or "full"
+  local checks = {
+    { kind = "deco", path = pathFor(map, "aux", "aux"),
+      fp = Disk.fingerprint(map, "aux", nil, "aux") },
+    { kind = slot .. "-terrain", path = pathFor(map, slot, "terrain"),
+      fp = Disk.fingerprint(map, slot, masks, "terrain") },
+  }
+  local failures = {}
+  for _, check in ipairs(checks) do
+    local matched, err = headerMatches(check.path, check.fp, map)
+    if not matched then
+      failures[#failures + 1] = {
+        kind = check.kind, path = check.path,
+        physical = physicalPath(check.path), error = err,
+      }
+    end
+  end
+  return #failures == 0, failures
 end
 
 -- Small public report used by the generator screen and documentation checks.
@@ -638,11 +741,13 @@ function Disk.stats()
       local size = blob and #blob or knownSizes[path]
       out.files = out.files + 1
       out.bytes = out.bytes + (size or 0)
-      local id = name:match("^(.-)/aux$")
+      local id = name:match("^(.-)/deco$")
+              or name:match("^(.-)/aux$")
               or name:match("^(.-)/full%-terrain$")
               or name:match("^(.-)/body%-terrain$")
       if id then maps[id] = true end
-      if name:match("/aux$") then out.aux = out.aux + 1
+      if name:match("/deco$") or name:match("/aux$") then
+        out.aux = out.aux + 1
       elseif name:match("/full%-terrain$") then
         out.full = out.full + 1
       elseif name:match("/body%-terrain$") then
@@ -819,10 +924,13 @@ local function writePersistent(path, blob)
   local called, ok, code, message = pcall(storage.writeBytes, storage, path, blob)
   if not called then
     diskLog("voxel cache: write pcall failed %s", tostring(ok))
+    recordWriteFailure(path, "write exception", ok)
     return false, tostring(ok)
   end
   diskLog("voxel cache: write done %s ok=%s", tostring(path), tostring(ok == true))
-  return ok == true, ok and nil or tostring(message or code or "storage write failed")
+  local err = ok and nil or tostring(message or code or "storage write failed")
+  if ok ~= true then recordWriteFailure(path, "storage write", err) end
+  return ok == true, err
 end
 
 local function remember(path, blob, dirty)
@@ -849,19 +957,54 @@ end
 
 local function writeFile(path, fp, writer)
   if not available() then
-    return false, "cache backend unavailable (" .. tostring(backendKind) .. ")"
+    local err = "cache backend unavailable (" .. tostring(backendKind) .. ")"
+    recordWriteFailure(path, "backend", err)
+    return false, err
   end
   -- Preserve the encoder's real exception. The old bare false made an aux
   -- failure invisible, after which the mesher committed an unusable
   -- terrain-only map and the title screen appeared stuck.
   local ok, blob = pcall(encoded, fp, writer)
-  if not ok then return false, tostring(blob) end
-  if type(blob) ~= "string" then return false, "encoder returned no bytes" end
+  if not ok then
+    recordWriteFailure(path, "encode", blob)
+    return false, tostring(blob)
+  end
+  if type(blob) ~= "string" then
+    recordWriteFailure(path, "encode", "encoder returned no bytes")
+    return false, "encoder returned no bytes"
+  end
   if sessionActive then
     remember(path, blob, true)
     return true
   end
   return writePersistent(path, blob)
+end
+
+
+function Disk.writePrecacheFailureLog(rows)
+  rows = rows or {}
+  local lines = {
+    "# BATTLE ART VOXEL FORK precache failures",
+    "# Regenerated on each GENERATE PRECACHE run.",
+    "map\tslot\tstage\tcache-key\tbackend-path\terror",
+  }
+  for _, row in ipairs(rows) do
+    local values = {}
+    for _, key in ipairs({ "map", "slot", "stage", "path", "physical", "error" }) do
+      values[#values + 1] = tostring(row[key] or "-"):gsub("[\t\r\n]", " ")
+    end
+    local line = table.concat(values, "\t")
+    lines[#lines + 1] = line
+    diskLog("voxel precache failure: %s", line)
+  end
+  lines[#lines + 1] = ""
+  local fs = persistenceFilesystem()
+  if not (fs and fs.write and fs.createDirectory) then return false end
+  local ok = pcall(function()
+    assert(fs.createDirectory("mod-derived/BATTLE_ART_VOXEL_FORK"))
+    assert(fs.write(Disk.PRECACHE_FAILURE_FILE, table.concat(lines, "\n")))
+  end)
+  return ok, Disk.PRECACHE_FAILURE_FILE
 end
 
 -- Explicit pause-menu commit. Successful files become clean RAM entries;
@@ -921,6 +1064,48 @@ function Disk.saveAux(map, aux)
       Budget.check()
     end
   end)
+end
+
+-- Delete every on-disk static-mesh cache file so the mesher rebuilds from
+-- scratch on the next frame. Used by the "DROP MESH CACHE" pause-menu action
+-- (e.g. after a lift/grounding change left stale floating geometry baked in).
+-- Fails open: every filesystem op is pcall-guarded, and a missing or
+-- read-only backend simply reports zero removed. On the legacy FFI backend
+-- (<0.1.84) the files live under LEGACY_ROOT as .bavc; on the storage
+-- backend they live under LOGICAL_DIRECTORY. Clears the in-RAM mirror too.
+function Disk.purge()
+  local fs = persistenceFilesystem()
+  local removed = 0
+  -- The current storage facade is the authoritative backend on modern
+  -- engines. The public byte API has no delete primitive, so overwrite each
+  -- cache body with an empty value; ordinary validation treats that as absent
+  -- and rebuilds it. Read-only facades simply reject these writes.
+  if storage and storage.list and storage.writeBytes then
+    local ok, names = pcall(storage.list, storage, LOGICAL_DIRECTORY)
+    if ok then
+      for _, key in ipairs(names or {}) do
+        if key:sub(1, #LOGICAL_DIRECTORY + 1) == LOGICAL_DIRECTORY .. "/" then
+          local called, did = pcall(storage.writeBytes, storage, key, "")
+          if called and did == true then removed = removed + 1 end
+        end
+      end
+    end
+  end
+  if fs and fs.getDirectoryItems then
+    for _, root in ipairs({ LEGACY_ROOT, LOGICAL_DIRECTORY }) do
+      local ok, names = pcall(fs.getDirectoryItems, root)
+      if ok then
+        for _, name in ipairs(names or {}) do
+          local called, did = pcall(fs.remove, root .. "/" .. name)
+          if called and did ~= false then
+            removed = removed + 1
+          end
+        end
+      end
+    end
+  end
+  ramFiles, ramDirty, ramBytes, ramRejected = {}, {}, 0, {}
+  return removed
 end
 
 return Disk

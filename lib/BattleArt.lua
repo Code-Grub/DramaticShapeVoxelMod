@@ -142,6 +142,12 @@ end
 local cache = {}
 local external = setmetatable({}, { __mode = "k" })
 local metrics = setmetatable({}, { __mode = "k" })
+-- LOVE 0.1.83 Images cannot be read back with Image:newImageData(). Retain the
+-- already-prepared pixels weakly so title alpha compositing can inspect them
+-- without a GPU readback or a second atlas decode.
+local preparedData = setmetatable({}, { __mode = "k" })
+local bottomCrops = setmetatable({}, { __mode = "k" })
+local fittedFrameSets = setmetatable({}, { __mode = "k" })
 local original = setmetatable({}, { __mode = "k" })
 local trainerOriginal = setmetatable({}, { __mode = "k" })
 
@@ -361,6 +367,7 @@ function BattleArt.prepareData(data, mode)
     made = love.graphics.newImage(data)
     made:setFilter("nearest", "nearest")
     external[made] = true
+    preparedData[made] = data
     metrics[made] = { x0 = x0, x1 = x1, y0 = y0, y1 = y1,
                       w = w, h = h, padBottom = h - 1 - y1,
                       center = (x0 + x1 + 1) / 2 }
@@ -423,6 +430,21 @@ function BattleArt.generationFrontImage(species, generation, battler)
     species, generation, "front", shiny)
   local path = V.mod.assets:path(rel)
   return prepare(path, displayMode())
+end
+
+-- Non-battle interfaces have their own ownership setting. These regular-form
+-- helpers deliberately do not consult DUPLICATE FIX, which governs battle
+-- pictures only; InterfaceSprites decides whether it owns the caller.
+function BattleArt.interfaceStaticFrontImage(species, mode)
+  local rel = staticSpeciesRelativePath(species, "front", false)
+  local path = rel and V.mod.assets:path(rel)
+  return path and prepare(path, mode or displayMode()) or nil
+end
+
+function BattleArt.interfaceGenerationFrontImage(species, generation, mode)
+  local rel = generationRelativePath(species, generation, "front", false)
+  local path = rel and V.mod.assets:path(rel)
+  return path and prepare(path, mode or displayMode()) or nil
 end
 
 function BattleArt.namedImage(name, side)
@@ -572,6 +594,122 @@ end
 
 function BattleArt.isExternal(img) return external[img] and true or false end
 function BattleArt.metrics(img) return metrics[img] end
+function BattleArt.imageData(img) return img and preparedData[img] or nil end
+
+-- Return a title-only copy with a known-transparent bottom strip removed.
+-- TitleState bottom-aligns image dimensions, so shortening the canvas by N
+-- lowers every remaining pixel by N without changing the art inside it. The
+-- caller uses the minimum strip shared by every animation frame, preserving
+-- all authored relative motion and guaranteeing that no opaque pixel is cut.
+function BattleArt.cropPreparedBottom(img, rows)
+  rows = math.floor(tonumber(rows) or 0)
+  if not img or rows <= 0 then return img end
+  local byRows = bottomCrops[img]
+  if byRows and byRows[rows] then return byRows[rows] end
+  local source, metric = preparedData[img], metrics[img]
+  if not (source and metric) then return img end
+  local w, h = source:getDimensions()
+  rows = math.min(rows, h - 1, metric.padBottom or 0)
+  if rows <= 0 then return img end
+  local made
+  local ok = pcall(function()
+    local data = love.image.newImageData(w, h - rows)
+    data:paste(source, 0, 0, 0, 0, w, h - rows)
+    made = love.graphics.newImage(data)
+    made:setFilter("nearest", "nearest")
+    external[made], preparedData[made] = true, data
+    metrics[made] = {
+      x0 = metric.x0, x1 = metric.x1, y0 = metric.y0, y1 = metric.y1,
+      w = w, h = h - rows,
+      padBottom = math.max(0, (metric.padBottom or 0) - rows),
+      center = metric.center,
+    }
+  end)
+  if not (ok and made) then return img end
+  byRows = byRows or setmetatable({}, { __mode = "v" })
+  bottomCrops[img], byRows[rows] = byRows, made
+  return made
+end
+
+-- SummaryMenu reserves exactly 56x56 pixels at (8,0), then starts the
+-- Pokédex-number row at y=56. Generation atlases often use a larger logical
+-- canvas even when their visible drawing would fit that box; the stock draw
+-- code clamps such a canvas to y=0 and lets its lower rows cover the number.
+-- Fit the union of the complete animation once, rather than centering each
+-- frame independently. That keeps authored translations/swoops intact while
+-- giving every frame the same centered, bottom-aligned 56x56 viewport.
+function BattleArt.fitPreparedFrames(images, boxW, boxH)
+  if type(images) ~= "table" or #images == 0 then return images end
+  boxW, boxH = math.floor(tonumber(boxW) or 0), math.floor(tonumber(boxH) or 0)
+  if boxW <= 0 or boxH <= 0 then return images end
+
+  local cached = fittedFrameSets[images]
+  local cacheKey = boxW .. "x" .. boxH
+  if cached and cached[cacheKey] then return cached[cacheKey] end
+
+  local x0, x1, y0, y1
+  for _, image in ipairs(images) do
+    local metric = metrics[image]
+    if not (metric and preparedData[image]) then return images end
+    x0 = x0 and math.min(x0, metric.x0) or metric.x0
+    x1 = x1 and math.max(x1, metric.x1) or metric.x1
+    y0 = y0 and math.min(y0, metric.y0) or metric.y0
+    y1 = y1 and math.max(y1, metric.y1) or metric.y1
+  end
+  local unionW, unionH = x1 - x0 + 1, y1 - y0 + 1
+  if unionW <= 0 or unionH <= 0 then return images end
+
+  local scale = math.min(1, boxW / unionW, boxH / unionH)
+  local drawW = math.max(1, math.min(boxW, math.floor(unionW * scale + 0.5)))
+  local drawH = math.max(1, math.min(boxH, math.floor(unionH * scale + 0.5)))
+  local destX, destY = math.floor((boxW - drawW) / 2), boxH - drawH
+  local fitted, ok = {}, true
+  for _, image in ipairs(images) do
+    local source = preparedData[image]
+    local made
+    ok = pcall(function()
+      local sourceW, sourceH = source:getDimensions()
+      local data = love.image.newImageData(boxW, boxH)
+      for dy = 0, drawH - 1 do
+        local sy = y0 + math.min(unionH - 1,
+          math.floor(dy * unionH / drawH))
+        for dx = 0, drawW - 1 do
+          local sx = x0 + math.min(unionW - 1,
+            math.floor(dx * unionW / drawW))
+          if sx >= 0 and sy >= 0 and sx < sourceW and sy < sourceH then
+            data:setPixel(destX + dx, destY + dy, source:getPixel(sx, sy))
+          end
+        end
+      end
+
+      local fx0, fx1, fy0, fy1 = boxW, -1, boxH, -1
+      for py = 0, boxH - 1 do
+        for px = 0, boxW - 1 do
+          local _, _, _, alpha = data:getPixel(px, py)
+          if alpha > 0.001 then
+            if px < fx0 then fx0 = px end; if px > fx1 then fx1 = px end
+            if py < fy0 then fy0 = py end; if py > fy1 then fy1 = py end
+          end
+        end
+      end
+      if fx1 < fx0 then error("empty fitted frame") end
+      made = love.graphics.newImage(data)
+      made:setFilter("nearest", "nearest")
+      external[made], preparedData[made] = true, data
+      metrics[made] = {
+        x0 = fx0, x1 = fx1, y0 = fy0, y1 = fy1,
+        w = boxW, h = boxH, padBottom = boxH - 1 - fy1,
+        center = (fx0 + fx1 + 1) / 2,
+      }
+    end)
+    if not (ok and made) then return images end
+    fitted[#fitted + 1] = made
+  end
+
+  cached = cached or setmetatable({}, { __mode = "v" })
+  fittedFrameSets[images], cached[cacheKey] = cached, fitted
+  return fitted
+end
 -- Animated transforms are authored inside a fixed logical canvas. Gen 3 back
 -- APNGs in particular translate the same opaque drawing across that canvas;
 -- recomputing the placement anchor from every frame's opaque bounds cancels
@@ -604,6 +742,9 @@ function BattleArt.invalidate()
   cache = {}
   external = setmetatable({}, { __mode = "k" })
   metrics = setmetatable({}, { __mode = "k" })
+  preparedData = setmetatable({}, { __mode = "k" })
+  bottomCrops = setmetatable({}, { __mode = "k" })
+  fittedFrameSets = setmetatable({}, { __mode = "k" })
   original = setmetatable({}, { __mode = "k" })
   trainerOriginal = setmetatable({}, { __mode = "k" })
 end

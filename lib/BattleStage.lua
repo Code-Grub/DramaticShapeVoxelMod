@@ -67,7 +67,7 @@ function BattleStage.export(battles)
       layerOwnsProjection = true,
     }
 
-    local shot = call(battles, "shot")
+    local shot = call(battles, "stageShot") or call(battles, "shot")
     if type(shot) ~= "table" then return out end
 
     local player = copyPoint(shot.player, authoredPlayer)

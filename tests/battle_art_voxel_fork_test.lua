@@ -687,8 +687,8 @@ T.eq(hookedByLabel["HUD COLOR"].value(), "COLOR",
   "fresh installs retain the forks' original black and coloured HUD")
 T.eq(hookedByLabel["BOSS BG"].value(), "ON",
   "true boss encounter plates are enabled independently by default")
-T.eq(hookedByLabel["BG Y-OFFSET"].value(), "0 PX",
-  "illustrated backgrounds start at the authored top edge")
+T.eq(hookedByLabel["BG Y-OFFSET"].value(), "100 PX",
+  "illustrated backgrounds default to a 100-pixel source crop")
 T.eq(hookedByLabel.SHADOWS.value(), "ON",
   "real cast shadows remain on by default")
 
@@ -696,9 +696,13 @@ do
 local Backplates = modExports.lib.require("UiBackplates")
 local Voxel = modExports.lib.require("Voxel3D")
 T.eq(#Backplates.backdropOffset.values, 21,
-  "BG Y-OFFSET exposes every ten-pixel step from 0 through 200")
-T.eq(Backplates.backdropOffset.values[21], 200,
-  "BG Y-OFFSET includes the requested 200-pixel lower crop")
+  "BG Y-OFFSET exposes every 20-pixel step from 0 through 400")
+T.eq(Backplates.backdropOffset.values[1], 0,
+  "BG Y-OFFSET contains no negative crop values")
+T.eq(Backplates.backdropOffset.values[6], 100,
+  "BG Y-OFFSET keeps 100 pixels directly selectable")
+T.eq(Backplates.backdropOffset.values[21], 400,
+  "BG Y-OFFSET includes the maximum 400-pixel lower crop")
 Backplates.spriteLight:sync("SHADED")
 Backplates.arenaFill:sync("WHITE")
 T.check(Backplates.spritesUnlit(),
@@ -712,14 +716,16 @@ local Gen6 = modExports.lib.require("Gen6Backdrop")
 local WorldUnderlay = modExports.lib.require("WorldUnderlay")
 T.eq(hookedByLabel["WORLD FILL"].value(), "CYAN",
   "WORLD FILL defaults to the established cyan underlay")
-T.eq(#WorldUnderlay.setting.values, 3,
-  "WORLD FILL exposes cyan, black and the KFP compatibility mode")
+T.eq(#WorldUnderlay.setting.values, 4,
+  "WORLD FILL exposes cyan, black, KFP compatibility and nature modes")
 T.eq(WorldUnderlay.setting.values[1], "cyan",
   "WORLD FILL stores cyan as its first and default choice")
 T.eq(WorldUnderlay.setting.values[2], "black",
   "WORLD FILL offers a separate black choice")
 T.eq(WorldUnderlay.setting.values[3], "off",
   "WORLD FILL offers an underlay-off KFP compatibility choice")
+T.eq(WorldUnderlay.setting.values[4], "nature",
+  "WORLD FILL offers opt-in biome scenery")
 WorldUnderlay.setting:sync("off")
 T.eq(WorldUnderlay.selected(), "off",
   "OFF/KFP stores the explicit disabled material")
@@ -730,6 +736,12 @@ T.eq(WorldUnderlay.draw({}, 0, 0), false,
 WorldUnderlay.setting:sync("cyan")
 T.check(WorldUnderlay.enabled(),
   "CYAN restores Battle Art's underlay")
+T.check(not WorldUnderlay.natureEnabled(),
+  "CYAN does not submit optional nature scenery")
+WorldUnderlay.setting:sync("nature")
+T.check(WorldUnderlay.enabled() and WorldUnderlay.natureEnabled(),
+  "NATURE enables both its black underlay and biome scenery")
+WorldUnderlay.setting:sync("cyan")
 T.eq(WorldUnderlay.COLORS.cyan[1], 0,
   "cyan keeps its zero red channel")
 T.eq(WorldUnderlay.COLORS.cyan[2], 71 / 255,

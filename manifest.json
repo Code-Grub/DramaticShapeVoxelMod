@@ -1,7 +1,7 @@
 {
   "id": "BATTLE_ART_VOXEL_FORK",
   "name": "BATTLE ART VOXEL FORK",
-  "version": "1.9.5",
+  "version": "1.9.6",
   "api": 2,
   "entry": "main.lua",
   "profile": "content",
@@ -12,7 +12,7 @@
   "game_version": "0.0.0-dev || >=0.1.69 <3.0.0",
   "priority": 100,
   "dependencies": [],
-  "optional_dependencies": [],
+  "optional_dependencies": ["STADIUM2_IMPORTER"],
   "conflicts": [
     "DRAMATIC_SHAPE",
     "DRAMALESS_SHAPE",

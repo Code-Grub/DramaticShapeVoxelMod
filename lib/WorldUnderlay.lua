@@ -26,8 +26,8 @@ local HEIGHT = -20
 
 WorldUnderlay.setting = ModSetting.new(
   "worldFill", "WORLD FILL",
-  { "cyan", "black", "off" },
-  { "CYAN", "BLACK", "OFF/KFP" })
+  { "cyan", "black", "off", "nature" },
+  { "CYAN", "BLACK", "OFF/KFP", "NATURE" })
 
 local COLORS = {
   cyan  = {   0 / 255,  71 / 255, 109 / 255, 1 }, -- #00476D
@@ -45,6 +45,10 @@ end
 
 function WorldUnderlay.enabled()
   return WorldUnderlay.selected() ~= "off"
+end
+
+function WorldUnderlay.natureEnabled()
+  return WorldUnderlay.selected() == "nature"
 end
 
 -- Dense where the camera can inspect the curve, increasingly coarse after
@@ -127,12 +131,15 @@ function WorldUnderlay.resolve(state, colors)
     if color then return color, "indoor:border:" .. tostring(borderId) end
   end
   local material = WorldUnderlay.selected()
+  if material == "nature" then material = "cyan" end
   return COLORS[material] or COLORS[DEFAULT_FILL], "world:" .. tostring(material)
 end
 
 function WorldUnderlay.draw(state, cx, cy, resolvedColor)
   if not state or not WorldUnderlay.enabled() then return false end
-  local color = resolvedColor or COLORS[WorldUnderlay.selected()] or COLORS[DEFAULT_FILL]
+  local material = WorldUnderlay.selected()
+  if material == "nature" then material = "cyan" end
+  local color = resolvedColor or COLORS[material] or COLORS[DEFAULT_FILL]
   local mesh, texture = meshFor(), textureFor(color)
   if not (mesh and texture) then return false end
   -- A clean material layer: no voxel-grid seams or accidental glass-mask

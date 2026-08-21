@@ -64,6 +64,14 @@ Key visual controls include:
 - `CYAN` is the default classic underlay.
 - `BLACK` uses the dark `#181818` underlay.
 - `OFF/KFP` draws no underlay, allowing Kanto First Person to own that space.
+- `NATURE` uses the cyan underlay and adds biome-aware trees or rocks.
+
+With `NATURE`, transparent nature billboards populate every 16×16
+world cell beyond the loaded map and its connected neighbors. Towns, forests,
+and leafy routes continue with trees; Safari/open-field routes use broadleaf
+trees; rocky routes (including Route 23) and cavern maps use rock pillars.
+Their variant and 100%/150%/200% size are randomized deterministically, so they do not
+flicker when the camera moves. Authored ROM cells always remain unobstructed.
 
 ### Water and sky
 
@@ -91,8 +99,9 @@ Presentation controls include:
 
 | Option | Choices | Purpose |
 | --- | --- | --- |
-| `ARENA FILL` | `OFF`, `WHITE`, `GEN6`, `PNG` | World arena, flat white arena, contextual Gen 6 backdrop, or custom backdrop |
-| `BG Y-OFFSET` | `-400` to `+400` | Vertically crops a selected backdrop |
+| `ARENA FILL` | `OFF`, `WHITE`, `GEN6`, `PNG`, `BLUE` | Voxel level, flat Battle Art arena, or Stadium's blue arena |
+| `STADIUM CIRCLE` | `ON`, `OFF`, `HALF` | Independently selects full, hidden, or two-thirds-radius Stadium ground circles when supported |
+| `BG Y-OFFSET` | `0` to `400` (default `100`) | Vertically crops a selected backdrop |
 | `BOSS BG` | `ON`, `OFF` | Allows special boss backdrops |
 | `SPRITE LIGHT` | `SHADED`, `UNLIT` | Lets battle cards receive world lighting or preserve source colors |
 | `HUD COLOR` | `COLOR`, `INVERTED` | Dark or light HUD glyph treatment while retaining HP colors |
@@ -140,6 +149,11 @@ mod-derived/BATTLE_ART_VOXEL_FORK/static-mesh-cache-v2
 ```
 
 The cache does not store runtime NPCs, spawned overworld Pokémon, or temporary script changes. Live map changes are meshed in RAM; returning to the canonical layout reuses the disk record. A human-readable `static-cache-exclusions.tsv` records intentionally excluded runtime objects and noncanonical geometry.
+
+If generation ends as `INCOMPLETE`, inspect
+`mod-derived/BATTLE_ART_VOXEL_FORK/precache-failures.tsv`. It is regenerated
+for each run and lists the failing map and slot, the logical cache key, the
+actual legacy `.bavc` path, the failure stage, and the storage/encoder error.
 
 BAVC is a versioned, fingerprinted, LZ4-compressed geometry container. Corrupt or truncated records safely fall back to cooperative mesh generation. Cache size depends on the imported ROM and installed content and can reach hundreds of MiB. The directory is disposable: deleting it only makes the mod regenerate those meshes. The pause-menu `CACHE` action can save or drop accumulated legacy-engine RAM cache work.
 
@@ -202,6 +216,43 @@ local state = stage and stage.state(battle)
 ```
 
 API version 1 is observational and read-only. A staged session reports `staged = true`; `ready` becomes true when the first projected shot exists. Ready state includes copied player/enemy anchors, sprite placement, animation scale, layer transform, and ownership declarations for the arena, battlers, trainers, camera, HUD, transitions, and animation projection. Consumers can align effects or yield competing presentation without retaining live internal tables.
+
+### Optional Stadium 2 models
+
+When `STADIUM2_IMPORTER` exposes its scene-neutral model API v2, its two
+provider toggles select the Pokemon art automatically. With both `STADIUM 2
+MODELS` and `STADIUM 2 BATTLE` on, Battle Art replaces Pokemon cards in the
+staged voxel arena with independently owned model instances. Turning either
+importer option off releases those instances and restores Battle Art sprites.
+Battle Art reads these options but does not rewrite them.
+
+Models use Battle Art's camera, depth target, placement, day tint, timing and
+shadow map. Battle Art continues to own terrain, trainers, HUD, menus, attack
+overlays and battle logic. Trainer portraits always remain cards. If the
+provider is absent or disabled, a model cannot load, or a side fails to update,
+draw or cast a shadow, that side retains its Battle Art card fallback.
+
+When the importer owns its complete Stadium battle scene, Battle Art registers
+`exports.scene` environment and background providers. `ARENA FILL: OFF` uses
+the captured voxel battle level through Stadium's live camera, so zoom, orbit,
+models and attack anchors remain one composition. `WHITE`, `GEN6`, and `PNG`
+replace the arena, while `BLUE` selects the importer's native blue background.
+`STADIUM CIRCLE` independently draws the imported ground platform at full or
+two-thirds radius, or hides it. The row is absent and inert without a compatible
+Stadium scene. Stadium models cast into the voxel terrain shadow map whether
+or not the circle is visible. With a flat WHITE, GEN6, PNG, or BLUE plate and
+the circle hidden or reduced, an invisible ground plane receives only the
+model-shadow pixels beyond the visible platform so the models remain planted
+without a clipped shadow or an additional platform. Missing
+optional artwork safely falls through to Stadium.
+
+`INTERFACE SPRITES: BATTLE ART` uses the selected regular-form front outside
+battles independently of `DUPLICATE FIX`. The title and Gen 1 summary screen
+play supported animated generations with their authored frame timing and
+true-color palette, including compatible atlases returned by another sprite
+provider in clean builds. The summary's HP gauge remains the engine's native
+shaped, palette-aware tile bar. Interfaces that accept only a static path retain
+ROM art for atlas-based generations rather than drawing an undecoded sheet.
 
 For Stadium 3D models, use the [Stadium 2 Importer](https://github.com/Deftones565/gen1recomp-mod-stadium2-importer), which integrates through this staged-battle interface. [Stadium Battle FX](https://github.com/anxiousintrovert/StadiumBattleFX) replaces attack effects instead of Pokémon battler pictures, so it does not require `DUPLICATE FIX: MODDED`.
 

@@ -24,6 +24,89 @@
   bypass Battle Art's legacy frame compositor so SBFX retains the final world
   override and selected model surface.
 
+- **Biome-aware WORLD FILL scenery.** Every 16x16 fill cell beyond the loaded
+  map neighborhood now receives a grounded, camera-facing nature billboard.
+  Forest/city, open-field/Safari, and rocky/cavern maps select independent
+  transparent tree or rock sets with stable randomized variants and discrete
+  100%/150%/200% sizes (150% average);
+  valid ROM terrain and connected maps remain exclusion zones. The scenery
+  horizon is one-and-a-half times its original radius and is submitted as one
+  cached combined mesh instead of thousands of individual billboard draws.
+  The scenery is opt-in through `WORLD FILL: NATURE`, which combines it with
+  the cyan underlay; CYAN, BLACK and OFF/KFP retain their lightweight behavior.
+
+- **Oak's Lab authored props.** The waste-paper basket now uses the same open,
+  tapered cylinder treatment as the Gym cans. The wall scrolls retain their
+  facade art while their upward faces use the neighboring plain wall course.
+
+- **Background crop defaults.** `BG Y-OFFSET` now defaults to 100 source
+  pixels and offers only non-negative values from 0 through 400.
+
+- **Battle Art stages in Stadium-owned battles.** The Stadium 2 Importer scene
+  API now receives Battle Art's selected arena. OFF draws the captured voxel
+  level through Stadium's live camera and publishes its hosted attack anchors;
+  WHITE, GEN6, PNG and boss overrides replace its backdrop. The new BLUE
+  choice selects the importer's blue arena. A separate STADIUM CIRCLE choice
+  draws the platform at full or two-thirds radius, or hides it, and Stadium models
+  cast into voxel terrain independently of that platform. Hidden circles on
+  flat fills use an invisible shadow-only ground catcher; reduced circles use
+  it beyond their edge, so models remain planted without exposing another
+  platform or clipping the shadow. Missing art safely retains Stadium's
+  default background.
+
+- **Automatic Stadium model bridge.** When a Stadium 2 Importer exposing the
+  scene-neutral model API v2 is installed, `STADIUM 2 MODELS` and `STADIUM 2
+  BATTLE` together place independently owned Pokemon models directly in the
+  staged voxel arena. Turning either importer option off restores Battle Art
+  sprites. Missing providers and per-side load, update, draw, or shadow
+  failures retain the existing card fallback.
+
+- **Interface Sprites startup fix.** Installing the non-battle sprite hook now
+  calls its namespaced summary helper, tolerates a nil sprite context, preserves
+  summary draw arguments, and cannot wrap the summary renderer twice.
+
+- **Animated title and summary fronts.** Atlas generations are decoded through
+  Battle Art's existing frame metadata instead of being drawn as one enormous
+  sheet. Frames keep their authored 56×56-style canvas for stable centering,
+  advance with their recorded timing, and opt out of the title/status SGB
+  recolor as true-color art. Clean builds can slice the path returned by an
+  external sprite provider when private PNGs are absent. Other path-only
+  interfaces retain ROM art rather than displaying an undecoded atlas. Title
+  compositing is alpha-aware where the Pokémon overlaps Red: only visible
+  Pokémon pixels not covered by an opaque trainer pixel are replayed after the
+  palette pass, eliminating the rectangular cutoff through effects such as
+  Gastly's aura. This shared path supports Gen 1 static fronts and Gen 2–5
+  animated front atlases without assuming a 56×56 frame. On legacy 0.1.83 the
+  replay follows the pixel-valued `monOffset` animation and masks Red using the
+  trainer quads plus separately moving Poké Ball, preventing a palette-color
+  seam where the Pokémon crosses the trainer boundary. Because legacy Images
+  cannot be read back, prepared Pokémon ImageData is retained weakly and Red's
+  alpha comes from the resolved trainer PNG, retaining the original overlapping
+  title composition with alpha-correct layering. Pokédex entries now decode and animate the selected
+  Gen 1–5 front through the same playback path instead of retaining ROM art.
+  Title placement removes only the transparent bottom rows common to every
+  frame of a species animation, aligning its lowest opaque foot pixel with
+  Red's baseline while preserving authored frame-to-frame vertical motion.
+
+- **Native Summary HP gauge restored.** The interface wrapper no longer paints
+  a rectangular bar at `(88,17)`. SummaryMenu's existing shaped tile gauge at
+  `(11,3)` retains its six partial/full cells, type-1 end cap, exact HP width,
+  and engine green/yellow/red palette.
+
+- **Voxel cache binding and purge cleanup.** The storage persistence probe is
+  now locally declared before use, so modern-engine binding cannot call an
+  undefined global. `CACHE -> DROP` invalidates the active storage-byte backend
+  as well as legacy files and reports only successful removals.
+
+- **Actionable legacy precache failures.** `GENERATE PRECACHE` now regenerates
+  `mod-derived/BATTLE_ART_VOXEL_FORK/precache-failures.tsv` and records the map,
+  FULL/BODY slot, encode/write/check stage, logical key, legacy `.bavc` path,
+  and returned error for every failed job. Coroutine mesh-build exceptions are
+  retained until the generator records them instead of being lost after a
+  console-only warning. The completion summary also counts
+  the Windows-safe `/deco` product as AUX; the old display incorrectly showed
+  `AUX: 0` even when all decoration caches existed.
+
 - **Stable GEN6 backgrounds during battle.** A staged fight now snapshots its
   dawn/day/dusk/night background period when it begins. The world clock may
   continue advancing, but the illustrated arena cannot switch pictures until
@@ -33,6 +116,31 @@
   suppresses Battle Art's infinite underlay plane, including the automatic
   indoor border fill, so KFP can own that background without competing layers.
   CYAN remains the default and BLACK is unchanged.
+
+- **Responsive Viridian Forest canopy builds.** The first unique 32x32 tree
+  hull now observes the existing cooperative mesh-build budget throughout its
+  pixel classification, flood, chord, and face passes. Entering a dense forest
+  can no longer monopolize the main thread and strand camera/input while the
+  terrain cache is being prepared. Cold warp destinations queue their smaller
+  body mesh before the full border-ring mesh, and a held voxel frame is never
+  reused across map IDs; a forest load therefore cannot masquerade as a frozen
+  camera still showing the adjacent gate/route.
+
+- **Forest/Safari FULL precache repaired.** The shared 32×32 canopy call was
+  missing one optional-argument placeholder, so `pinBase=true` landed in the
+  numeric `taperVox` slot and all four Safari Zone exteriors plus Viridian
+  Forest failed with `attempt to compare number with boolean` before either
+  cache product could be written. The argument is now in its intended slot,
+  and the regression resumes the cooperatively yielded canopy through complete
+  generation so this class of delayed positional failure is covered.
+
+- **Doorless building rear walls.** OVERWORLD building north faces now replace
+  facade-only upper/lower door tiles with the nearest matching wall/base course.
+  Fronts retain the authored doors; walking north out of a house no longer
+  exposes a mirrored copy of its entrance on the back wall. The static mesh
+  geometry revision is bumped so existing cached houses rebuild automatically.
+  This is limited to exterior homes, commercial houses, Centers, Marts, Oak's
+  Lab, and the Day Care; no interior tileset/model is modified.
 
 - **Current mod API compatibility.** The mod now boots inside the engine's
   sandbox instead of reaching denied `love.filesystem`, FFI, or LOVE callback

@@ -99,6 +99,9 @@ local BattlePresentation = V.require("BattlePresentation")
 local BattleStage = V.require("BattleStage")
 local StadiumBattleFxProvider = V.require("StadiumBattleFxProvider")
 local BattleArt = V.require("BattleArt")
+local StadiumModels = V.require("StadiumModels")
+local StadiumBackground = V.require("StadiumBackground")
+local InterfaceSprites = V.require("InterfaceSprites")
 local UiBackplates = V.require("UiBackplates")
 local BattleExit = V.require("BattleExit")
 local DayNight = V.require("DayNight")
@@ -476,6 +479,8 @@ local SETTINGS = {
   { WorldUnderlay.setting,
     "Choose the solid outdoor world beneath terrain holes and beyond map edges: "
     .. "CYAN or BLACK. OFF/KFP leaves the underlay to Kanto First Person. "
+    .. "NATURE uses a black underlay and continues each biome beyond loaded "
+    .. "ROM cells with stable random-sized tree or rock billboards. "
     .. "Indoor horizons automatically match "
     .. "the room's own border/void material so the finite map ring cannot reveal "
     .. "a differently coloured infinite fill behind it.",
@@ -496,6 +501,12 @@ local SETTINGS = {
     .. "fallback from free roam and staged battles; UNLIT battle cards also "
     .. "decline shadows even while this global switch is ON.",
     full = true },
+  { InterfaceSprites.setting,
+    "INTERFACE SPRITES: show BATTLE ART's regular-form FRONT outside battle. "
+    .. "Title and status support timed atlas animation; other hook-aware "
+    .. "screens use single-image sets or retain ROM art, independent of "
+    .. "DUPLICATE FIX (which owns only battle pictures). "
+    .. "MODDED leaves the interfaces to another sprite mod or the ROM." },
   -- `full` marks a row FULL does not take away. FULL owns the diorama's own
   -- knobs; what a battle is drawn over, and how it is framed, are not that.
   { OverworldBattle.setting,
@@ -595,16 +606,23 @@ local SETTINGS = {
     .. "ARENA FILL: WHITE always uses COLOR so the HUD remains visible.",
     when = function() return stagedBattles() end, full = true },
   { UiBackplates.arenaFill,
-    "WHITE draws a solid white layer in front of the voxel world. GEN6 "
+    "OFF uses the voxel level. WHITE draws a solid white arena. GEN6 "
     .. "selects a flat illustrated background by city, route, cave or "
     .. "story location and follows DAWN/DAY/DUSK/NIGHT where variants exist. "
+    .. "BLUE uses Stadium 2's native background and ground circles. "
     .. "Both fill and crop to every window shape, softly defocus the plate, "
     .. "retain the normal battle camera, keep only "
     .. "mons, attacks and menus above it, and force SPRITE LIGHT: UNLIT.",
     when = function() return stagedBattles() end, full = true },
+  { UiBackplates.stadiumCircle,
+    "Control Stadium's ground circles independently of ARENA FILL. ON uses "
+    .. "the normal radius, HALF uses two-thirds radius, and OFF hides them. "
+    .. "This has no effect unless a compatible Stadium scene is installed.",
+    when = function() return StadiumBackground.installed() end,
+    provider = true, full = true },
   { UiBackplates.backdropOffset,
     "Choose how far down into an illustrated background its top crop begins, "
-    .. "from 0 to 200 source-image pixels. Larger values reveal lower floor "
+    .. "from 0 to 400 source-image pixels (100 by default). Larger values reveal lower floor "
     .. "detail in wide windows and are safely clamped when no vertical crop "
     .. "is available. This affects GEN6 and enabled boss backgrounds.",
     -- Keep it visible beside ARENA FILL so a player can prepare the crop
@@ -642,8 +660,12 @@ local SETTINGS = {
 }
 
 local schema = {}
-for i, entry in ipairs(SETTINGS) do
-  schema[i] = entry[1]:schema(entry[2])
+for _, entry in ipairs(SETTINGS) do
+  -- Provider-only settings should not leave a dead row when the optional
+  -- provider is absent. The in-game row has the same availability guard.
+  if not entry.provider or StadiumModels.installed() then
+    schema[#schema + 1] = entry[1]:schema(entry[2])
+  end
 end
 mod.options:define(schema)
 
@@ -990,10 +1012,10 @@ mod.hooks:wrap("ui.start_menu.items", function(next, game, items)
           end
         end },
         { label = "DROP", onSelect = function()
-          local dropped = VoxelMeshDisk.dropRam()
+          local CM = V.require("ChunkMesher")
+          pcall(CM.purgeCache)
           game.stack:push(TextBox.new(game,
-            ("RAM CACHE DROPPED\n%d FILE%s\fAREAS WILL LOAD\nAS NEEDED")
-              :format(dropped.files, dropped.files == 1 and "" or "S")))
+            "MESH CACHE DROPPED\nAREAS REBUILD GROUNDED"))
         end },
       }, { tx = 10, ty = 0, tw = 10, onCancel = reopen }))
     end,
@@ -1172,6 +1194,7 @@ end
 -- where the reasoning for each one is written down. Installed once, here,
 -- so this file keeps naming every engine seam the mod touches.
 OverworldBattle.install()
+StadiumBackground.install()
 
 -- ------- the first-person rung's inputs and its walk
 --
@@ -1253,6 +1276,12 @@ mod.hooks:wrap("pokemon.sprite", function(next, path, ctx)
   local def = ctx.data and ctx.data.pokemon and ctx.data.pokemon[ctx.species]
   return (def and def.spriteFront) or out
 end)
+
+-- Interface sprites: our selected-generation front in the non-battle
+-- interfaces (title, dex, status/party, hall of fame). Registered after the
+-- battle wrap above; it ignores battle contexts and only substitutes for
+-- interface ones.
+InterfaceSprites.install()
 
 -- Every ending path emits this, including a battle skipped before it drew,
 -- so this is where the map's cast comes back.
@@ -1336,7 +1365,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.9.5"
+mod.exports.version = "1.9.6"
 mod.exports.battlePresentation = BattlePresentation.export()
 mod.exports.battleStage = BattleStage.export(OverworldBattle)
 -- exposed so a companion mod can pin its own tiles' shapes or read the

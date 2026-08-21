@@ -682,10 +682,11 @@ local function runGeometry(map, bodyOnly, masks, sink, waterSink)
                  { x0 + 8, neY, z0 }, { x0, nwY, z0 } },
                { { u0, v1 }, { u1, v1 }, { u1, v0 }, { u0, v0 } }, 0.95)
         elseif run then
-          local topTile = map:tileAt(tx, ChunkMesher.flatTopRow(run, ty))
+          local topTile = s.topTile
+            or map:tileAt(tx, ChunkMesher.flatTopRow(run, ty))
           topQuad(x0, z0, h, topTile, VOLUME_TOP_SHADE)
         else
-          local topTile = tile
+          local topTile = s.topTile or tile
           if s.art == "upright" and s.authored then
             -- Top art for a pinned box.  A furniture drawing is top-view
             -- rows over floor(h/8) face-on rows the fold stands upright;
@@ -1159,6 +1160,7 @@ end
 
 local jobs = {}       -- FIFO of pending jobs
 local jobIndex = {}   -- "id:slot" -> job
+local jobFailures = {} -- settled coroutine errors, consumed by diagnostics
 
 local clock = (love and love.timer and love.timer.getTime) or os.clock
 
@@ -1167,7 +1169,8 @@ local function jobKey(id, slot)
 end
 
 local function finishJob(job, ok, err)
-  jobIndex[jobKey(job.id, job.slot)] = nil
+  local key = jobKey(job.id, job.slot)
+  jobIndex[key] = nil
   for i, j in ipairs(jobs) do
     if j == job then
       table.remove(jobs, i)
@@ -1181,6 +1184,9 @@ local function finishJob(job, ok, err)
     if (gen[job.id] or 0) == job.gen then
       entry(job.id)[job.slot] = false
     end
+    jobFailures[key] = tostring(err or "unknown mesh build error")
+  else
+    jobFailures[key] = nil
   end
 end
 
@@ -1299,6 +1305,7 @@ function ChunkMesher.request(map, bodyOnly, masks, priority)
   local job = jobIndex[key]
   local requested = priorityValue(priority)
   if not job then
+    jobFailures[key] = nil
     job = { id = map.id, map = map, slot = slot, masks = masks,
             priority = requested, gen = gen[map.id] or 0 }
     jobIndex[key] = job
@@ -1332,6 +1339,17 @@ end
 -- probe; a failed build and a completed build both stop being pending.
 function ChunkMesher.jobPending(mapId, bodyOnly)
   return jobIndex[jobKey(mapId, bodyOnly and "body" or "full")] ~= nil
+end
+
+-- A completed and a failed coroutine both disappear from jobPending(). Keep
+-- the latter's exact exception until the sole consumer (precache diagnostics)
+-- records it. Runtime callers need no special handling: false remains cached
+-- as before and ordinary rendering continues to fail open.
+function ChunkMesher.takeJobFailure(mapId, bodyOnly)
+  local key = jobKey(mapId, bodyOnly and "body" or "full")
+  local err = jobFailures[key]
+  jobFailures[key] = nil
+  return err
 end
 
 -- Small diagnostic used by probes/tests to verify that a queued neighbour was
@@ -1620,5 +1638,18 @@ function ChunkMesher.invalidateVoidRings()
 end
 
 Assets.register(function() ChunkMesher.invalidate() end)
+
+-- Drop the entire voxel mesh cache -- both the live GPU/RAM meshes (via
+-- invalidate) and the on-disk BAVC files (via Disk.purge) -- so the mesher
+-- rebuilds every area from scratch on the next frame. This is the "DROP MESH
+-- CACHE" pause-menu action: use it after a geometry/grounding change (e.g. the
+-- pinBase cylinder/tree fix) left stale floating meshes baked into the cache.
+-- Fails open; a missing or read-only backend simply leaves the disk as-is.
+function ChunkMesher.purgeCache()
+  ChunkMesher.invalidate()
+  if Disk and Disk.purge then
+    pcall(Disk.purge)
+  end
+end
 
 return ChunkMesher

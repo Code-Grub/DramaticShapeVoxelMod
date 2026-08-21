@@ -5,9 +5,9 @@
 --      bright (UNLIT). UNLIT keeps them readable on the white arena fill (B);
 --      SHADED is the default OG look and is also supported on white.
 --
---   B) ARENA FILL    OFF / WHITE / GEN6 -- either the voxel arena, a solid
---      white stage, or a location-aware illustrated plate. BOSS BG is an
---      independent override within illustrated collections.
+--   B) ARENA FILL    OFF / WHITE / GEN6 / PNG / BLUE -- either the voxel
+--      arena, a flat Battle Art plate, or the Stadium importer's own stage.
+--      BOSS BG is an independent override within illustrated collections.
 --
 --   A) TEXTBOX FILL  WHITE / HALF / BLACK / OFF
 --      Controls the engine's own battle-box paper at draw time. Because the
@@ -65,24 +65,39 @@ end
 -- ------- B) ARENA FILL -------
 
 UiBackplates.arenaFill = ModSetting.new("arenaFill", "ARENA FILL",
-  { "OFF", "WHITE", "GEN6", "PNG" }, { "OFF", "WHITE", "GEN6", "PNG" })
+  { "OFF", "WHITE", "GEN6", "PNG", "BLUE" },
+  { "OFF", "WHITE", "GEN6", "PNG", "BLUE" })
+
+-- Stadium's platform is independent of the selected arena fill. The row is
+-- exposed only when a scene provider advertises it (see main.lua), so this
+-- saved preference is inert without the Stadium importer.
+UiBackplates.stadiumCircle = ModSetting.new("stadiumCircle", "STADIUM CIRCLE",
+  { "ON", "OFF", "HALF" }, { "ON", "OFF", "HALF" })
+
+function UiBackplates.stadiumCircleScale()
+  local value = UiBackplates.stadiumCircle:get()
+  if value == "OFF" then return 0 end
+  if value == "HALF" then return 2 / 3 end
+  return 1
+end
 
 -- How far down the authored plate to begin its top crop. The values are in
 -- source-image pixels (the bundled plates are 800px tall), so the same choice
 -- identifies the same part of the art on a phone, tablet or desktop window.
 -- Voxel3D clamps it whenever an aspect ratio leaves less crop available.
--- Range spans -400..+400 (step 20): negative values let narrow/phone viewports
--- reveal the TOP of the arena art, which the old positive-only range hid.
+-- Range spans 0..400 (step 20). 100 is the fresh-install default, keeping
+-- useful floor detail in wide windows without retaining confusing negative
+-- crops in either options UI.
 local offsetValues, offsetLabels = {}, {}
-for px = -400, 400, 20 do
+for px = 0, 400, 20 do
   offsetValues[#offsetValues + 1] = px
   offsetLabels[#offsetLabels + 1] = px .. " PX"
 end
 UiBackplates.backdropOffset = ModSetting.new(
-  "backdropOffset", "BG Y-OFFSET", offsetValues, offsetLabels)
+  "backdropOffset", "BG Y-OFFSET", offsetValues, offsetLabels, 6)
 
 function UiBackplates.backdropOffsetPixels()
-  return tonumber(UiBackplates.backdropOffset:get()) or 0
+  return tonumber(UiBackplates.backdropOffset:get()) or 100
 end
 
 -- Whether to draw the solid white layer over the voxel world. Decoupled from
@@ -100,12 +115,16 @@ function UiBackplates.arenaPng()
   return UiBackplates.arenaFill:get() == "PNG"
 end
 
+function UiBackplates.arenaBlue()
+  return UiBackplates.arenaFill:get() == "BLUE"
+end
+
 -- Every illustrated collection is a flat plate.  Keeping this generic makes
 -- the independent boss layer work when GEN4/OPENART are added later without
 -- teaching the camera and lighting code every collection name.
 function UiBackplates.arenaArt()
   local value = UiBackplates.arenaFill:get()
-  return value ~= "OFF" and value ~= "WHITE"
+  return value ~= "OFF" and value ~= "WHITE" and value ~= "BLUE"
 end
 
 UiBackplates.bossBg = ModSetting.new("bossBg", "BOSS BG",

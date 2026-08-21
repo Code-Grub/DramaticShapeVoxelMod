@@ -49,6 +49,7 @@ local UiBackplates = V.require("UiBackplates")
 local TextboxStyle = V.require("TextboxStyle")
 local BattlePics = V.require("BattlePics")
 local BattleArt = V.require("BattleArt")
+local StadiumModels = V.require("StadiumModels")
 local AnimatedBattleArt = V.require("AnimatedBattleArt")
 local Gen6Backdrop = V.require("Gen6Backdrop")
 local Voxel3D = V.require("Voxel3D")
@@ -163,6 +164,12 @@ end
 -- whether their BattleState is currently being captured into voxel billboards.
 function OverworldBattle.battle()
   return session and session.battle or nil
+end
+
+-- The Stadium background extension renders outside BattleScene, but it still
+-- needs the same captured encounter map used by GEN6/boss backdrop routing.
+function OverworldBattle.map()
+  return session and session.state and session.state.map or nil
 end
 
 -- ------- battle-art view
@@ -663,8 +670,8 @@ end
 function OverworldBattle.providerBegin(expectedBattle)
   if not OverworldBattle.providerAvailable(expectedBattle) then return false end
   session.apiHosted = true
-  session.shot = nil
   session.providerShot = nil
+  session.shot = nil
   session.snapped = false
   return true
 end
@@ -731,7 +738,8 @@ function OverworldBattle.providerUpdate(expectedBattle, dt, nativeCards)
   end
 end
 
-function OverworldBattle.providerRender(expectedBattle, drawActors, camera,
+function OverworldBattle.providerRender(expectedBattle, drawActors,
+                                        externalCamera, externalModelShadow,
                                         nativeCards, nativeHud)
   if not (session and session.apiHosted and type(drawActors) == "function") then
     -- A selected Battle Art model provider deliberately owns the cards inside
@@ -746,8 +754,12 @@ function OverworldBattle.providerRender(expectedBattle, drawActors, camera,
   session.token = (session.token or 0) + 1
   local textures = drawActors and nil or OverworldBattle.textures(session.battle)
   local ok, shot = pcall(BattleScene.render, session.state, session.arena,
-    textures, session.token, session.battle, drawActors, camera)
-  if not (ok and shot and shot.canvas) then return nil end
+    textures, session.token, session.battle, drawActors, externalCamera,
+    externalModelShadow)
+  if not (ok and shot and shot.canvas) then
+    session.providerShot = nil
+    return nil
+  end
   local y1 = shot.ly + shot.player[2] * shot.scale
   local y2 = shot.ly + shot.enemy[2] * shot.scale
   local focusY, band, range = BattleDOF.bandFor(y1, y2, shot.ph)
@@ -789,9 +801,18 @@ function OverworldBattle.providerInvalidate()
   session.snapped = false
 end
 
+-- Compatibility consumers need the hosted frame's anchors, but publishing
+-- them through session.shot would wake Battle Art's normal BattleState
+-- wrapper and make it compete with the Stadium-owned presentation.
+function OverworldBattle.stageShot()
+  if not session or session.broken then return nil end
+  return session.apiHosted and session.providerShot or session.shot
+end
+
 function OverworldBattle.finish()
   if not session then return end
   AnimatedBattleArt.finish(session.battle)
+  StadiumModels.release()
   restoreCast()
   session = nil
   Voxel3D.camera = nil
@@ -857,6 +878,9 @@ function OverworldBattle.update(dt)
   -- battler pictures globally in a Stadium-model session.
   if not OverworldBattle.sbfxManaged() then
     AnimatedBattleArt.update(session.battle, dt)
+    -- Optional and presentation-only. The battle remains authoritative for
+    -- visibility, switches and move timing; failures retain the card path.
+    StadiumModels.update(session.battle, dt)
   end
   -- the world pass is hidden behind the battle, so mesh builds get the wide
   -- slice: nothing visible can hitch on them

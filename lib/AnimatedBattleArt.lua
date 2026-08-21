@@ -46,6 +46,7 @@ local PLAYER_SETS = V.data("animated_player_trainers")
 local AnimatedBattleArt = {}
 
 local loaded, loadOrder = {}, {}
+local interfaceLoaded = setmetatable({}, { __mode = "k" })
 local LOAD_LIMIT = 6
 local states = setmetatable({}, { __mode = "k" }) -- battler -> playback
 local trainerStates = setmetatable({}, { __mode = "k" }) -- battle -> playback
@@ -76,15 +77,24 @@ local function atlasPath(def)
   return path
 end
 
-local function loadFrames(def, mode)
-  local hit = loaded[def]
-  if hit and hit.mode == mode then return hit.frames end
-
-  local path = atlasPath(def)
-  if not path then return nil end
+local function decodeFrames(def, mode, source)
   local result
   local ok = pcall(function()
-    local sheet = love.image.newImageData(path)
+    local sheet
+    if source then
+      if type(source) == "string" then
+        sheet = love.image.newImageData(source)
+      elseif type(source.newImageData) == "function" then
+        sheet = source:newImageData()
+      else
+        return
+      end
+    else
+      local path = atlasPath(def)
+      if not path then return end
+      sheet = love.image.newImageData(path)
+    end
+    if not sheet then return end
     local sheetW, sheetH = sheet:getDimensions()
     local frames = {}
     local cells = def.cells
@@ -127,9 +137,35 @@ local function loadFrames(def, mode)
       result = frames
     end
   end)
-  if not ok or not result then return nil end
+  return ok and result or nil
+end
+
+local function loadFrames(def, mode)
+  local hit = loaded[def]
+  if hit and hit.mode == mode then return hit.frames end
+  local result = decodeFrames(def, mode)
+  if not result then return nil end
   remember(def, mode, result)
   return result
+end
+
+-- A clean redistributable build does not contain the owner's private sprite
+-- PNGs, but another sprite provider may still return the matching atlas from
+-- pokemon.sprite. Decode that received Image as a fallback, while the normal
+-- bounds checks above reject an ordinary ROM sprite whose dimensions do not
+-- match this generation's metadata.
+local function loadInterfaceFrames(def, mode, source)
+  local frames = loadFrames(def, mode)
+  if frames or not source then return frames end
+  local cached = interfaceLoaded[source]
+  if cached and cached.def == def and cached.mode == mode then
+    return cached.frames
+  end
+  frames = decodeFrames(def, mode, source)
+  if frames then
+    interfaceLoaded[source] = { def = def, mode = mode, frames = frames }
+  end
+  return frames
 end
 
 local function restoreTrainer(battle)
@@ -249,6 +285,25 @@ local function definition(battler, side)
   return bySide and bySide[side] or nil
 end
 AnimatedBattleArt.definitionFor = definition
+
+-- Prepared regular-form frames for non-battle interfaces. The title and
+-- summary screens accept Image objects but not atlas descriptors, so their
+-- adapters consume this narrow decoder instead of returning the whole sheet
+-- through pokemon.sprite's string-path contract.
+function AnimatedBattleArt.interfaceFront(species, generation, mode, source)
+  if not tostring(generation or ""):match("^gen[1-5]$") then return nil end
+  local key = species and tostring(BattleArt.speciesAlias(species)):upper()
+  local selected = SETS[generation]
+  local bySide = selected and key and selected[key]
+  local def = bySide and bySide.front or nil
+  if FRONT_SOURCE_KIND[generation] == "static"
+      or (generation == "gen2" and not def) then
+    local image = BattleArt.interfaceGenerationFrontImage(species, generation, mode)
+    return image and { image } or nil, nil
+  end
+  if not def then return nil end
+  return loadInterfaceFrames(def, mode, source), def.durations
+end
 
 local function updateBattler(battler, side, dt, mode)
   if not battler then return end
