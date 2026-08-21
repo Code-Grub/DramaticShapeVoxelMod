@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- **StadiumBattleFX API-1 providers.** Battle Art now registers its voxel-map
+  arena, native battle cards, placed camera, projected HUD, and exit fade as
+  independent SBFX selections. The projected HUD respects Battle Art's
+  `HUD SCALE` option while remaining independently selectable in SBFX.
+  Selecting the Battle Art arena hands final composition to SBFX, allowing
+  models, move animations, effects, announcer, HUD, overlays, and transitions
+  to be configured separately. Native cards expose projected effect anchors,
+  BACK SPRITES locks directed cameras safely, and graphics invalidation follows
+  the SBFX lifecycle. Older SBFX builds remain inert.
+
+- **Strict SBFX battle ownership.** When SBFX is installed, Battle Art no
+  longer starts or wraps a battle unless `BATTLE ART VOXEL MAP` is the selected
+  SBFX arena. The standalone renderer, forced layout, card ownership, and exit
+  veil remain unchanged when SBFX is absent.
+
+- **External model composition fix.** When StadiumBattleFX models are selected
+  with the Battle Art arena, Battle Art now suppresses its legacy native-card
+  layer completely, including the BACK SPRITES path, preventing duplicate
+  cards and white keyed backings over the Stadium scene. Hosted battles also
+  bypass Battle Art's legacy frame compositor so SBFX retains the final world
+  override and selected model surface.
+
 - **Stable GEN6 backgrounds during battle.** A staged fight now snapshots its
   dawn/day/dusk/night background period when it begins. The world clock may
   continue advancing, but the illustrated arena cannot switch pictures until

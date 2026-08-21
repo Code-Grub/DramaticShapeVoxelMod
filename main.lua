@@ -97,6 +97,7 @@ local RenderDistance = V.require("RenderDistance")
 local OverworldBattle = V.require("OverworldBattle")
 local BattlePresentation = V.require("BattlePresentation")
 local BattleStage = V.require("BattleStage")
+local StadiumBattleFxProvider = V.require("StadiumBattleFxProvider")
 local BattleArt = V.require("BattleArt")
 local UiBackplates = V.require("UiBackplates")
 local BattleExit = V.require("BattleExit")
@@ -120,6 +121,7 @@ mod.events:on("mods.loaded", function(payload)
   -- Reassert BATTLE ART ownership outside the completed chain so ordinary and
   -- shiny opponent fronts cannot alternate after those providers advance.
   OverworldBattle.refreshSpriteOwnershipHook()
+  StadiumBattleFxProvider.register()
 end)
 
 -- Forward declaration: the voxel pipeline's update hook (registered below)

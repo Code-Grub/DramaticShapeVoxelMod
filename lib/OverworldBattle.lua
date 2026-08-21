@@ -56,6 +56,10 @@ local ChunkMesher = V.require("ChunkMesher")
 
 local OverworldBattle = {}
 local session = nil
+-- Set only after Battle Art has registered a complete API-1 provider set.
+-- Its presence is the hard mode boundary: SBFX owns every battle frame and
+-- Battle Art participates only through the explicitly selected provider.
+local sbfx = nil
 
 -- iOS cannot run the HUD-snap (snapHUDs) path: it renders the HUDs
 -- upside-down and opaque, so on that platform we skip it and fall back to
@@ -95,7 +99,64 @@ OverworldBattle.hudScaleSetting = ModSetting.new("hudScale", "HUD SCALE",
                                                   { "SCALED", "OG" }, 1)
 
 function OverworldBattle.enabled()
-  return OverworldBattle.setting:get() and true or false
+  if not OverworldBattle.setting:get() then return false end
+  -- Once the API bridge is active, the SBFX arena selector is authoritative.
+  -- This keeps Battle Art's legacy settings, layout forcing, native renderer,
+  -- and exit transition out of battles served by another selected provider.
+  if OverworldBattle.sbfxManaged() and OverworldBattle.sbfxEnabled() then
+    return OverworldBattle.sbfxArenaSelected()
+  end
+  return true
+end
+
+function OverworldBattle.configureSbfx(api, arenaId, transitionId, hudId)
+  if type(api) ~= "table" or type(arenaId) ~= "string" then
+    sbfx = nil
+    return false
+  end
+  sbfx = {
+    api = api,
+    arenaId = arenaId,
+    transitionId = transitionId,
+    hudId = hudId,
+  }
+  return true
+end
+
+function OverworldBattle.sbfxManaged()
+  return sbfx ~= nil
+end
+
+function OverworldBattle.sbfxEnabled()
+  if not (sbfx and type(sbfx.api.enabled) == "function") then return false end
+  local ok, enabled = pcall(sbfx.api.enabled, sbfx.api)
+  return ok and enabled == true
+end
+
+function OverworldBattle.sbfxArenaSelected()
+  if not (sbfx and type(sbfx.api.isSelected) == "function") then return false end
+  local ok, selected = pcall(sbfx.api.isSelected, sbfx.api, "arena", sbfx.arenaId)
+  return ok and selected == true
+end
+
+function OverworldBattle.sbfxTransitionSelected()
+  if not (sbfx and sbfx.transitionId
+      and type(sbfx.api.isSelected) == "function") then return false end
+  local ok, selected = pcall(sbfx.api.isSelected, sbfx.api, "transitions",
+    sbfx.transitionId)
+  return ok and selected == true
+end
+
+function OverworldBattle.sbfxHudSelected()
+  if not (sbfx and sbfx.hudId
+      and type(sbfx.api.isSelected) == "function") then return false end
+  local ok, selected = pcall(sbfx.api.isSelected, sbfx.api, "hud", sbfx.hudId)
+  return ok and selected == true
+end
+
+function OverworldBattle.sbfxPresentationActive(expectedBattle)
+  return OverworldBattle.sbfxEnabled()
+    and OverworldBattle.providerHosted(expectedBattle)
 end
 
 -- Public compatibility seam for presentation providers that need to know
@@ -532,6 +593,12 @@ end
 function OverworldBattle.begin(state, battle)
   OverworldBattle.finish()
   if not OverworldBattle.enabled() then return false end
+  -- With SBFX available, it is the only battle presentation host. Battle Art
+  -- opens a voxel-map session only for its explicitly selected arena provider;
+  -- otherwise the selected SBFX arena/models/camera run without Battle Art
+  -- culling the map or wrapping the battle renderer.
+  if OverworldBattle.sbfxManaged()
+      and not OverworldBattle.sbfxArenaSelected() then return false end
   if not (state and state.map and state.player) then return false end
   if not Voxel3D.available() then return false end
 
@@ -582,6 +649,144 @@ end
 -- screenshot can be labelled with the ground it was taken on.
 function OverworldBattle.arena()
   return session and session.arena or nil
+end
+
+-- Battle Presentation API bridge. While hosted, the normal BattleState draw
+-- wrapper must stay dormant: SBFX presents the arena canvas and independently
+-- selected actors through its own composition pass.
+function OverworldBattle.providerAvailable(expectedBattle)
+  return session ~= nil and session.arena ~= nil
+    and (expectedBattle == nil or session.battle == nil
+      or session.battle == expectedBattle)
+end
+
+function OverworldBattle.providerBegin(expectedBattle)
+  if not OverworldBattle.providerAvailable(expectedBattle) then return false end
+  session.apiHosted = true
+  session.shot = nil
+  session.providerShot = nil
+  session.snapped = false
+  return true
+end
+
+function OverworldBattle.providerHosted(expectedBattle)
+  return session ~= nil and session.apiHosted == true
+    and (expectedBattle == nil or session.battle == nil
+      or session.battle == expectedBattle)
+end
+
+function OverworldBattle.providerCamera(expectedBattle)
+  if not OverworldBattle.providerAvailable(expectedBattle) then return nil end
+  local host = session.arena.map or session.state.map
+  local groundY = BattleScene.groundY(host, session.arena)
+  return BattleCam.rig(session.arena, groundY)
+end
+
+-- Read-only model-provider helpers. Battle Art keeps its native cards in the
+-- arena pass, but SBFX effects still need stable projected anchors when those
+-- cards are selected. The values are in the logical 160x144 battle surface,
+-- matching the coordinates used by the engine's move layer.
+function OverworldBattle.providerModelPoint(expectedBattle, side)
+  if not OverworldBattle.providerAvailable(expectedBattle) then return nil end
+  local shot = session.providerShot
+  local point = shot and shot[side]
+  if type(point) == "table" and type(point[1]) == "number"
+      and type(point[2]) == "number" then
+    return point[1], point[2]
+  end
+  return nil
+end
+
+function OverworldBattle.providerModelFootprint(expectedBattle, side)
+  if not OverworldBattle.providerAvailable(expectedBattle) then return nil end
+  local shot = session.providerShot
+  local span = shot and shot[side .. "Span"]
+  return tonumber(span)
+end
+
+function OverworldBattle.providerModelShowing(expectedBattle, side)
+  if not OverworldBattle.providerAvailable(expectedBattle) then return false end
+  local battle = session.battle
+  if side == "enemy" then
+    return battle and (battle.showEnemyTrainer or battle.enemy) and true or false
+  end
+  return battle and (battle.showPlayerBack or battle.player) and true or false
+end
+
+function OverworldBattle.providerNativeCards(expectedBattle)
+  return session ~= nil and session.apiHosted == true
+    and session.nativeCards == true
+    and (expectedBattle == nil or session.battle == nil
+      or session.battle == expectedBattle)
+end
+
+function OverworldBattle.providerUpdate(expectedBattle, dt, nativeCards)
+  if not OverworldBattle.providerAvailable(expectedBattle) then return end
+  -- AnimatedBattleArt also owns optional trainer/player portraits. It must
+  -- run only while the Battle Art native-card model provider is selected;
+  -- otherwise it mutates the engine's trainer picture underneath Stadium
+  -- models and produces the large keyed-white trainer rectangle.
+  if nativeCards == true then
+    AnimatedBattleArt.update(session.battle, dt)
+  end
+end
+
+function OverworldBattle.providerRender(expectedBattle, drawActors, camera,
+                                        nativeCards, nativeHud)
+  if not (session and session.apiHosted and type(drawActors) == "function") then
+    -- A selected Battle Art model provider deliberately owns the cards inside
+    -- this arena pass. It has no separate drawWorld call: that would happen
+    -- after the arena has chosen its native-card shadow/render path.
+    if not (session and session.apiHosted and drawActors == nil) then return nil end
+  end
+  if expectedBattle ~= nil and session.battle ~= nil
+      and session.battle ~= expectedBattle then return nil end
+  session.battle = session.battle or expectedBattle
+  session.nativeCards = nativeCards == true
+  session.token = (session.token or 0) + 1
+  local textures = drawActors and nil or OverworldBattle.textures(session.battle)
+  local ok, shot = pcall(BattleScene.render, session.state, session.arena,
+    textures, session.token, session.battle, drawActors, camera)
+  if not (ok and shot and shot.canvas) then return nil end
+  local y1 = shot.ly + shot.player[2] * shot.scale
+  local y2 = shot.ly + shot.enemy[2] * shot.scale
+  local focusY, band, range = BattleDOF.bandFor(y1, y2, shot.ph)
+  local okDof, blurred = pcall(BattleDOF.apply, shot.canvas,
+    focusY, band, range)
+  if okDof and blurred then shot.canvas = blurred end
+  -- The HUD is an independent SBFX component.  When selected, render Battle
+  -- Art's projected HUD into the world canvas before the host composites the
+  -- normal 160x144 UI; the draw hook below then suppresses only its duplicate
+  -- native HUD layer.  HUD SCALE remains Battle Art's own setting.
+  session.snapped = false
+  if nativeHud and not isIOS() then
+    local okHud, snapped = pcall(OverworldBattle.snapHUDs, session.battle, shot)
+    session.snapped = okHud and snapped and true or false
+  end
+  -- This snapshot belongs only to the API provider. Deliberately do not put
+  -- it in session.shot: that field activates Battle Art's legacy UI/picture
+  -- compositor, which must stay completely dormant while SBFX owns the frame.
+  session.providerShot = shot
+  session.shot = nil
+  return shot.canvas
+end
+
+function OverworldBattle.providerFinish()
+  if not session then return end
+  session.apiHosted = false
+  session.shot = nil
+  session.providerShot = nil
+  session.nativeCards = nil
+  session.snapped = false
+end
+
+function OverworldBattle.providerInvalidate()
+  if not session then return end
+  OverworldBattle.invalidate()
+  session.shot = nil
+  session.providerShot = nil
+  session.nativeCards = nil
+  session.snapped = false
 end
 
 function OverworldBattle.finish()
@@ -647,10 +852,21 @@ function OverworldBattle.update(dt)
     session.battle = top
     Gen6Backdrop.snapshot(session.battle)
   end
-  AnimatedBattleArt.update(session.battle, dt)
+  -- SBFX routes Battle Art's animated cards through Provider:update only
+  -- when its native-card model provider is selected. Never mutate trainer or
+  -- battler pictures globally in a Stadium-model session.
+  if not OverworldBattle.sbfxManaged() then
+    AnimatedBattleArt.update(session.battle, dt)
+  end
   -- the world pass is hidden behind the battle, so mesh builds get the wide
   -- slice: nothing visible can hitch on them
   ChunkMesher.pump(true)
+
+  if session.apiHosted then
+    session.shot = nil
+    session.snapped = false
+    return
+  end
 
   -- The mons' textures are rendered HERE, with no canvas bound, for the same
   -- reason the scene is: the pics layer binds its own targets, and doing that
@@ -720,7 +936,7 @@ end
 -- The finished shot for this frame, or nil when there is none and the battle
 -- should draw the way it always did.
 function OverworldBattle.shot()
-  if not session or session.broken then return nil end
+  if not session or session.broken or session.apiHosted then return nil end
   local s = session.shot
   if s and s.canvas then return s end
   return nil
@@ -1088,7 +1304,8 @@ end
 local spriteOwnershipUpdate = nil
 
 function OverworldBattle.retainOwnedSprite(battler, owned, species)
-  if not BattleArt.ownsSpeciesArt() or not (battler and owned) then return false end
+  if OverworldBattle.sbfxManaged() or not BattleArt.ownsSpeciesArt()
+      or not (battler and owned) then return false end
   if species ~= BattleArt.speciesFor(battler) or battler.sprite == owned then
     return false
   end
@@ -1328,6 +1545,26 @@ function OverworldBattle.install()
 
   local innerDraw = BattleState.draw
   function BattleState:draw()
+    -- SBFX has already established the world override, suppressed the native
+    -- battle field, and rendered its selected model provider before calling
+    -- this inner wrapper. Re-entering Battle Art's legacy compositor here
+    -- clears/replaces that frame and can leave its keyed white card backing
+    -- above Stadium actors. Hosted mode must therefore run the engine draw
+    -- directly; Battle Art's arena data and projected anchors remain live,
+    -- but SBFX is the sole frame compositor.
+    if OverworldBattle.providerHosted(self) then
+      self.dramaticShapeShot = nil
+      -- Keep the renderer's outer surround transparent even when this
+      -- wrapper is the last one reattached by the mod loader. SBFX supplies
+      -- the world override in hosted mode; inheriting BattleState's default
+      -- white letterbox would cover that world before its UI can composite.
+      self.letterboxWhite = false
+      -- The host supplied the world canvas, but the engine's ordinary battle
+      -- UI draw still begins by filling its 160x144 field white.  Preserve
+      -- menus/text while removing only that field fill, exactly as the
+      -- standalone Battle Art compositor does below.
+      return withoutBackgroundFill(self, innerDraw)
+    end
     local shot = OverworldBattle.shot()
     -- AskName blanks the field on purpose (the nickname prompt is meant to
     -- sit on nothing); leave that one alone.
@@ -1372,6 +1609,16 @@ function OverworldBattle.install()
   -- always put them -- feet on the box, 2x, back view.
   innerPics = BattleState.drawPicsLayer
   function BattleState:drawPicsLayer(slide, sx, sy, onlySide, skipMenuClip)
+    -- This check has to precede dramaticShapeShot. Hosted mode intentionally
+    -- clears that legacy snapshot, so putting the guard after the nil branch
+    -- accidentally falls through to the engine's opaque native-picture
+    -- layer. SBFX already supplied the selected external models in its world
+    -- pass; keeping this layer empty prevents their white picture backing
+    -- from being composited over the arena.
+    if OverworldBattle.providerHosted(self)
+       and not OverworldBattle.providerNativeCards(self) then
+      return
+    end
     local shot = self.dramaticShapeShot
     if not shot then
       return innerPics(self, slide, sx, sy, onlySide, skipMenuClip)
@@ -1515,6 +1762,10 @@ function OverworldBattle.install()
   -- only an exactly-black set is remapped.
   innerHUDs = BattleState.drawHUDs
   function BattleState:drawHUDs(slide)
+    if OverworldBattle.providerHosted(self)
+       and OverworldBattle.sbfxHudSelected() and session and session.snapped then
+      return
+    end
     if self.dramaticShapeShot
        and BattlePresentation.suppressed("hud", self) then return end
     -- Normally the HUDs have already been drawn this frame, snapped out to the

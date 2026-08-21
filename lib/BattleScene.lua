@@ -368,7 +368,8 @@ local function tickTiles()
   pcall(require("src.render.TileRenderer").tick)
 end
 
-function BattleScene.render(state, arena, textures, token, battle)
+function BattleScene.render(state, arena, textures, token, battle, drawActors,
+                            cameraOverride)
   if not (state and state.map and arena) then return nil end
   if not Voxel3D.available() then return nil end
   tickTiles()
@@ -428,7 +429,26 @@ function BattleScene.render(state, arena, textures, token, battle)
   end
 
   local groundY = BattleScene.groundY(host, arena)
-  local cam, pitch = BattleCam.rig(arena, groundY)
+  local cam, pitch
+  if type(cameraOverride) == "table" and type(cameraOverride.eye) == "table"
+      and type(cameraOverride.focus) == "table"
+      and type(cameraOverride.fov) == "number" then
+    -- API camera poses frame the same logical GB battle surface as our native
+    -- rig. Copy before widening the lens below: the context pose belongs to
+    -- SBFX and must remain read-only for the rest of this draw.
+    cam = {
+      eye = { cameraOverride.eye[1], cameraOverride.eye[2], cameraOverride.eye[3] },
+      focus = { cameraOverride.focus[1], cameraOverride.focus[2], cameraOverride.focus[3] },
+      fov = cameraOverride.fov,
+      curve = cameraOverride.curve or 0,
+    }
+    local dx = cam.eye[1] - cam.focus[1]
+    local dy = cam.eye[2] - cam.focus[2]
+    local dz = cam.eye[3] - cam.focus[3]
+    pitch = math.atan2(math.sqrt(dx * dx + dz * dz), math.max(1e-3, dy))
+  else
+    cam, pitch = BattleCam.rig(arena, groundY)
+  end
   cam.fov = BattleScene.letterboxFov(cam.fov, ph, s)
 
   local cx, cy = arena.mid[1], arena.mid[2]
@@ -443,7 +463,10 @@ function BattleScene.render(state, arena, textures, token, battle)
   -- and the real one is rebuilt inside the scene below.
   Voxel3D.camera = cam
   Voxel3D.viewProjection(cx, cy, vw, vh)
-  local cards = monCards(arena, groundY, textures)
+  -- A Battle Presentation host supplies its independently selected actor
+  -- renderer here. In that mode the native cards must not also enter either
+  -- the shadow map or the colour pass.
+  local cards = drawActors and {} or monCards(arena, groundY, textures)
   Voxel3D.camera = nil
   if flatFill then
     -- WHITE is a genuinely flat stage: there is no visible world receiver,
@@ -453,7 +476,8 @@ function BattleScene.render(state, arena, textures, token, battle)
     ShadowMap.discard()
   else
     castShadows(state, arena, terrain, nbMesh, cx, cy, vw, vh, atlasFor,
-                cards, token, host, neighbors, water, nbWater)
+                cards, drawActors and nil or token,
+                host, neighbors, water, nbWater)
   end
 
   -- An opaque void either way. Outdoors the camera is low enough that the
@@ -549,7 +573,7 @@ function BattleScene.render(state, arena, textures, token, battle)
     -- and no glass either: the cards wear the battle screen, not the
     -- tileset atlas, so the mask's coordinates mean nothing on them
     Voxel3D.glass(false)
-    for _, card in ipairs(monCards(arena, groundY, textures)) do
+    for _, card in ipairs(cards) do
       -- Static front illustrations retain their authored brightness instead
       -- of being dimmed or colour-cast by the clock. Only the hour tint is
       -- neutral here; depth and alpha-shaped lighting/shadows stay active.
@@ -603,6 +627,18 @@ function BattleScene.render(state, arena, textures, token, battle)
                    Mat4.translate(nb.ox, 0, nb.oy), fpull,
                    ShadowMap.snug(Mat4.translate(nb.ox, 0, nb.oy)))
     end
+    end
+    if drawActors then
+      -- Enter the selected model provider while this arena's depth target and
+      -- camera are live. The host owns actor shader/state cleanup. Logical
+      -- dimensions describe the resolved surface, so projected attachments
+      -- remain correct when this pass is supersampled.
+      drawActors({
+        vp = Voxel3D.vp,
+        groundY = groundY,
+        width = pw,
+        height = ph,
+      })
     end
     local canvas = AntiAlias.resolve(Voxel3D.endScene(), pw, ph, "battle")
     if not canvas then return end
