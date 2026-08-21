@@ -88,4 +88,62 @@ ok(shader:find("vFacadeBack", 1, true)
    and shader:find("step%(eye.z, w.z %- 0.0001%)"),
   "scene shader discards marked facades only from behind")
 
+-- Connective gate houses have two consecutive warp cells on a model's
+-- west/east boundary. Each cell receives one continuous 16px door quad;
+-- single or non-boundary warps must not affect a building.
+local doorQuads = {
+  {
+    { 0, 0, 0 }, { 1, 0, 0 }, { 1, 1, 0 }, { 0, 1, 0 },
+    uv = {}, shade = 1,
+  },
+}
+doorQuads.sideDoorUV = { { "door1" }, { "door2" },
+                         { "door3" }, { "door4" } }
+local function warpMap(warps)
+  return { def = { warps = warps } }
+end
+
+local west = scene(true)
+Buildings.stamp(west, warpMap({ { x = 1, y = 4 }, { x = 1, y = 5 } }),
+                doorQuads, 4, 6, 6, 8, {})
+eq(#west.objectQuads, 3,
+  "two west-edge warp cells add two complete door quads")
+eq(west.objectQuads[2][1][1], 32 + 5 - 0.005,
+  "west double door lies visually flush and just proud of the model wall")
+eq(west.objectQuads[2][1][3], 4 * 16 - 4,
+  "west-facing billboard receives its refined along-wall correction")
+eq(west.objectQuads[2].uv[1][1], "door1",
+  "west door uses one continuous authored UV rectangle")
+
+local east = scene(true)
+Buildings.stamp(east, warpMap({ { x = 5, y = 4 }, { x = 5, y = 5 } }),
+                doorQuads, 4, 6, 6, 8, {})
+eq(#east.objectQuads, 3,
+  "two east-edge warp cells add two complete door quads")
+eq(east.objectQuads[2][1][1], 80 - 4 + 0.005,
+  "east double door lies visually flush and just proud of the model wall")
+eq(east.objectQuads[2][2][3], 4 * 16 - 3,
+  "east-facing billboard moves two more screen-right pixels in the west view")
+eq(east.objectQuads[2].uv[1][1], "door1",
+  "east door uses one continuous authored UV rectangle")
+
+local single = scene(true)
+Buildings.stamp(single, warpMap({ { x = 1, y = 4 } }),
+                doorQuads, 4, 6, 6, 8, {})
+eq(#single.objectQuads, 1,
+  "a lone boundary warp does not invent a side door")
+
+local middle = scene(true)
+Buildings.stamp(middle, warpMap({ { x = 3, y = 4 }, { x = 3, y = 5 } }),
+                doorQuads, 4, 6, 6, 8, {})
+eq(#middle.objectQuads, 1,
+  "two warps inside the footprint do not alter either flank")
+
+local insideGate = scene(false)
+Buildings.stamp(insideGate,
+                warpMap({ { x = 1, y = 4 }, { x = 1, y = 5 } }),
+                doorQuads, 4, 6, 6, 8, {})
+eq(#insideGate.objectQuads, 1,
+  "interior gate meshes never receive exterior side doors")
+
 print(("%d checks passed (enterable building facade culling)"):format(checks))

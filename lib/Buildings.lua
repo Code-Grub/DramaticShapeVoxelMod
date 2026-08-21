@@ -1315,6 +1315,27 @@ function Buildings.build(S, map, data, perRow)
                   local sp = read(t, data, perRow, rear)
                   local pr = measure(sp, t)
                   models[key] = emit(model(sp, pr, t), sp, atlasW, atlasH)
+                  -- Route gate buildings are entered through an authored
+                  -- pair of side-edge warp cells, but the top-down exterior
+                  -- drawing paints no east/west door. Reuse the OVERWORLD
+                  -- atlas's normal exterior front-door cell for that missing
+                  -- projection; stamp() decides per placement whether such
+                  -- a side opening actually exists.
+                  -- One continuous 16x16 UV rectangle over tiles 11/12 and
+                  -- 27/28. Keeping the four atlas tiles in one quad prevents
+                  -- their joins from reading as half / whole / half doors.
+                  local px0 = (11 % perRow) * 8
+                  local px1 = (12 % perRow) * 8 + 8
+                  local py0 = math.floor(11 / perRow) * 8
+                  local py1 = math.floor(27 / perRow) * 8 + 8
+                  local u0, u1 = (px0 + 0.05) / atlasW,
+                                 (px1 - 0.05) / atlasW
+                  local v0, v1 = (py0 + 0.05) / atlasH,
+                                 (py1 - 0.05) / atlasH
+                  models[key].sideDoorUV = {
+                    { u0, v1 }, { u1, v1 },
+                    { u1, v0 }, { u0, v0 },
+                  }
                 end
               end
               built = models[key]
@@ -1442,6 +1463,82 @@ function Buildings.stamp(S, map, quads, tx, ty, bw, bh, t)
       -- opened the roof rim into the sky from across the seam)
       own = true,
     }
+  end
+
+  -- A connective gate house can be entered through its east or west wall.
+  -- Gen 1's top-down exterior only draws the threshold cells there; it has
+  -- no side elevation to contribute a visible door. Detect those openings
+  -- from the engine-authored warp list and overlay the atlas's real gate
+  -- door on the matching model flank. Two consecutive warp cells form one
+  -- 32px double-door assembly. A lone warp is deliberately ignored: normal
+  -- houses and front entrances stay under the ordinary facade path above.
+  if S.outdoor and quads.sideDoorUV and map.def and map.def.warps then
+    local bySide = { west = {}, east = {} }
+    for _, warp in ipairs(map.def.warps) do
+      local cx, cy = tonumber(warp.x), tonumber(warp.y)
+      if cx and cy then
+        local wy0, wy1 = cy * 2, (cy + 1) * 2
+        if wy0 >= ty and wy1 <= ty + bh then
+          -- The warp cell is the walkable apron immediately OUTSIDE the
+          -- building footprint; its far edge meets the wall plane.
+          if (cx + 1) * 2 == tx then
+            bySide.west[cy] = true
+          elseif cx * 2 == tx + bw then
+            bySide.east[cy] = true
+          end
+        end
+      end
+    end
+
+    -- Manual side-door tuning. `wallInset` moves the target plane inward to
+    -- the visible voxel wall. `wallBias` leaves a fractional gap outside that
+    -- plane to prevent z-fighting. `alongWall` moves across the facade in
+    -- world Z; facing west reverses its screen direction.
+    local wallInset = { west = 5, east = 4 }
+    local wallBias = { west = 0.005, east = 0.005 }
+    local alongWall = { west = -4, east = -3 }
+    local function emitRun(side, cy0, cells)
+      local inset = wallInset[side]
+      local bias = wallBias[side]
+      local x = side == "west" and (mx + inset - bias)
+                                   or (mx + bw * 8 - inset + bias)
+      local zShift = alongWall[side]
+      for cell = 0, cells - 1 do
+        -- Warp coordinates address the complete 16px map cell occupied by
+        -- each threshold. Keep the projected complete-door quad on that
+        -- same cell span.
+        local zCell = (cy0 + cell) * 16 + zShift
+        local y0, y1, z0, z1 = 0, 16, zCell, zCell + 16
+        local q
+        if side == "west" then
+          q = { { x, y0, z0 }, { x, y0, z1 },
+                { x, y1, z1 }, { x, y1, z0 } }
+        else
+          q = { { x, y0, z1 }, { x, y0, z0 },
+                { x, y1, z0 }, { x, y1, z1 } }
+        end
+        q.uv, q.shade, q.own = quads.sideDoorUV, SHADE.side, true
+        out[#out + 1] = q
+      end
+    end
+
+    for _, side in ipairs({ "west", "east" }) do
+      local cells = bySide[side]
+      local ys = {}
+      for cy in pairs(cells) do ys[#ys + 1] = cy end
+      table.sort(ys)
+      local i = 1
+      while i <= #ys do
+        local first, last = ys[i], ys[i]
+        while i + 1 <= #ys and ys[i + 1] == last + 1 do
+          i = i + 1
+          last = ys[i]
+        end
+        local count = last - first + 1
+        if count >= 2 then emitRun(side, first, count) end
+        i = i + 1
+      end
+    end
   end
 end
 
