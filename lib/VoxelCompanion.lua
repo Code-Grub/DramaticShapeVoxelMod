@@ -39,6 +39,33 @@ local MAX_PACKET_ITEMS = 2048
 local MAX_DRAWS_PER_FRAME = 4096
 local MAX_WORLD_COORDINATE = 65536
 local MAX_PRIMITIVE_SIZE = 65536
+local MAX_COMMAND_SIGNATURES = 4096
+local MAX_SIGNATURE_NODES = 32768
+local MAX_SIGNATURE_BYTES = 256 * 1024
+
+local MESH_PRIMITIVES = {
+  box = true,
+  plane = true,
+  world_apron = true,
+}
+
+local INSTANCE_PRIMITIVES = {
+  box = true,
+  plane = true,
+  door_frame = true,
+  window = true,
+  poster = true,
+  rail = true,
+  fixture = true,
+  sconce = true,
+  cave_roof = true,
+  grass_clump = true,
+  canopy = true,
+  vine = true,
+  umbrella = true,
+  mountain = true,
+  hood = true,
+}
 
 -- These are exact literals written by released KFP 1.x patchers. Only known
 -- host targets are scanned, so this scanner cannot match its own vocabulary.
@@ -335,9 +362,10 @@ end
 local function useDrawBudget(self, count)
   count = math.max(0, math.floor(tonumber(count) or 0))
   if self.frameDraws + count > MAX_DRAWS_PER_FRAME then
-    error("voxel companion frame draw limit reached", 3)
+    return false, "voxel companion frame draw limit reached"
   end
   self.frameDraws = self.frameDraws + count
+  return true
 end
 
 local function ensureTexture(self)
@@ -378,10 +406,29 @@ local function setMaterial(color)
   end
 end
 
-local function drawItem(self, prototype, item, material)
+local function drawVoxel(mesh, texture, model, borrowed)
+  if borrowed and type(mesh and mesh.setTexture) ~= "function" then
+    error("companion mesh cannot safely borrow an extension texture", 3)
+  end
+  local ok, err = xpcall(function()
+    Voxel3D.draw(mesh, texture, model)
+  end, function(message) return tostring(message) end)
+  local cleared, clearError = true, nil
+  if borrowed then
+    cleared, clearError = pcall(mesh.setTexture, mesh)
+  end
+  if not cleared then
+    error("could not unbind borrowed extension texture: " .. tostring(clearError), 3)
+  end
+  if not ok then error(err, 3) end
+end
+
+local function drawItem(self, prototype, item, material, borrowedTexture)
   if shouldCutaway(self, prototype, item) then return false end
   local primitive, width, height, depth = primitiveDimensions(prototype, item)
-  local texture = ensureTexture(self)
+  -- An extension-owned texture is borrowed for this call only. Never place it
+  -- on the adapter, a mesh cache, or any cleanup list.
+  local texture = borrowedTexture or ensureTexture(self)
   if not texture then error("companion material texture is unavailable", 3) end
   local color = colorFor(material)
   local ok, err = xpcall(function()
@@ -390,7 +437,8 @@ local function drawItem(self, prototype, item, material)
     if primitive == "billboard" then
       local mesh = ensureMesh(self, "billboard")
       if not mesh then error("companion billboard mesh is unavailable", 0) end
-      Voxel3D.draw(mesh, texture, billboardTransform(item, width, height))
+      drawVoxel(mesh, texture, billboardTransform(item, width, height),
+        borrowedTexture ~= nil)
     else
       local meshKind = primitive == "plane" and "plane" or "box"
       local mesh = ensureMesh(self, meshKind)
@@ -398,8 +446,8 @@ local function drawItem(self, prototype, item, material)
       local x = clamp(item.x, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
       local y = clamp(item.y, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
       local z = clamp(item.z, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
-      Voxel3D.draw(mesh, texture, transform(x, y, z, width,
-        math.max(height, 0.01), depth))
+      drawVoxel(mesh, texture, transform(x, y, z, width,
+        math.max(height, 0.01), depth), borrowedTexture ~= nil)
     end
   end, function(message) return tostring(message) end)
   -- Voxel3D keeps its active material shader outside LÖVE's graphics stack.
@@ -409,68 +457,276 @@ local function drawItem(self, prototype, item, material)
   return true
 end
 
+local function validCacheKey(value)
+  return type(value) == "string" and #value >= 1 and #value <= 64
+    and value:match("^[A-Za-z0-9._:%-]+$") ~= nil
+end
+
+local function validOpaqueTexture(value)
+  if value == nil then return true end
+  local kind = type(value)
+  return kind == "table" or kind == "userdata" or kind == "cdata"
+end
+
+local function signatureKeyOrder(a, b)
+  local typeA, typeB = type(a), type(b)
+  if typeA ~= typeB then return typeA < typeB end
+  if typeA == "number" then return a < b end
+  return tostring(a) < tostring(b)
+end
+
+local function commandSignature(command)
+  local mod = 65521
+  local a, b, c, d = 1, 0, 1, 0
+  local nodes, bytes = 0, 0
+  local active = {}
+
+  local function feed(text)
+    bytes = bytes + #text
+    if bytes > MAX_SIGNATURE_BYTES then error("draw command signature byte limit", 0) end
+    for index = 1, #text do
+      local byte = text:byte(index)
+      a = (a + byte) % mod
+      b = (b + a) % mod
+      c = (c + byte + index) % mod
+      d = (d + c) % mod
+    end
+  end
+
+  local encode
+  encode = function(value, depth, root)
+    if depth > 16 then error("draw command signature depth limit", 0) end
+    local kind = type(value)
+    if kind == "nil" then feed("n;"); return end
+    if kind == "boolean" then feed(value and "b1;" or "b0;"); return end
+    if kind == "number" then
+      if finite(value, nil) == nil then error("draw command signature rejects non-finite numbers", 0) end
+      if value == 0 then value = 0 end
+      local text = string.format("%.17g", value)
+      feed("d" .. #text .. ":" .. text .. ";")
+      return
+    end
+    if kind == "string" then feed("s" .. #value .. ":" .. value .. ";"); return end
+    if kind ~= "table" or getmetatable(value) ~= nil then
+      error("draw command signature rejects " .. kind, 0)
+    end
+    if active[value] then error("draw command signature rejects cycles", 0) end
+    active[value] = true
+    local keys = {}
+    for key in pairs(value) do
+      if not (root and (key == "cacheKey" or key == "texture")) then
+        local keyType = type(key)
+        if keyType ~= "string" and keyType ~= "number" then
+          active[value] = nil
+          error("draw command signature rejects key type " .. keyType, 0)
+        end
+        keys[#keys + 1] = key
+        nodes = nodes + 1
+        if nodes > MAX_SIGNATURE_NODES then
+          active[value] = nil
+          error("draw command signature node limit", 0)
+        end
+      end
+    end
+    table.sort(keys, signatureKeyOrder)
+    feed("t" .. #keys .. "{")
+    for _, key in ipairs(keys) do
+      encode(key, depth + 1, false)
+      encode(value[key], depth + 1, false)
+    end
+    feed("};")
+    active[value] = nil
+  end
+
+  local ok, err = pcall(encode, command, 0, true)
+  if not ok then return nil, tostring(err) end
+  return string.format("%08x%08x", b * 65536 + a, d * 65536 + c)
+end
+
+local function validateCommandSignature(self, command)
+  local digest, err = commandSignature(command)
+  if not digest then return false, err end
+  local key = command.cacheKey
+  local previous = self.commandSignatures[key]
+  if previous then
+    if previous ~= digest then
+      return false, "draw command.cacheKey content collision"
+    end
+    return true
+  end
+
+  local slot
+  if self.commandSignatureCount < MAX_COMMAND_SIGNATURES then
+    self.commandSignatureCount = self.commandSignatureCount + 1
+    slot = self.commandSignatureCount
+  else
+    slot = self.commandSignatureNext
+    local evicted = self.commandSignatureOrder[slot]
+    if evicted then self.commandSignatures[evicted] = nil end
+    self.commandSignatureNext = slot % MAX_COMMAND_SIGNATURES + 1
+  end
+  self.commandSignatureOrder[slot] = key
+  self.commandSignatures[key] = digest
+  return true
+end
+
+local function positive(value)
+  local number = finite(value, nil)
+  return number ~= nil and number > 0
+end
+
+local function validateMeshGeometry(geometry)
+  if type(geometry) ~= "table" then return false, "mesh command needs geometry" end
+  local primitive = geometry.primitive
+  if not MESH_PRIMITIVES[primitive] then
+    return false, "unsupported Battle Art mesh primitive: " .. tostring(primitive)
+  end
+  if primitive == "box" then
+    if not (positive(geometry.width) and positive(geometry.height)
+        and positive(geometry.depth)) then
+      return false, "box geometry needs positive width, height, and depth"
+    end
+  elseif primitive == "plane" then
+    if not (positive(geometry.width) and positive(geometry.depth)) then
+      return false, "plane geometry needs positive width and depth"
+    end
+  elseif not (positive(geometry.width) and positive(geometry.depth)
+      and positive(geometry.skirtDepth)) then
+    return false, "world_apron geometry needs positive width, depth, and skirtDepth"
+  end
+  return true
+end
+
+local function validateDrawCommand(packet, expectedKind, context)
+  if type(context) ~= "table" then
+    return false, "draw command needs the current borrowed render context"
+  end
+  if type(packet) ~= "table" then return false, "draw command must be a table" end
+  if packet.kind ~= expectedKind then
+    return false, ("draw.%s received a %s command")
+      :format(expectedKind, tostring(packet.kind))
+  end
+  if packet.schemaVersion ~= 1 then
+    return false, "draw command.schemaVersion must be 1"
+  end
+  if not validCacheKey(packet.cacheKey) then
+    return false, "draw command.cacheKey must be 1..64 safe ASCII bytes"
+  end
+  if not validOpaqueTexture(packet.texture) then
+    return false, "draw command.texture must be an opaque borrowed resource, not a path string"
+  end
+
+  -- The final vendored dispatcher performs the complete shared baseline
+  -- validation. Keep this adapter guard so the frozen wire rules also hold
+  -- when an older dispatcher is loaded during a local amendment test.
+  if type(API.validate_draw_command) == "function" then
+    local called, accepted, err = pcall(API.validate_draw_command, packet, expectedKind)
+    if not called then return false, tostring(accepted) end
+    if accepted ~= true then return false, tostring(err or "invalid draw command") end
+  end
+  return true
+end
+
+local function runDraw(callback)
+  local ok, result, err = xpcall(callback, function(message) return tostring(message) end)
+  if not ok then return false, tostring(result) end
+  if result ~= true then return false, tostring(err or "draw command was rejected") end
+  return true
+end
+
 local function makeDrawFacade(self)
   return {
-    mesh = function(_, packet)
-      if type(packet) ~= "table" or type(packet.geometry) ~= "table" then
-        error("mesh packet needs geometry", 2)
-      end
-      local primitive = packet.geometry.primitive
-      if primitive ~= "world_apron" and primitive ~= "box"
-          and primitive ~= "plane" then
-        error("unsupported Battle Art mesh primitive: " .. tostring(primitive), 2)
-      end
-      useDrawBudget(self, 1)
-      local geometry = packet.geometry
-      if primitive == "world_apron" then
-        local baseWidth = clamp(geometry.width, 0.01,
-          MAX_PRIMITIVE_SIZE, 16)
-        local baseDepth = clamp(geometry.depth, 0.01,
-          MAX_PRIMITIVE_SIZE, 16)
-        local skirt = clamp(geometry.skirtDepth, 0,
-          MAX_PRIMITIVE_SIZE * 0.5, 0)
-        geometry = shallowCopy(geometry)
-        geometry.primitive = "plane"
-        geometry.width = baseWidth + skirt * 2
-        geometry.depth = baseDepth + skirt * 2
-        geometry.x = finite(geometry.x, baseWidth * 0.5)
-        geometry.y = finite(geometry.y, -0.5)
-        geometry.z = finite(geometry.z, baseDepth * 0.5)
-      end
-      drawItem(self, geometry, geometry, packet.material)
-      return true
+    mesh = function(packet, context)
+      local valid, validationError = validateDrawCommand(packet, "mesh", context)
+      if not valid then return false, validationError end
+      valid, validationError = validateMeshGeometry(packet.geometry)
+      if not valid then return false, validationError end
+      valid, validationError = validateCommandSignature(self, packet)
+      if not valid then return false, validationError end
+      local budgeted, budgetError = useDrawBudget(self, 1)
+      if not budgeted then return false, budgetError end
+      return runDraw(function()
+        local geometry = packet.geometry
+        if geometry.primitive == "world_apron" then
+          local baseWidth = clamp(geometry.width, 0.01,
+            MAX_PRIMITIVE_SIZE, 16)
+          local baseDepth = clamp(geometry.depth, 0.01,
+            MAX_PRIMITIVE_SIZE, 16)
+          local skirt = clamp(geometry.skirtDepth, 0,
+            MAX_PRIMITIVE_SIZE * 0.5, 0)
+          geometry = shallowCopy(geometry)
+          geometry.primitive = "plane"
+          geometry.width = baseWidth + skirt * 2
+          geometry.depth = baseDepth + skirt * 2
+          geometry.x = finite(geometry.x, baseWidth * 0.5)
+          geometry.y = finite(geometry.y, -0.5)
+          geometry.z = finite(geometry.z, baseDepth * 0.5)
+        end
+        drawItem(self, geometry, geometry, packet.material, packet.texture)
+        return true
+      end)
     end,
-    instances = function(_, packet)
+    instances = function(packet, context)
+      local valid, validationError = validateDrawCommand(packet, "instances", context)
+      if not valid then return false, validationError end
       if type(packet) ~= "table" or type(packet.prototype) ~= "table"
           or type(packet.items) ~= "table" then
-        error("instance packet needs prototype and items", 2)
+        return false, "instance command needs prototype and items"
       end
-      if #packet.items > MAX_PACKET_ITEMS then error("instance packet limit exceeded", 2) end
-      useDrawBudget(self, #packet.items)
+      if not INSTANCE_PRIMITIVES[packet.prototype.primitive] then
+        return false, "unsupported Battle Art instance primitive: "
+          .. tostring(packet.prototype.primitive)
+      end
+      if #packet.items < 1 or #packet.items > MAX_PACKET_ITEMS then
+        return false, "instance command item count must be 1.." .. MAX_PACKET_ITEMS
+      end
       for _, item in ipairs(packet.items) do
-        if type(item) ~= "table" then error("instance item must be a table", 2) end
-        drawItem(self, packet.prototype, item, packet.material)
+        if type(item) ~= "table" then return false, "instance item must be a table" end
       end
-      return true
+      valid, validationError = validateCommandSignature(self, packet)
+      if not valid then return false, validationError end
+      local budgeted, budgetError = useDrawBudget(self, #packet.items)
+      if not budgeted then return false, budgetError end
+      return runDraw(function()
+        for _, item in ipairs(packet.items) do
+          drawItem(self, packet.prototype, item, packet.material, packet.texture)
+        end
+        return true
+      end)
     end,
-    billboards = function(_, packet)
+    billboards = function(packet, context)
+      local valid, validationError = validateDrawCommand(packet, "billboards", context)
+      if not valid then return false, validationError end
       if type(packet) ~= "table" or type(packet.items) ~= "table" then
-        error("billboard packet needs items", 2)
+        return false, "billboard command needs explicit items"
       end
-      if #packet.items > MAX_PACKET_ITEMS then error("billboard packet limit exceeded", 2) end
-      useDrawBudget(self, #packet.items)
-      local prototype = { primitive = "billboard", width = 3, height = 5 }
-      local material = tostring(packet.material or "")
-      if material:find("bird", 1, true) then prototype.width, prototype.height = 5, 3 end
-      if material:find("aircraft", 1, true) then prototype.width, prototype.height = 12, 4 end
-      if material:find("rain", 1, true) then prototype.width, prototype.height = 0.6, 8 end
-      if material:find("sun_shaft", 1, true) then prototype.width = 8 end
+      if #packet.items < 1 or #packet.items > MAX_PACKET_ITEMS then
+        return false, "billboard command item count must be 1.." .. MAX_PACKET_ITEMS
+      end
       for _, item in ipairs(packet.items) do
-        if type(item) ~= "table" then error("billboard item must be a table", 2) end
-        if finite(item.height, nil) then prototype.height = finite(item.height, 5) end
-        drawItem(self, prototype, item, packet.material)
+        if type(item) ~= "table" then return false, "billboard item must be a table" end
       end
-      return true
+      valid, validationError = validateCommandSignature(self, packet)
+      if not valid then return false, validationError end
+      local budgeted, budgetError = useDrawBudget(self, #packet.items)
+      if not budgeted then return false, budgetError end
+      local baseWidth, baseHeight = 3, 5
+      local material = tostring(packet.material or "")
+      if material:find("bird", 1, true) then baseWidth, baseHeight = 5, 3 end
+      if material:find("aircraft", 1, true) then baseWidth, baseHeight = 12, 4 end
+      if material:find("rain", 1, true) then baseWidth, baseHeight = 0.6, 8 end
+      if material:find("sun_shaft", 1, true) then baseWidth = 8 end
+      return runDraw(function()
+        for _, item in ipairs(packet.items) do
+          local prototype = {
+            primitive = "billboard",
+            width = finite(item.width, baseWidth),
+            height = finite(item.height, baseHeight),
+          }
+          drawItem(self, prototype, item, packet.material, packet.texture)
+        end
+        return true
+      end)
     end,
   }
 end
@@ -696,6 +952,10 @@ function VoxelCompanion.new(options)
     frameDraws = 0,
     meshes = {},
     texture = nil,
+    commandSignatures = {},
+    commandSignatureOrder = {},
+    commandSignatureCount = 0,
+    commandSignatureNext = 1,
     diagnostics = {},
     clock = 0,
     frameIndex = 0,
@@ -901,6 +1161,10 @@ function VoxelCompanion:invalidate(reason)
   end
   if self.texture and self.texture.release then pcall(self.texture.release, self.texture) end
   self.texture = nil
+  self.commandSignatures = {}
+  self.commandSignatureOrder = {}
+  self.commandSignatureCount = 0
+  self.commandSignatureNext = 1
   if self.started then
     return self.dispatcher:invalidate(self:_context(), reason or "host_invalidated")
   end
@@ -944,6 +1208,7 @@ VoxelCompanion.LIMITS = {
   neighbors = MAX_NEIGHBORS,
   packetItems = MAX_PACKET_ITEMS,
   frameDraws = MAX_DRAWS_PER_FRAME,
+  commandSignatures = MAX_COMMAND_SIGNATURES,
 }
 
 return VoxelCompanion

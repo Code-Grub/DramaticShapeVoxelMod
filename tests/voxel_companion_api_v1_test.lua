@@ -21,6 +21,7 @@ end
 
 local API = assert(loadfile("lib/VoxelCompanionAPI.lua"))()
 equal(API.VERSION, 1, "vendored dispatcher reports API v1")
+local DrawFixture = assert(loadfile("tests/fixtures/voxel_companion_draw_v1.lua"))()
 
 local graphicsState = { color = "host", depth = "host", blend = "host" }
 local graphicsStack = {}
@@ -85,6 +86,7 @@ local fakeVoxel3D = {
     fov = math.rad(65),
   },
   draws = 0,
+  drawLog = {},
   glassState = true,
   failNextDraw = false,
 }
@@ -104,6 +106,7 @@ function fakeVoxel3D.newMesh(vertices, indices)
   return {
     vertices = vertices,
     indices = indices,
+    setTexture = function(self, texture) self.texture = texture end,
     release = function(self) self.released = true end,
   }
 end
@@ -112,8 +115,14 @@ function fakeVoxel3D.glass(enabled)
   fakeVoxel3D.glassState = enabled
 end
 
-function fakeVoxel3D.draw()
+function fakeVoxel3D.draw(mesh, texture, model)
   fakeVoxel3D.draws = fakeVoxel3D.draws + 1
+  if texture then mesh:setTexture(texture) end
+  fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog + 1] = {
+    mesh = mesh,
+    texture = texture,
+    model = model,
+  }
   if fakeVoxel3D.failNextDraw then
     fakeVoxel3D.failNextDraw = false
     error("synthetic GPU draw failure", 0)
@@ -228,6 +237,19 @@ local mod = cleanMod()
 local companion = VoxelCompanion.new({ mod = mod })
 local provider = companion.provider
 
+local function wireCommand(kind, phase, sequence, fields)
+  local command = fields or {}
+  command.schemaVersion = 1
+  command.cacheKey = command.cacheKey or ("other.extension:%s:%d"):format(kind, sequence)
+  command.kind = kind
+  command.owner = command.owner or "test.extension"
+  command.phase = phase
+  command.sequence = sequence
+  command.sortKey = command.sortKey or command.cacheKey
+  command.material = command.material or "test:material"
+  return command
+end
+
 equal(provider.api, 1, "provider reports API v1")
 equal(provider.host.id, "BATTLE_ART_VOXEL_FORK", "provider reports stable host id")
 equal(provider.host.version, "1.9.7", "provider preserves upstream version")
@@ -254,6 +276,11 @@ local calls = {
   disposed = 0,
 }
 
+local borrowedTexture = {
+  releases = 0,
+  release = function(self) self.releases = self.releases + 1 end,
+}
+
 local faulty, err = provider.register({
   api = 1,
   id = "test.draw-fault",
@@ -263,10 +290,11 @@ local faulty, err = provider.register({
     background = function(context)
       love.graphics.setColor(0.1, 0.2, 0.3, 0.4)
       fakeVoxel3D.failNextDraw = true
-      context.draw:mesh({
+      local accepted, drawError = context.draw.mesh(wireCommand("mesh", "background", 1, {
         geometry = { primitive = "box", width = 1, height = 1, depth = 1 },
         material = "test:fault",
-      })
+      }), context)
+      if not accepted then error(drawError, 0) end
     end,
   },
   dispose = function() calls.faultyDispose = calls.faultyDispose + 1 end,
@@ -311,16 +339,20 @@ healthy, err = provider.register({
   render = {
     background = function(context)
       calls.healthyRender = calls.healthyRender + 1
-      context.draw:mesh({
+      local accepted, drawError = context.draw.mesh(wireCommand("mesh", "background", 2, {
         geometry = { primitive = "box", x = 8, y = 4, z = 8,
           width = 2, height = 3, depth = 2 },
         material = "test:healthy",
-      })
-      context.draw:mesh({
+        texture = borrowedTexture,
+      }), context)
+      if not accepted then error(drawError, 0) end
+      calls.borrowedMeshCleared = fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog].mesh.texture == nil
+      accepted, drawError = context.draw.mesh(wireCommand("mesh", "background", 3, {
         geometry = { primitive = "world_apron", width = 32, depth = 32,
           skirtDepth = 16 },
         material = "world:apron",
-      })
+      }), context)
+      if not accepted then error(drawError, 0) end
     end,
   },
   invalidate = function(reason)
@@ -330,6 +362,36 @@ healthy, err = provider.register({
   dispose = function() calls.disposed = calls.disposed + 1 end,
 })
 check(healthy, err or "KFP-like extension registers")
+
+local collisionProbe
+collisionProbe, err = provider.register({
+  api = 1,
+  id = "test.no-command-cache",
+  priority = 20,
+  requires = { "render_phases" },
+  render = {
+    background = function(context)
+      local first = wireCommand("mesh", "background", 4, {
+        cacheKey = "other.extension:shared",
+        geometry = { primitive = "box", width = 1, height = 1, depth = 1 },
+      })
+      local second = wireCommand("mesh", "background", 5, {
+        cacheKey = "other.extension:shared",
+        geometry = { primitive = "box", width = 7, height = 1, depth = 1 },
+      })
+      local accepted, drawError = context.draw.mesh(first, context)
+      calls.collisionFirst = accepted
+      if not accepted then error(drawError, 0) end
+      accepted, drawError = context.draw.mesh(first, context)
+      calls.collisionRepeat = accepted
+      if not accepted then error(drawError, 0) end
+      accepted, drawError = context.draw.mesh(second, context)
+      calls.collisionSecond = accepted
+      calls.collisionError = drawError
+    end,
+  },
+})
+check(collisionProbe, err or "no-cache probe extension registers")
 
 local shadow
 shadow, err = provider.register({
@@ -360,6 +422,40 @@ contains(err, "shadow_pass", "nested shadow refusal explains the missing capabil
 
 check(companion:start(), "host dispatcher starts")
 local state = worldState()
+
+local rejectedDraws = fakeVoxel3D.draws
+local rejected = wireCommand("mesh", "background", 20, {
+  geometry = { primitive = "plane", width = 1, depth = 1 },
+})
+rejected.schemaVersion = 0
+local accepted, rejection = companion.draw.mesh(rejected, companion:_context())
+equal(accepted, false, "wrong draw schema returns exactly false")
+contains(rejection, "schemaVersion", "wrong draw schema explains the rejection")
+
+rejected = wireCommand("mesh", "background", 21, {
+  cacheKey = "unsafe key",
+  geometry = { primitive = "plane", width = 1, depth = 1 },
+})
+accepted, rejection = companion.draw.mesh(rejected, companion:_context())
+equal(accepted, false, "unsafe cache key returns exactly false")
+contains(rejection, "safe ASCII", "unsafe cache key explains the rejection")
+
+rejected = wireCommand("mesh", "background", 22, {
+  geometry = { primitive = "plane", width = 1, depth = 1 },
+  texture = "assets/foreign/texture.png",
+})
+accepted, rejection = companion.draw.mesh(rejected, companion:_context())
+equal(accepted, false, "texture path returns exactly false")
+contains(rejection, "path string", "texture path explains the rejection")
+
+rejected = wireCommand("mesh", "background", 23, {
+  geometry = { primitive = "plane", width = 1, depth = 1 },
+})
+accepted, rejection = companion.draw.mesh(rejected, nil)
+equal(accepted, false, "missing callback context returns exactly false")
+contains(rejection, "borrowed render context", "missing context explains the rejection")
+equal(fakeVoxel3D.draws, rejectedDraws, "rejected commands never reach Voxel3D.draw")
+
 local updateReport = companion:update(0.016, state)
 check(updateReport and updateReport.succeeded >= 1, "canonical update dispatch succeeds")
 equal(calls.world, 1, "initial world identity dispatches one snapshot")
@@ -398,17 +494,111 @@ equal(delta.fovDelta, 0.04, "camera FOV delta remains in radians")
 
 local renderReport = companion:render("background", state)
 check(renderReport, "background render dispatch returns a report")
-equal(renderReport.called, 2, "both active render extensions are called")
+equal(renderReport.called, 3, "all active render extensions are called")
 equal(renderReport.failed, 1, "one extension draw fault is contained")
-equal(renderReport.succeeded, 1, "later extension renders after an earlier fault")
+equal(renderReport.succeeded, 2, "later extensions render after an earlier fault")
 equal(calls.faultyDispose, 1, "faulted extension is disposed exactly once")
 equal(calls.healthyRender, 1, "healthy extension rendered")
+equal(fakeVoxel3D.drawLog[2].texture, borrowedTexture,
+  "extension texture is passed directly to Voxel3D.draw")
+equal(calls.borrowedMeshCleared, true,
+  "borrowed texture is unbound before draw.mesh returns")
+check(companion.texture ~= borrowedTexture,
+  "extension texture is not retained as the adapter fallback")
+equal(borrowedTexture.releases, 0, "adapter does not release the borrowed texture")
+equal(fakeVoxel3D.drawLog[4].model[2][2], 1,
+  "first same-key command uses its own declarative width")
+equal(fakeVoxel3D.drawLog[5].model[2][2], 1,
+  "an identical same-key command remains valid")
+equal(calls.collisionFirst, true, "first key and content pair is accepted")
+equal(calls.collisionRepeat, true, "same key and content pair is accepted again")
+equal(calls.collisionSecond, false, "same key with different content fails closed")
+contains(calls.collisionError, "content collision",
+  "same-key content mismatch reports a collision")
+equal(#fakeVoxel3D.drawLog, 5, "colliding declarative content is not drawn")
 equal(fakeVoxel3D.glassState, true, "host shader selector is restored after draw fault")
 equal(pushCount, 1, "graphics state is pushed once for the phase")
 equal(popCount, 1, "graphics state is popped once for the phase")
 equal(graphicsState.color, "host", "graphics color state is restored")
 equal(graphicsState.depth, "host", "graphics depth state is restored")
 equal(graphicsState.blend, "host", "graphics blend state is restored")
+
+local fixturePhaseIds = {
+  background = "1",
+  opaque_after_terrain = "2",
+  translucent_after_actors = "3",
+}
+local fixtureTexture
+local fixtureValidated = 0
+for _, phase in ipairs({
+  "background", "opaque_after_terrain", "translucent_after_actors",
+}) do
+  for _, command in ipairs(DrawFixture.phases[phase]) do
+    local valid, validationError = API.validate_draw_command(command, command.kind)
+    check(valid, validationError or "shared baseline command validates")
+    local scene, generation, phaseId, wireSequence, content = command.cacheKey:match(
+      "^kfp1:([0-9a-f]+):([0-9]+):([1-5]):([0-9]+):([0-9a-f]+)$")
+    check(scene ~= nil, "KFP fixture key uses the exact producer profile")
+    equal(#scene, 8, "KFP fixture scene digest has eight lowercase hex digits")
+    check(generation == "0" or not generation:match("^0"),
+      "KFP fixture generation is canonical unsigned decimal")
+    equal(phaseId, fixturePhaseIds[phase], "KFP fixture key phase matches command phase")
+    equal(wireSequence, tostring(command.sequence),
+      "KFP fixture key sequence matches command sequence")
+    equal(#content, 16, "KFP fixture content digest has sixteen lowercase hex digits")
+    check(#command.cacheKey <= 64, "KFP fixture key stays within the host limit")
+    if command.texture then fixtureTexture = command.texture end
+    fixtureValidated = fixtureValidated + 1
+  end
+end
+equal(fixtureValidated, DrawFixture.commandCount,
+  "shared fixture covers every declared baseline command")
+equal(#DrawFixture.instancePrimitives, 15,
+  "shared fixture covers every common instance primitive")
+check(fixtureTexture, "shared fixture includes an opaque poster texture")
+
+local fixtureRender = {}
+for _, phase in ipairs({
+  "background", "opaque_after_terrain", "translucent_after_actors",
+}) do
+  local phaseName = phase
+  fixtureRender[phaseName] = function(context)
+    for _, command in ipairs(DrawFixture.phases[phaseName]) do
+      local accepted, drawError = context.draw[command.kind](command, context)
+      if accepted ~= true then error(drawError or "fixture draw rejected", 0) end
+      calls.fixtureAccepted = (calls.fixtureAccepted or 0) + 1
+      if command.texture then
+        calls.fixtureTextureCleared = fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog]
+          .mesh.texture == nil
+      end
+    end
+  end
+end
+
+local fixtureHandle
+fixtureHandle, err = provider.register({
+  api = 1,
+  id = "test.shared-draw-fixture",
+  priority = 30,
+  requires = { "render_phases" },
+  render = fixtureRender,
+})
+check(fixtureHandle, err or "shared fixture extension registers")
+local fixtureBackground = companion:render("background", state)
+local fixtureOpaque = companion:render("opaque_after_terrain", state)
+local fixtureTranslucent = companion:render("translucent_after_actors", state)
+check(fixtureBackground and fixtureBackground.failed == 0,
+  "shared background mesh commands render")
+check(fixtureOpaque and fixtureOpaque.failed == 0,
+  "shared world apron and instance commands render")
+check(fixtureTranslucent and fixtureTranslucent.failed == 0,
+  "shared explicit billboard command renders")
+equal(calls.fixtureAccepted, DrawFixture.commandCount,
+  "host accepts every shared baseline fixture command")
+equal(calls.fixtureTextureCleared, true,
+  "shared poster texture is unbound before the draw call returns")
+check(companion.texture ~= fixtureTexture,
+  "shared fixture texture is not retained as a host fallback")
 
 local lateUpdates = 0
 local late
@@ -430,6 +620,8 @@ equal(calls.invalidated, 1, "host invalidation reaches the healthy extension")
 equal(calls.invalidateReason, "test-invalidate", "invalidation reason is canonical")
 companion:dispose("test-dispose")
 equal(calls.disposed, 1, "healthy extension is disposed exactly once")
+equal(borrowedTexture.releases, 0,
+  "adapter never releases a borrowed texture during invalidation or disposal")
 equal(companion.state, nil, "adapter drops retained world state on dispose")
 equal(companion.startContext, nil, "adapter drops retained activation context on dispose")
 equal(love.update, sentinelUpdate, "adapter does not replace global callbacks")

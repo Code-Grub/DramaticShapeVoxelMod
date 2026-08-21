@@ -10,8 +10,8 @@
   `06e06e305bbcefe97c216a31bb25265ffb5e6b18`, dated
   2026-08-21T14:38:54-04:00.
 - Gen1recomp source: <https://github.com/bryanthaboi/gen1recomp/commit/06e06e305bbcefe97c216a31bb25265ffb5e6b18>
-- Voxel Companion API reference dispatcher: normalized SHA-256
-  `7ACB41E52757898038454D2EA673AAE5AC1ED66768DBA38E4FD8104702FD569B`.
+- Frozen Voxel Companion API reference dispatcher: byte-exact SHA-256
+  `6150DA890F36666AFA88C7EE2E48D57F6C77D1C9678B7B34C988C24997ADA3A3`.
 
 The integration does not change the upstream mod identifier, manifest version,
 load priority, permissions, conflicts, or package layout. The existing package
@@ -81,8 +81,29 @@ protected calls per cell. Player movement does not rebuild the full map.
 The draw facade implements the three v1 draw methods:
 
 - `mesh` for a box, plane, and centered world apron
-- `instances` for bounded prototype batches
-- `billboards` for bounded camera-facing batches
+- `instances` for bounded batches of box, plane, door frame, window, poster,
+  rail, fixture, sconce, cave roof, grass clump, canopy, vine, umbrella,
+  mountain, and hood prototypes
+- `billboards` for bounded explicit camera-facing items
+
+Extensions call each method with the canonical dot-call form
+`draw.<kind>(command, context)`. A draw returns exactly `true` when the host
+accepts it. A rejection returns `false, error`; it does not throw across the
+facade boundary. Every command must use `schemaVersion = 1` and a 1 to 64 byte
+cache key made only from `[A-Za-z0-9._:-]`. This generic host rule does not
+require a producer prefix. KFP-produced commands use the stricter profile
+`kfp1:<scene8>:<generation>:<phaseId>:<sequence>:<content16>`.
+
+The adapter copies each accepted cache key and stores an independent bounded
+digest of declarative command content. Reuse with the same content is valid.
+Reuse with different content fails closed. The registry holds at most 4,096
+entries and is cleared on invalidation. It does not retain commands, nested
+command tables, texture handles, or derived command geometry.
+
+`command.texture` is an optional opaque resource borrowed only for the active
+draw callback. A string path is refused. The adapter can pass the borrowed
+texture to `Voxel3D.draw`, then unbinds it before returning. It never stores,
+releases, or substitutes ownership of that texture.
 
 One phase accepts at most 2,048 items per packet and 4,096 draws per frame.
 Geometry positions and primitive sizes are finite and limited to 65,536 host
@@ -130,9 +151,11 @@ luajit tests\voxel_companion_api_v1_test.lua
 
 It covers descriptor truthfulness, canonical flat callbacks, optional
 capabilities, late registration, direct world/update/camera payloads, defensive
-snapshots, edit coalescing, radian camera input, graphics restoration, draw
-fault isolation, deterministic continuation, disposal, legacy refusal, and the
-no-write rule.
+snapshots, edit coalescing, radian camera input, graphics restoration, exact
+draw results, generic safe keys, KFP producer keys, schema rejection, borrowed
+texture ownership, key-content collision refusal, all shared baseline
+primitives, draw fault isolation, deterministic continuation, disposal, legacy
+refusal, and the no-write rule.
 
 The canonical KFP dispatcher conformance command is:
 
@@ -140,8 +163,11 @@ The canonical KFP dispatcher conformance command is:
 luajit tools\run_tests.lua companion
 ```
 
-At integration time, the focused host test passed 76 checks and the canonical
-KFP suite passed 32 tests. All changed Lua files also compiled with LuaJIT. The
-large upstream `tests/battle_art_voxel_fork_test.lua` cannot compile as one
-LuaJIT chunk because its main function already exceeds LuaJIT's 200-local
-limit. This is an upstream test-harness limit, not a companion adapter failure.
+At integration time, the focused host test passed 263 checks, the canonical
+companion selector passed 38 tests, and the complete KFP suite passed 191
+tests. The shared ROM-free draw fixture has SHA-256
+`A817618D9BAD3C3849B71DF02C255ECA53CBC74B0660A38031EC8399D22FE6A5`.
+All changed Lua files also compiled with LuaJIT. The large upstream
+`tests/battle_art_voxel_fork_test.lua` cannot compile as one LuaJIT chunk
+because its main function already exceeds LuaJIT's 200-local limit. This is an
+upstream test-harness limit, not a companion adapter failure.
