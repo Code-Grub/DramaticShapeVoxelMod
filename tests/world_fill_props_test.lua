@@ -1,0 +1,71 @@
+package.path = "./?.lua;./?/init.lua;" .. package.path
+
+local T = require("tests.modkit")
+local MOD_PATH = os.getenv("DS_MOD_PATH") or "mods/DramaticShapeVoxelMod"
+
+-- The placement/classification surface is deliberately pure. Load it with
+-- narrow renderer stubs so this suite remains runnable in the headless CI
+-- interpreter without constructing the entire graphics mod a second time.
+local stubs = {
+  Mat4 = {}, Voxel3D = {}, VoxelState = { angle = 0 }, FirstPerson = {},
+  WorldUnderlay = { STEP = 32, HEIGHT = -20,
+                    enabled = function() return true end,
+                    natureEnabled = function() return true end },
+}
+local V = {
+  mod = { assets = {} },
+  require = function(name) return assert(stubs[name], "unexpected module " .. name) end,
+  data = function(name)
+    return assert(loadfile(MOD_PATH .. "/data/" .. name .. ".lua"))()
+  end,
+}
+local Props = assert(loadfile(MOD_PATH .. "/lib/WorldFillProps.lua"))(V)
+
+T.eq(Props.biomeFor({ id = "VIRIDIAN_FOREST", def = {} }), "forest",
+  "Viridian Forest uses forest props")
+T.eq(Props.biomeFor({ id = "SAFARI_ZONE_EAST", def = {} }), "field",
+  "Safari Zone uses field props")
+T.eq(Props.biomeFor({ id = "ROUTE_23", def = {} }), "rocky",
+  "Route 23 uses rocky props")
+T.eq(Props.biomeFor({ id = "ROCK_TUNNEL_1F",
+                      def = { tileset = "CAVERN" } }), "rocky",
+  "cavern maps fall back to rocky props")
+T.eq(Props.biomeFor({ id = "PALLET_TOWN",
+                      def = { tileset = "OVERWORLD" } }), "forest",
+  "towns continue forest scenery beyond ROM tiles")
+T.eq(Props.biomeFor({ id = "OAKS_LAB",
+                      def = { tileset = "LAB" } }), nil,
+  "ordinary interiors remain undecorated")
+
+local v1, s1, jx1, jz1, b1 = Props.choice({ id = "ROUTE_1" }, 4, -7)
+local v2, s2, jx2, jz2, b2 = Props.choice({ id = "ROUTE_1" }, 4, -7)
+T.eq(table.concat({ v1, s1, jx1, jz1, b1 }, ","),
+     table.concat({ v2, s2, jx2, jz2, b2 }, ","),
+  "prop choice is deterministic per map/world cell")
+T.check(v1 >= 1 and v1 <= 3 and b1 >= 0 and b1 <= 2,
+  "choice stays inside authored variant and size-bucket ranges")
+T.eq(s1, 1 + b1 * 0.5,
+  "size buckets 0, 1 and 2 select 100%, 150% and 200% scale")
+T.eq(jx1, 0, "every world cell stays centered without spacing jitter")
+T.eq(jz1, 0, "every world cell stays centered without depth jitter")
+T.eq(Props.radiusFor(160, 144, false), 23,
+  "world-fill scenery extends the former 15-cell view radius by 1.5x")
+T.eq(Props.radiusFor(0, 0, true), 18,
+  "free-camera scenery extends its former 12-cell minimum radius by 1.5x")
+
+local state = {
+  map = { id = "ROUTE_1", widthCells = 4, heightCells = 3, def = {} },
+  neighbors = {
+    { map = { id = "VIRIDIAN_CITY", widthCells = 2, heightCells = 2,
+              def = {} }, ox = 64, oy = -32 },
+  },
+}
+local rects = Props.loadedRects(state)
+T.eq(Props.outsideLoaded(16, 16, rects), false,
+  "props never occupy the root map rectangle")
+T.eq(Props.outsideLoaded(80, -16, rects), false,
+  "props never occupy a connected-map rectangle")
+T.eq(Props.outsideLoaded(-64, -64, rects), true,
+  "props remain eligible beyond loaded map rectangles")
+
+T.finish("WORLD FILL PROPS")

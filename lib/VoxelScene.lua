@@ -27,6 +27,7 @@ local VoxelGrid = V.require("VoxelGrid")
 local DayNight = V.require("DayNight")
 local FirstPerson = V.require("FirstPerson")
 local WorldUnderlay = V.require("WorldUnderlay")
+local WorldFillProps = V.require("WorldFillProps")
 local RenderDistance = V.require("RenderDistance")
 local PaletteFX = require("src.render.PaletteFX")
 local Map = require("src.world.Map")
@@ -1099,6 +1100,11 @@ function VoxelScene.render(state, w, h, vw, vh, paletteFor)
                    Mat4.translate(nb.ox, 0, nb.oy))
     end
   end
+
+  -- Trees or rocks continue the authored route beyond its finite mesh. They
+  -- stand only on world cells outside the root/connected-map rectangles,
+  -- so no billboard can poke through valid terrain or block the player.
+  WorldFillProps.draw(state, cx, cy, vw, vh)
 
   -- Without a shadow map (headless, or a driver that could not make the
   -- canvas) the old flat decals stand in: ground-only, characters only,

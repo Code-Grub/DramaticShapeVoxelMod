@@ -477,6 +477,8 @@ local SETTINGS = {
   { WorldUnderlay.setting,
     "Choose the solid outdoor world beneath terrain holes and beyond map edges: "
     .. "CYAN or BLACK. OFF/KFP leaves the underlay to Kanto First Person. "
+    .. "NATURE uses a black underlay and continues each biome beyond loaded "
+    .. "ROM cells with stable random-sized tree or rock billboards. "
     .. "Indoor horizons automatically match "
     .. "the room's own border/void material so the finite map ring cannot reveal "
     .. "a differently coloured infinite fill behind it.",
@@ -618,7 +620,7 @@ local SETTINGS = {
     provider = true, full = true },
   { UiBackplates.backdropOffset,
     "Choose how far down into an illustrated background its top crop begins, "
-    .. "from 0 to 200 source-image pixels. Larger values reveal lower floor "
+    .. "from 0 to 400 source-image pixels (100 by default). Larger values reveal lower floor "
     .. "detail in wide windows and are safely clamped when no vertical crop "
     .. "is available. This affects GEN6 and enabled boss backgrounds.",
     -- Keep it visible beside ARENA FILL so a player can prepare the crop

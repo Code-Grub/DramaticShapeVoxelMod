@@ -64,6 +64,14 @@ Key visual controls include:
 - `CYAN` is the default classic underlay.
 - `BLACK` uses the dark `#181818` underlay.
 - `OFF/KFP` draws no underlay, allowing Kanto First Person to own that space.
+- `NATURE` uses the cyan underlay and adds biome-aware trees or rocks.
+
+With `NATURE`, transparent nature billboards populate every 16×16
+world cell beyond the loaded map and its connected neighbors. Towns, forests,
+and leafy routes continue with trees; Safari/open-field routes use broadleaf
+trees; rocky routes (including Route 23) and cavern maps use rock pillars.
+Their variant and 100%/150%/200% size are randomized deterministically, so they do not
+flicker when the camera moves. Authored ROM cells always remain unobstructed.
 
 ### Water and sky
 
@@ -93,7 +101,7 @@ Presentation controls include:
 | --- | --- | --- |
 | `ARENA FILL` | `OFF`, `WHITE`, `GEN6`, `PNG`, `BLUE` | Voxel level, flat Battle Art arena, or Stadium's blue arena |
 | `STADIUM CIRCLE` | `ON`, `OFF`, `HALF` | Independently selects full, hidden, or two-thirds-radius Stadium ground circles when supported |
-| `BG Y-OFFSET` | `-400` to `+400` | Vertically crops a selected backdrop |
+| `BG Y-OFFSET` | `0` to `400` (default `100`) | Vertically crops a selected backdrop |
 | `BOSS BG` | `ON`, `OFF` | Allows special boss backdrops |
 | `SPRITE LIGHT` | `SHADED`, `UNLIT` | Lets battle cards receive world lighting or preserve source colors |
 | `HUD COLOR` | `COLOR`, `INVERTED` | Dark or light HUD glyph treatment while retaining HP colors |
