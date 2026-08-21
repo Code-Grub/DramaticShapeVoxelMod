@@ -446,6 +446,17 @@ function BattleScene.render(state, arena, textures, token, battle, drawActors,
   local externalF = type(externalProjection) == "table"
     and tonumber(externalProjection[6]) or nil
   if type(externalEye) == "table" and type(externalFocus) == "table"
+      and type(externalCamera.fov) == "number" then
+    -- API camera poses frame the same logical GB battle surface as our native
+    -- rig. Copy before widening the lens below: the context pose belongs to
+    -- SBFX and must remain read-only for the rest of this draw.
+    cam = {
+      eye = { externalEye[1], externalEye[2], externalEye[3] },
+      focus = { externalFocus[1], externalFocus[2], externalFocus[3] },
+      fov = externalCamera.fov,
+      curve = externalCamera.curve or 0,
+    }
+  elseif type(externalEye) == "table" and type(externalFocus) == "table"
       and externalF and math.abs(externalF) > 1e-6 then
     -- Stadium's actor slots are (0,0,+24) and (0,0,-24). BattleArena uses
     -- the same 48-unit separation, translated to the selected map patch, so
