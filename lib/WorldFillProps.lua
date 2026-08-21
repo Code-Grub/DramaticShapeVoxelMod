@@ -76,10 +76,19 @@ end
 
 local function choice(map, gx, gz)
   local seed = mapSeed(map)
-  local variant = hash(seed, gx, gz, 1) % 3 + 1
-  local sizeBucket = hash(seed, gx, gz, 2) % 3
-  local scale = 1 + sizeBucket * 0.5
-  return variant, scale, 0, 0, sizeBucket
+  -- Only the two larger variants (1 = big, 2 = medium); skip the smallest.
+  -- The variant mixes two hash streams with different salts so adjacent cells
+  -- do not band or form checkerboard rows.
+  local a = hash(seed, gx, gz, 1)
+  local b = hash(seed, gx, gz, 7)
+  local mixed = (a + b * 31) % 2147483647
+  local variant = (mixed % 2) + 1                      -- 1 or 2
+  local scale = variant == 1 and 1.5 or 1.0            -- big vs medium
+  -- Slight per-card yaw: -1, 0 or +1 degree about the vertical, so cards on
+  -- the same plane do not z-fight. Picked from a separate hash stream.
+  local deg = (hash(seed, gx, gz, 3) % 3) - 1         -- -1, 0, +1
+  local rot = math.rad(deg)
+  return variant, scale, 0, 0, variant == 1 and 1 or 0, rot
 end
 
 local function textureFor(kind)
@@ -140,14 +149,18 @@ local function outsideLoaded(x, z, rects)
   return true
 end
 
-local function scaledBillboard(px, pz, scale, b)
+local function scaledBillboard(px, pz, scale, b, rot)
   b = b or FirstPerson.cardBlend()
+  rot = rot or 0
   local yaw = b > 0 and (FirstPerson.cardYaw(px + 8, pz + 8) * b) or 0
   local pitch = (Voxel.angle - math.pi / 2) * (1 - b)
   -- Mat4.billboard's local pivot is x=8. Keep that foot-centre fixed while
-  -- scaling; a plain B*S would move every non-1x prop sideways.
+  -- scaling; a plain B*S would move every non-1x prop sideways. The small
+  -- rotateY(rot) tips the card a hair about the vertical so co-planar cards
+  -- never z-fight.
   local aroundFeet = Mat4.mul(Mat4.translate(8, 0, 0),
-    Mat4.mul(Mat4.scale(scale, scale, scale), Mat4.translate(-8, 0, 0)))
+    Mat4.mul(Mat4.rotateY(rot),
+      Mat4.mul(Mat4.scale(scale, scale, scale), Mat4.translate(-8, 0, 0))))
   return Mat4.mul(Mat4.billboard(px, pz, HEIGHT, yaw, pitch, false),
                   aroundFeet)
 end
@@ -181,13 +194,13 @@ local function mergedMesh(state, kind, cgx, cgz, radius, rects, blend)
   local verts, count = {}, 0
   for gz = cgz - radius, cgz + radius do
     for gx = cgx - radius, cgx + radius do
-      local variant, scale, jx, jz = choice(state.map, gx, gz)
+      local variant, scale, jx, jz, _, rot = choice(state.map, gx, gz)
       local centerX = gx * STEP + STEP / 2 + jx
       local centerZ = gz * STEP + STEP / 2 + jz
       if outsideLoaded(centerX, centerZ, rects) then
         local card = cardFor(kind, variant)
         if card then
-          local model = scaledBillboard(centerX - 8, centerZ - 8, scale, blend)
+          local model = scaledBillboard(centerX - 8, centerZ - 8, scale, blend, rot)
           appendVertex(verts, model, card[1])
           appendVertex(verts, model, card[2])
           appendVertex(verts, model, card[3])
@@ -207,10 +220,14 @@ local function mergedMesh(state, kind, cgx, cgz, radius, rects, blend)
 end
 
 local function radiusFor(vw, vh, freeCamera)
-  local baseRadius = math.max(8,
+  local baseRadius = math.max(10,
     math.ceil(math.max(vw or 0, vh or 0) / STEP) + 5)
-  if freeCamera then baseRadius = math.max(baseRadius, 12) end
-  return math.floor(baseRadius * 1.5 + 0.5)
+  if freeCamera then baseRadius = math.max(baseRadius, 14) end
+  -- Margin so the billboard ring extends slightly past the viewport edges;
+  -- radiusFor sizes from max(vw,vh) (one axis), but viewport corners sit
+  -- ~1.41x farther from centre, so without it trees cull at the corners.
+  local MARGIN = 4
+  return math.floor(baseRadius * 0.5) + MARGIN
 end
 
 function WorldFillProps.draw(state, cx, cz, vw, vh)
