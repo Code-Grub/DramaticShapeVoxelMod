@@ -58,10 +58,12 @@ $localArt = @(Get-ChildItem -LiteralPath (Join-Path $repo 'assets\battle') `
   })
 # World-fill scenery (assets/world-fill) is committed public art, not private
 # BYO artwork: it must ship in the package or the distant biome trees/rocks
-# have no textures. Include every file except _source/backup drafts.
+# have no textures. Include every file (textures AND the integration README)
+# except _source/backup drafts.
 $worldFill = @(Get-ChildItem -LiteralPath (Join-Path $repo 'assets\world-fill') `
   -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
-    $_.Extension -match '(?i)^\.(png|jpe?g|webp)$'
+    $relative = Relative-Path $_.FullName
+    -not (Test-ExcludedFolder $relative)
   } | ForEach-Object {
     $relative = Relative-Path $_.FullName
     if (-not (Test-ExcludedFolder $relative)) { $relative }
