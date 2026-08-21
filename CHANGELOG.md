@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- **Biome-aware WORLD FILL scenery.** Every 16x16 fill cell beyond the loaded
+  map neighborhood now receives a grounded, camera-facing nature billboard.
+  Forest/city, open-field/Safari, and rocky/cavern maps select independent
+  transparent tree or rock sets with stable randomized variants and discrete
+  100%/150%/200% sizes (150% average);
+  valid ROM terrain and connected maps remain exclusion zones. The scenery
+  horizon is one-and-a-half times its original radius and is submitted as one
+  cached combined mesh instead of thousands of individual billboard draws.
+  The scenery is opt-in through `WORLD FILL: NATURE`, which combines it with
+  the cyan underlay; CYAN, BLACK and OFF/KFP retain their lightweight behavior.
+
+- **Oak's Lab authored props.** The waste-paper basket now uses the same open,
+  tapered cylinder treatment as the Gym cans. The wall scrolls retain their
+  facade art while their upward faces use the neighboring plain wall course.
+
+- **Background crop defaults.** `BG Y-OFFSET` now defaults to 100 source
+  pixels and offers only non-negative values from 0 through 400.
+
 - **Battle Art stages in Stadium-owned battles.** The Stadium 2 Importer scene
   API now receives Battle Art's selected arena. OFF draws the captured voxel
   level through Stadium's live camera and publishes its hosted attack anchors;

@@ -494,8 +494,9 @@ function Structures.forMap(map)
   -- happen to vote in.
   do
     local okP, prof = pcall(V.data, "voxel_heights")
-    local entry = okP and type(prof) == "table" and prof.tilesets
-                  and prof.tilesets[tileset.id]
+    local entry = okP and type(prof) == "table" and
+                  ((prof.maps and prof.maps[map.id])
+                   or (prof.tilesets and prof.tilesets[tileset.id]))
     local pg = entry and entry.prop_ground
     if type(pg) == "table" then
       for k, skipped in pairs(S.skip) do
@@ -1339,8 +1340,9 @@ function Structures.buildCylinders(S, map, x0, x1, y0, y1, groundTiles)
     = 6, 9, 4, 9, 5, 4
   do
     local okP, prof = pcall(V.data, "voxel_heights")
-    local entry = okP and type(prof) == "table" and prof.tilesets
-                  and prof.tilesets[map.tileset.id]
+    local entry = okP and type(prof) == "table" and
+                  ((prof.maps and prof.maps[map.id])
+                   or (prof.tilesets and prof.tilesets[map.tileset.id]))
     if entry and type(entry.stump_cap) == "number" then
       stumpCap = entry.stump_cap
     end

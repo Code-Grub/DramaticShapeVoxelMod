@@ -240,9 +240,7 @@ end
 -- tile id -> class, from the hand-authored groups for one tileset. Unknown
 -- class names are dropped rather than trusted: a typo in the data file
 -- should degrade to the derived default, not invent a zero-height class.
-local function authoredGroups(tilesetId, heights)
-  local s = load()
-  local entry = s and s.tilesets and s.tilesets[tilesetId]
+local function authoredGroups(entry, heights)
   local out = {}
   if not entry then return out end
   for class, tiles in pairs(entry) do
@@ -276,9 +274,7 @@ end
 -- 140 of the second -- no rule on `above` can split them.  What is BELOW
 -- does, exactly: the wall's own face $0F sits under the top band and under
 -- nothing else (336 vs 352, clean).
-local function authoredConditions(tilesetId, heights)
-  local s = load()
-  local entry = s and s.tilesets and s.tilesets[tilesetId]
+local function authoredConditions(entry, heights)
   if type(entry) ~= "table" then return nil end
   local out, any = {}, false
 
@@ -328,9 +324,19 @@ end
 function TileShape.forMap(map)
   local tileset = map.tileset
   local id = tileset.id
-  if cache[id] then return cache[id] end
+  local profile = load()
+  local base = profile and profile.tilesets and profile.tilesets[id]
+  local perMap = profile and profile.maps and profile.maps[map.id]
+  local cacheKey = perMap and (tostring(id) .. ":" .. tostring(map.id)) or id
+  if cache[cacheKey] then return cache[cacheKey] end
 
   local heights = TileShape.heights()
+  local entry = base
+  if type(perMap) == "table" then
+    entry = {}
+    for k, v in pairs(type(base) == "table" and base or {}) do entry[k] = v end
+    for k, v in pairs(perMap) do entry[k] = v end
+  end
   -- Per-tileset height overrides (a tileset entry's `heights`): the class
   -- vocabulary is global but the drawings are not -- the DOJO lab tables
   -- are drawn 6px tall where the default `table` is 12 -- and the height
@@ -338,8 +344,6 @@ function TileShape.forMap(map)
   -- actually stands, or the starter balls float over their own table.
   -- Same gate as the global list: known classes, numbers only.
   do
-    local s = load()
-    local entry = s and s.tilesets and s.tilesets[id]
     local over = entry and entry.heights
     if type(over) == "table" then
       for class, h in pairs(over) do
@@ -349,7 +353,7 @@ function TileShape.forMap(map)
       end
     end
   end
-  local authored = authoredGroups(id, heights)
+  local authored = authoredGroups(entry, heights)
   local count = math.floor((tileset.imageWidth or 128) / 8)
                 * math.floor((tileset.imageHeight or 48) / 8)
 
@@ -375,7 +379,7 @@ function TileShape.forMap(map)
     end
   end
 
-  local shapes = { classes = {}, cond = authoredConditions(id, heights) }
+  local shapes = { classes = {}, cond = authoredConditions(entry, heights) }
   for class in pairs(FALLBACK_HEIGHTS) do
     shapes.classes[class] = shapeFor(class, heights)
   end
@@ -394,6 +398,8 @@ function TileShape.forMap(map)
     local class = authored[t]
     if class then
       shapes[t] = shapeFor(class, heights, true)
+      local topTile = entry and entry.top_tiles and entry.top_tiles[t]
+      if type(topTile) == "number" then shapes[t].topTile = topTile end
     elseif t == tileset.grassTile then
       -- derived pin: every tileset already names its tall-grass tile, so
       -- the standing-tuft treatment needs no profile entry anywhere
@@ -409,7 +415,7 @@ function TileShape.forMap(map)
     end
   end
   shapes.count = count
-  cache[id] = shapes
+  cache[cacheKey] = shapes
   return shapes
 end
 

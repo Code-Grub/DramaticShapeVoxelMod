@@ -2947,6 +2947,23 @@ return {
   -- is sealed by a black threshold row.  Reading it would mean changing
   -- the flood itself, which every model here depends on, for one scenery
   -- placement.
+  -- Per-map additions to a shared tileset profile. Oak's Lab shares DOJO
+  -- with the Fighting Dojo and Lance's room; these pins must not alter either.
+  maps = {
+    OAKS_LAB = {
+      -- Same four-tile drawing and round profile as the GYM cans.
+      can = { 11, 12, 27, 28 },
+      can_cap = 9,
+      can_base = 4,
+      can_height = 9,
+      can_well = 5,
+      can_taper = 4,
+      -- Keep the wall-scroll facade, but cap it with the adjacent plain wall.
+      wall = { 52, 67, 82, 83 },
+      top_tiles = { [52] = 5, [67] = 5, [82] = 5, [83] = 5 },
+    },
+  },
+
   -- A building sprite is authored as a front projection.  The model gives
   -- it a real rear wall, so facade-only tiles need plain material donors on
   -- that wall instead of being mirrored there.  These OVERWORLD door halves

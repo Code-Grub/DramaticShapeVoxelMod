@@ -682,10 +682,11 @@ local function runGeometry(map, bodyOnly, masks, sink, waterSink)
                  { x0 + 8, neY, z0 }, { x0, nwY, z0 } },
                { { u0, v1 }, { u1, v1 }, { u1, v0 }, { u0, v0 } }, 0.95)
         elseif run then
-          local topTile = map:tileAt(tx, ChunkMesher.flatTopRow(run, ty))
+          local topTile = s.topTile
+            or map:tileAt(tx, ChunkMesher.flatTopRow(run, ty))
           topQuad(x0, z0, h, topTile, VOLUME_TOP_SHADE)
         else
-          local topTile = tile
+          local topTile = s.topTile or tile
           if s.art == "upright" and s.authored then
             -- Top art for a pinned box.  A furniture drawing is top-view
             -- rows over floor(h/8) face-on rows the fold stands upright;
