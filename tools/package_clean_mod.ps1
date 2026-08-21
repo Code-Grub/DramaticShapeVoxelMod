@@ -71,7 +71,22 @@ $battleFiles = @(Get-ChildItem -LiteralPath $battleRoot -Recurse -File -Force |
   } |
   ForEach-Object { Relative-Path $_.FullName })
 
-$entries = @($source + $battleDirs + $battleFiles | Sort-Object -Unique)
+# World-fill scenery shares the BYO-art treatment: the committed README/asset
+# notes travel in the clean package (directory entry + non-image metadata) but
+# the supplied PNGs stay local-only, matching the gitignore that excludes
+# assets/world-fill/** while keeping assets/world-fill/README.txt tracked.
+$worldFillRoot = Join-Path $repo 'assets\world-fill'
+$worldFillDirs = @('assets/world-fill/')
+$worldFillFiles = @(Get-ChildItem -LiteralPath $worldFillRoot -Recurse -File -Force |
+  Where-Object {
+    $relative = Relative-Path $_.FullName
+    -not (Test-ExcludedFolder $relative) -and (
+      $_.Extension -notmatch '(?i)^\.(png|jpe?g|webp)$'
+    )
+  } |
+  ForEach-Object { Relative-Path $_.FullName })
+
+$entries = @($source + $battleDirs + $battleFiles + $worldFillDirs + $worldFillFiles | Sort-Object -Unique)
 if (-not $entries.Count) { throw "no package entries found" }
 
 if (Test-Path -LiteralPath $Output) {

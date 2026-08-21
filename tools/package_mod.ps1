@@ -56,7 +56,17 @@ $localArt = @(Get-ChildItem -LiteralPath (Join-Path $repo 'assets\battle') `
     # or leak into the private test package.
     if (-not (Test-ExcludedFolder $relative)) { $relative }
   })
-$files = @($source + $contracts + $localArt | Sort-Object -Unique)
+# World-fill scenery (assets/world-fill) is committed public art, not private
+# BYO artwork: it must ship in the package or the distant biome trees/rocks
+# have no textures. Include every file except _source/backup drafts.
+$worldFill = @(Get-ChildItem -LiteralPath (Join-Path $repo 'assets\world-fill') `
+  -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
+    $_.Extension -match '(?i)^\.(png|jpe?g|webp)$'
+  } | ForEach-Object {
+    $relative = Relative-Path $_.FullName
+    if (-not (Test-ExcludedFolder $relative)) { $relative }
+  })
+$files = @($source + $contracts + $localArt + $worldFill | Sort-Object -Unique)
 if (-not $files.Count) { throw "no package files found" }
 
 if (Test-Path -LiteralPath $Output) { Remove-Item -LiteralPath $Output -Force }

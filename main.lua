@@ -1365,7 +1365,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.9.6"
+mod.exports.version = "1.9.7"
 mod.exports.battlePresentation = BattlePresentation.export()
 mod.exports.battleStage = BattleStage.export(OverworldBattle)
 -- exposed so a companion mod can pin its own tiles' shapes or read the
