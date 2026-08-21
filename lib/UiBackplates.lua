@@ -85,18 +85,19 @@ end
 -- source-image pixels (the bundled plates are 800px tall), so the same choice
 -- identifies the same part of the art on a phone, tablet or desktop window.
 -- Voxel3D clamps it whenever an aspect ratio leaves less crop available.
--- Range spans -400..+400 (step 20): negative values let narrow/phone viewports
--- reveal the TOP of the arena art, which the old positive-only range hid.
+-- Range spans 0..400 (step 20). 100 is the fresh-install default, keeping
+-- useful floor detail in wide windows without retaining confusing negative
+-- crops in either options UI.
 local offsetValues, offsetLabels = {}, {}
-for px = -400, 400, 20 do
+for px = 0, 400, 20 do
   offsetValues[#offsetValues + 1] = px
   offsetLabels[#offsetLabels + 1] = px .. " PX"
 end
 UiBackplates.backdropOffset = ModSetting.new(
-  "backdropOffset", "BG Y-OFFSET", offsetValues, offsetLabels)
+  "backdropOffset", "BG Y-OFFSET", offsetValues, offsetLabels, 6)
 
 function UiBackplates.backdropOffsetPixels()
-  return tonumber(UiBackplates.backdropOffset:get()) or 0
+  return tonumber(UiBackplates.backdropOffset:get()) or 100
 end
 
 -- Whether to draw the solid white layer over the voxel world. Decoupled from
