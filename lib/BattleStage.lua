@@ -49,21 +49,15 @@ function BattleStage.export(battles)
       return nil
     end
 
-    -- Once SBFX acquires Battle Art's registered arena, SBFX owns the final
-    -- composition and this descriptor must stop advertising an external
-    -- renderer. That is the opt-in handoff which lets its models and camera
-    -- selectors operate independently instead of the compatibility bridge
-    -- yielding the whole battle to Battle Art.
-    local hosted = call(battles, "providerHosted", battle) == true
     local out = {
       apiVersion = BattleStage.API_VERSION,
       sourceModId = BattleStage.SOURCE_MOD_ID,
       battle = battle,
-      staged = not hosted,
+      staged = true,
       ready = false,
       ownership = copyOwnership(),
-      surfaceOwned = not hosted,
-      externalCamera = not hosted,
+      surfaceOwned = true,
+      externalCamera = true,
       layerOwnsProjection = true,
     }
 

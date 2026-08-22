@@ -33,7 +33,6 @@
 
 -- the mod namespace (see main.lua): V.require loads a sibling module
 local V = ...
-local OverworldBattle = V.require("OverworldBattle")
 
 local BattleExit = {}
 BattleExit.__index = BattleExit
@@ -153,12 +152,6 @@ end
 
 -- Whether this ending gets the fade.
 function BattleExit.wanted(battle)
-  -- The SBFX transition selector is authoritative only for a battle SBFX is
-  -- actually hosting.  This preserves Battle Art's standalone fade when
-  -- Stadium FX is disabled and avoids a second veil for every other choice.
-  if OverworldBattle.sbfxPresentationActive(battle) then
-    return OverworldBattle.sbfxTransitionSelected()
-  end
   local game = battle and battle.game
   if not (game and game.stack) then return false end
   -- finish() is not always the end: an unpaid PAY DAY prints its takings and

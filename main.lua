@@ -97,7 +97,6 @@ local RenderDistance = V.require("RenderDistance")
 local OverworldBattle = V.require("OverworldBattle")
 local BattlePresentation = V.require("BattlePresentation")
 local BattleStage = V.require("BattleStage")
-local StadiumBattleFxProvider = V.require("StadiumBattleFxProvider")
 local BattleArt = V.require("BattleArt")
 local StadiumModels = V.require("StadiumModels")
 local StadiumBackground = V.require("StadiumBackground")
@@ -138,7 +137,6 @@ mod.events:on("mods.loaded", function(payload)
   -- Reassert BATTLE ART ownership outside the completed chain so ordinary and
   -- shiny opponent fronts cannot alternate after those providers advance.
   OverworldBattle.refreshSpriteOwnershipHook()
-  StadiumBattleFxProvider.register()
   local started, err = Companion:start()
   if not started and mod.log and mod.log.error then
     mod.log:error("Voxel Companion host did not start: %s", tostring(err))
