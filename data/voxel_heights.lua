@@ -192,11 +192,13 @@ return {
       -- as one continuous lip, and the mound loses nothing: its foot
       -- row simply reads as the talus it is drawn as.
       ledge = { 13, 29, 39, 52, 54, 55 },
-      -- trees are drawn ROUND -- the lone canopy (42/43/58/59) and the
-      -- border tree wall (64/65/80/81, blockset $0F). Boxes and per-pixel
-      -- cutouts both read wrong for them; the cylinder archetype carves
-      -- one voxel ball per 16x16 cell from the canopy's darkest-pixel
-      -- outline, round in depth, so tree rows become rows of real canopies
+      -- round scenery uses one geometry pool but has two semantic roles:
+      -- the lone grey boulder (42/43/58/59) and the green border-tree wall
+      -- (64/65/80/81, blockset $0F). Boxes and per-pixel cutouts both read
+      -- wrong for them; the cylinder archetype carves one voxel ball per
+      -- 16x16 cell from the drawing's darkest-pixel outline. The companion
+      -- adapter keeps their semantic identities separate; `cylinder` alone
+      -- is never evidence that a cell is a tree.
       cylinder = { 42, 43, 58, 59, 64, 65, 80, 81 },
       -- the town sign (blockset 8's SE cell): a standing per-pixel slab
       -- 2 voxels thin, transparency respected -- never a solid box
