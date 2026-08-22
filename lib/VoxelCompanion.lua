@@ -146,7 +146,8 @@ end
 
 local function integer(value, fallback)
   value = finite(value, fallback)
-  return value == nil and nil or math.floor(value)
+  if value == nil then return nil end
+  return math.floor(value)
 end
 
 local function clamp(value, minimum, maximum, fallback)
@@ -467,10 +468,16 @@ local function playerCell(state)
   return integer(player.cellX, nil), integer(player.cellY, nil)
 end
 
-local function shouldCutaway(self, prototype, item)
-  if not (prototype and prototype.cutaway and prototype.role == "ceiling") then
+local function shouldCutaway(self, prototype, item, context)
+  if not (prototype and prototype.cutaway) then
     return false
   end
+  local role = prototype.role
+  if role ~= "ceiling" and role ~= "wall" then return false end
+  -- The callback context is the public, frame-local source of camera mode.
+  -- Do not infer it from extension data or retain the borrowed context.
+  local camera = type(context) == "table" and context.camera or nil
+  if type(camera) ~= "table" or camera.mode ~= "first_person" then return false end
   local px, pz = playerCell(self.state)
   local cx, cz = integer(item.cellX, nil), integer(item.cellZ, nil)
   if not (px and pz and cx and cz) then return false end
@@ -640,8 +647,8 @@ local function skyPrimitive(self, prototype)
   end
 end
 
-local function drawItem(self, prototype, item, material, borrowedTexture)
-  if shouldCutaway(self, prototype, item) then return false end
+local function drawItem(self, prototype, item, material, borrowedTexture, context)
+  if shouldCutaway(self, prototype, item, context) then return false end
   local primitive, width, height, depth = primitiveDimensions(prototype, item)
   -- An extension-owned texture is borrowed for this call only. Never place it
   -- on the adapter, a mesh cache, or any cleanup list.
@@ -903,7 +910,7 @@ local function makeDrawFacade(self)
           geometry.y = finite(geometry.y, -0.5)
           geometry.z = finite(geometry.z, baseDepth * 0.5)
         end
-        drawItem(self, geometry, geometry, packet.material, packet.texture)
+        drawItem(self, geometry, geometry, packet.material, packet.texture, context)
         return true
       end)
     end,
@@ -930,7 +937,8 @@ local function makeDrawFacade(self)
       if not budgeted then return false, budgetError end
       return runDraw(function()
         for _, item in ipairs(packet.items) do
-          drawItem(self, packet.prototype, item, packet.material, packet.texture)
+          drawItem(self, packet.prototype, item, packet.material, packet.texture,
+            context)
         end
         return true
       end)
@@ -968,7 +976,7 @@ local function makeDrawFacade(self)
             width = finite(item.width, baseWidth),
             height = finite(item.height, baseHeight),
           }
-          drawItem(self, prototype, item, packet.material, packet.texture)
+          drawItem(self, prototype, item, packet.material, packet.texture, context)
         end
         return true
       end)

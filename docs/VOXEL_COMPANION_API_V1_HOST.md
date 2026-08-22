@@ -100,6 +100,14 @@ cache key made only from `[A-Za-z0-9._:-]`. This generic host rule does not
 require a producer prefix. KFP-produced commands use the stricter profile
 `kfp1:<scene8>:<generation>:<phaseId>:<sequence>:<content16>`.
 
+For KFP box instances, `cutaway = true` has one narrow host meaning. When the
+public callback value `context.camera.mode` is `first_person`, the adapter
+omits `role = "ceiling"` and `role = "wall"` items within four cells of the
+player. The radius boundary is included. Items outside that radius, other
+semantic roles, items without cell coordinates, and all items in third-person
+or diorama mode remain visible. `cutaway = false` always preserves the item.
+The adapter reads the frame-local public camera context and does not retain it.
+
 The adapter copies each accepted cache key and stores an independent bounded
 digest of declarative command content. Reuse with the same content is valid.
 Reuse with different content fails closed. The registry holds at most 4,096
@@ -183,8 +191,9 @@ transactional finite camera aggregation, defensive snapshots, edit coalescing,
 radian camera input, graphics restoration, exact draw results, generic safe
 keys, untrusted-key formatting, KFP producer keys, schema rejection, borrowed
 texture ownership, key-content collision refusal, all shared baseline
-primitives, draw fault isolation, dispatch recovery, deterministic continuation,
-disposal, legacy refusal, and the no-write rule.
+primitives, mode-aware KFP ceiling and wall cutaways, cutaway radius boundaries,
+fail-open cell metadata, draw fault isolation, dispatch recovery, deterministic
+continuation, disposal, legacy refusal, and the no-write rule.
 
 The canonical KFP dispatcher conformance command is:
 
@@ -192,7 +201,7 @@ The canonical KFP dispatcher conformance command is:
 luajit tools\run_tests.lua companion
 ```
 
-At integration time, the focused host test passed 660 checks, the canonical
+At integration time, the focused host test passed 684 checks, the canonical
 companion selector passed 54 tests, and the complete KFP suite passed 215
 tests. The complete 23-command ROM-free draw fixture has SHA-256
 `4CD7A8C9D258B247CB9AE0A9730E56DE3E9541B63358149A2AD09513F655A113`.

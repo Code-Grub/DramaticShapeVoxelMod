@@ -186,9 +186,10 @@ local fakeMat4 = {
   rotateY = function(value) return { "rotateY", value } end,
 }
 
+local fakeCameraMode = "first_person"
 local fakeVoxelState = {
-  isFirstPerson = function() return true end,
-  isThirdPerson = function() return false end,
+  isFirstPerson = function() return fakeCameraMode == "first_person" end,
+  isThirdPerson = function() return fakeCameraMode == "third_person" end,
 }
 
 local fakeDayNight
@@ -1028,6 +1029,103 @@ check(#companion.meshes.rainbow.vertices <= 96,
   "rainbow uses bounded host-owned geometry")
 equal(companion.meshes.panorama.texture, nil,
   "panorama mesh does not retain its borrowed texture")
+
+-- KFP marks both its ceiling and synthesized room walls with one cutaway
+-- intent. The host applies that intent only in first person and only near the
+-- player. The public callback camera mode is the authoritative mode source.
+local cutawayResults = {}
+local cutawayHandle
+cutawayHandle, err = provider.register({
+  api = 1,
+  id = "test.kfp-cutaway",
+  priority = 40,
+  requires = { "render_phases" },
+  render = {
+    opaque_after_terrain = function(context)
+      local mode = context.camera.mode
+      local result = { contextMode = mode }
+      cutawayResults[mode] = result
+
+      local function draw(label, sequence, prototype, items)
+        local before = #fakeVoxel3D.drawLog
+        local accepted, drawError = context.draw.instances(wireCommand(
+          "instances", "opaque_after_terrain", sequence, {
+            cacheKey = "test.kfp-cutaway:" .. label,
+            prototype = prototype,
+            items = items,
+          }), context)
+        if not accepted then error(drawError, 0) end
+        result[label] = #fakeVoxel3D.drawLog - before
+      end
+
+      local cells = {
+        { x = 16, y = 24, z = 16, cellX = 1, cellZ = 1 },
+        { x = 80, y = 24, z = 80, cellX = 5, cellZ = 5 },
+        { x = 96, y = 24, z = 16, cellX = 6, cellZ = 1 },
+      }
+      draw("ceiling", 101, {
+        primitive = "box", width = 16, height = 1, depth = 16,
+        cutaway = true, role = "ceiling",
+      }, cells)
+      draw("wall", 102, {
+        primitive = "box", width = 1, height = 24, depth = 16,
+        cutaway = true, role = "wall",
+      }, cells)
+      draw("ceiling-disabled", 103, {
+        primitive = "box", width = 16, height = 1, depth = 16,
+        cutaway = false, role = "ceiling",
+      }, { cells[1] })
+      draw("wall-disabled", 104, {
+        primitive = "box", width = 1, height = 24, depth = 16,
+        cutaway = false, role = "wall",
+      }, { cells[1] })
+      draw("other-role", 105, {
+        primitive = "box", width = 1, height = 24, depth = 16,
+        cutaway = true, role = "door",
+      }, { cells[1] })
+      draw("missing-cell", 106, {
+        primitive = "box", width = 1, height = 24, depth = 16,
+        cutaway = true, role = "wall",
+      }, { { x = 16, y = 24, z = 16 } })
+    end,
+  },
+})
+check(cutawayHandle, err or "KFP cutaway probe registers")
+
+for _, mode in ipairs({ "first_person", "third_person", "diorama" }) do
+  fakeCameraMode = mode
+  local report = companion:render("opaque_after_terrain", state)
+  local cutawayStatus = cutawayHandle:status()
+  check(report and report.failed == 0,
+    "KFP cutaway probe renders in " .. mode .. ": "
+      .. tostring(cutawayStatus.fault and cutawayStatus.fault.message))
+  equal(cutawayResults[mode].contextMode, mode,
+    "cutaway reads the public callback camera mode in " .. mode)
+end
+
+equal(cutawayResults.first_person.ceiling, 1,
+  "first-person cutaway removes nearby and radius-boundary ceilings")
+equal(cutawayResults.first_person.wall, 1,
+  "first-person cutaway removes nearby and radius-boundary walls")
+equal(cutawayResults.first_person["ceiling-disabled"], 1,
+  "cutaway=false preserves a nearby first-person ceiling")
+equal(cutawayResults.first_person["wall-disabled"], 1,
+  "cutaway=false preserves a nearby first-person wall")
+equal(cutawayResults.first_person["other-role"], 1,
+  "cutaway does not suppress a different semantic role")
+equal(cutawayResults.first_person["missing-cell"], 1,
+  "cutaway fails open when an item has no cell position")
+for _, mode in ipairs({ "third_person", "diorama" }) do
+  equal(cutawayResults[mode].ceiling, 3,
+    mode .. " preserves all ceiling cells")
+  equal(cutawayResults[mode].wall, 3,
+    mode .. " preserves all wall cells")
+  equal(cutawayResults[mode]["ceiling-disabled"], 1,
+    mode .. " preserves cutaway=false ceilings")
+  equal(cutawayResults[mode]["wall-disabled"], 1,
+    mode .. " preserves cutaway=false walls")
+end
+fakeCameraMode = "first_person"
 
 local lateUpdates = 0
 local late
