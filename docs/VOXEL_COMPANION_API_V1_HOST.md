@@ -102,13 +102,16 @@ cache key made only from `[A-Za-z0-9._:-]`. This generic host rule does not
 require a producer prefix. KFP-produced commands use the stricter profile
 `kfp1:<scene8>:<generation>:<phaseId>:<sequence>:<content16>`.
 
-For KFP box instances, `cutaway = true` has one narrow host meaning. When the
+For KFP instances, `cutaway = true` has one narrow host meaning. When the
 public callback value `context.camera.mode` is `first_person`, the adapter
-omits `role = "ceiling"` and `role = "wall"` items within four cells of the
-player. The radius boundary is included. Items outside that radius, other
-semantic roles, items without cell coordinates, and all items in third-person
-or diorama mode remain visible. `cutaway = false` always preserves the item.
-The adapter reads the frame-local public camera context and does not retain it.
+omits `role = "ceiling"`, `role = "wall"`, and `primitive = "canopy"` items
+within four cells of the player. The radius boundary is included. Released
+canopy packets have normalized cell-center positions but no explicit cell
+coordinates, so the adapter derives their cell from the defensive public
+world snapshot and its `cellSize`. Items outside the radius, other semantic
+roles, and all items in third-person or diorama mode remain visible.
+`cutaway = false` always preserves the item. The adapter reads the frame-local
+public camera context and does not retain it.
 
 The adapter copies each accepted cache key and stores an independent bounded
 digest of declarative command content. Reuse with the same content is valid.
@@ -122,7 +125,16 @@ texture to `Voxel3D.draw`, then unbinds it before returning. It never stores,
 releases, or substitutes ownership of that texture.
 
 Panorama uses a fixed 32-segment host-owned cylinder and its callback-borrowed
-texture. Cloud layers use one fixed eight-quad host mesh. Rainbow uses one fixed
+texture. The physical cylinder keeps the released radius of 900 world units,
+top at 300, normal bottom at -120, and deep-skirt bottom at -1400.
+`sourceWidth` and `targetWidth` are texture quality metadata and never scale
+world geometry. Distance haze changes RGB only; texture alpha stays the only
+coverage source, which avoids the host shader's ordered-alpha bands.
+
+Cloud layers use one fixed eight-quad host mesh, a bounded host-owned 32 by 32
+binary alpha mask, a maximum 192-world-unit span, and no depth writes. This
+keeps the texture-free portable baseline high and non-occluding without the
+screen-covering translucent fallback planes. Rainbow uses one fixed
 24-segment ribbon. Required declarative fields select bounded transforms,
 density, parallax, and deterministic placement. These are conservative API
 baseline visuals. They do not claim rich parity with KFP 1.x sky art or weather.
@@ -195,7 +207,7 @@ transactional finite camera aggregation, defensive snapshots, edit coalescing,
 radian camera input, graphics restoration, exact draw results, generic safe
 keys, untrusted-key formatting, KFP producer keys, schema rejection, borrowed
 texture ownership, key-content collision refusal, all shared baseline
-primitives, mode-aware KFP ceiling and wall cutaways, cutaway radius boundaries,
+primitives, mode-aware KFP ceiling, wall, and canopy cutaways, cutaway radius boundaries,
 fail-open cell metadata, draw fault isolation, dispatch recovery, deterministic
 continuation, disposal, legacy refusal, and the no-write rule.
 
@@ -206,7 +218,7 @@ luajit tools\run_tests.lua companion
 ```
 
 At integration time, the lifecycle test passed 11 checks, the focused host
-test passed 702 checks, the canonical
+test passed 725 checks, the canonical
 companion selector passed 54 tests, and the complete KFP suite passed 215
 tests. The complete 23-command ROM-free draw fixture has SHA-256
 `4CD7A8C9D258B247CB9AE0A9730E56DE3E9541B63358149A2AD09513F655A113`.

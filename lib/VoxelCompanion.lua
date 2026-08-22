@@ -46,6 +46,11 @@ local MAX_SKY_LAYER = 16
 local PANORAMA_SEGMENTS = 32
 local CLOUD_PATCHES = 8
 local RAINBOW_SEGMENTS = 24
+local PANORAMA_RADIUS = 900
+local PANORAMA_TOP = 300
+local PANORAMA_BOTTOM = -120
+local PANORAMA_DEEP_BOTTOM = -1400
+local CLOUD_TEXTURE_SIZE = 32
 
 local MESH_PRIMITIVES = {
   box = true,
@@ -472,14 +477,27 @@ local function shouldCutaway(self, prototype, item, context)
   if not (prototype and prototype.cutaway) then
     return false
   end
-  local role = prototype.role
-  if role ~= "ceiling" and role ~= "wall" then return false end
+  local primitive, role = prototype.primitive, prototype.role
+  if role ~= "ceiling" and role ~= "wall" and primitive ~= "canopy" then
+    return false
+  end
   -- The callback context is the public, frame-local source of camera mode.
   -- Do not infer it from extension data or retain the borrowed context.
   local camera = type(context) == "table" and context.camera or nil
   if type(camera) ~= "table" or camera.mode ~= "first_person" then return false end
   local px, pz = playerCell(self.state)
   local cx, cz = integer(item.cellX, nil), integer(item.cellZ, nil)
+  -- Released KFP canopy packets predate explicit cell coordinates. Their
+  -- positions are normalized cell centres, so derive the same public cell
+  -- identity from the retained defensive snapshot instead of reaching into
+  -- producer or engine-private state.
+  if primitive == "canopy" and (cx == nil or cz == nil) then
+    local size = self.snapshot and finite(self.snapshot.cellSize, nil)
+    if size and size > 0 then
+      cx = math.floor(finite(item.x, -1) / size)
+      cz = math.floor(finite(item.z, -1) / size)
+    end
+  end
   if not (px and pz and cx and cz) then return false end
   return math.abs(px - cx) <= 4 and math.abs(pz - cz) <= 4
 end
@@ -541,6 +559,36 @@ local function ensureTexture(self)
   return self.texture or nil
 end
 
+local function ensureCloudTexture(self)
+  if self.cloudTexture ~= nil then return self.cloudTexture or nil end
+  if not (love and love.image and love.image.newImageData
+      and love.graphics and love.graphics.newImage) then
+    self.cloudTexture = false
+    return nil
+  end
+  local ok, texture = pcall(function()
+    local data = love.image.newImageData(CLOUD_TEXTURE_SIZE, CLOUD_TEXTURE_SIZE)
+    local half = (CLOUD_TEXTURE_SIZE - 1) * 0.5
+    for y = 0, CLOUD_TEXTURE_SIZE - 1 do
+      for x = 0, CLOUD_TEXTURE_SIZE - 1 do
+        local dx, dy = (x - half) / half, (y - half) / half
+        local r = math.sqrt(dx * dx + dy * dy)
+        -- The scene shader uses an alpha cutout. A bounded radial mask
+        -- removes the opaque quad corners that made the old white fallback
+        -- read as giant translucent polygons.
+        local alpha = r <= 0.88 and 1 or 0
+        data:setPixel(x, y, 1, 1, 1, alpha)
+      end
+    end
+    local image = love.graphics.newImage(data)
+    image:setFilter("linear", "linear")
+    image:setWrap("clamp", "clamp")
+    return image
+  end)
+  self.cloudTexture = ok and texture or false
+  return self.cloudTexture or nil
+end
+
 local function ensureMesh(self, kind)
   if self.meshes[kind] ~= nil then return self.meshes[kind] or nil end
   local mesh
@@ -585,22 +633,20 @@ local function skyPrimitive(self, prototype)
   local primitive = prototype.primitive
   local eyeX, eyeY, eyeZ = eyePosition()
   if primitive == "panorama" then
-    local sourceWidth = clamp(prototype.sourceWidth, 1,
-      MAX_PRIMITIVE_SIZE * 64, 4096)
-    local targetWidth = clamp(prototype.targetWidth, 16,
-      MAX_PRIMITIVE_SIZE, 1024)
-    local resample = clamp(targetWidth / sourceWidth, 0.125, 4, 1)
-    local height = clamp(targetWidth * (0.16 + resample * 0.08),
-      16, MAX_PRIMITIVE_SIZE, 128)
-    if prototype.deepSkirt == true then height = math.min(height * 1.35,
-      MAX_PRIMITIVE_SIZE) end
-    local y = clamp(
-      eyeY - height * (prototype.deepSkirt == true and 0.32 or 0.18),
-      -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
+    -- sourceWidth and targetWidth describe texture quality, not world scale.
+    -- Keep the released physical panorama bounds at every quality tier.
+    local bottom = prototype.deepSkirt == true
+      and PANORAMA_DEEP_BOTTOM or PANORAMA_BOTTOM
+    local height = PANORAMA_TOP - bottom
+    local y = bottom + height * 0.5
+    -- Battle's scene shader converts partial material alpha to ordered
+    -- coverage. Keep the material opaque so only the panorama texture's
+    -- authored alpha controls its silhouette.
     local color = prototype.distanceHaze == true
-      and { 0.92, 0.94, 0.98, 0.94 } or COLORS.panorama
+      and { 0.92, 0.94, 0.98, 1.00 } or COLORS.panorama
     return ensureMesh(self, "panorama"),
-      transform(eyeX, y, eyeZ, targetWidth, height, targetWidth), color
+      transform(eyeX, y, eyeZ, PANORAMA_RADIUS * 2, height,
+        PANORAMA_RADIUS * 2), color
   end
 
   if primitive == "cloud_layer" then
@@ -612,17 +658,17 @@ local function skyPrimitive(self, prototype)
     state, offsetX = nextUnit(state)
     state, offsetZ = nextUnit(state)
     state, angle = nextUnit(state)
-    local span = 128 + density * 512
+    local span = 128 + density * 64
     local x = eyeX * (1 - parallax) + (offsetX - 0.5) * 48
     local z = eyeZ * (1 - parallax) + (offsetZ - 0.5) * 48
     local model = Mat4.mul(Mat4.translate(
       clamp(x, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0),
-      clamp(eyeY + 48 + layer * 24,
+      clamp(eyeY + 160 + layer * 48,
         -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0),
       clamp(z, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)),
       Mat4.mul(Mat4.rotateY(angle * math.pi * 2), Mat4.scale(span, 1, span)))
     return ensureMesh(self, "cloud_layer"), model,
-      { 0.93, 0.96, 1.00, 0.04 + density * 0.22 }
+      { 0.93, 0.96, 1.00, 1.00 }
   end
 
   if primitive == "rainbow" then
@@ -652,7 +698,9 @@ local function drawItem(self, prototype, item, material, borrowedTexture, contex
   local primitive, width, height, depth = primitiveDimensions(prototype, item)
   -- An extension-owned texture is borrowed for this call only. Never place it
   -- on the adapter, a mesh cache, or any cleanup list.
-  local texture = borrowedTexture or ensureTexture(self)
+  local texture = borrowedTexture
+    or (primitive == "cloud_layer" and ensureCloudTexture(self))
+    or ensureTexture(self)
   if not texture then error("companion material texture is unavailable", 3) end
   local color = colorFor(material)
   local ok, err = xpcall(function()
@@ -662,6 +710,11 @@ local function drawItem(self, prototype, item, material, borrowedTexture, contex
       local mesh, model, skyColor = skyPrimitive(self, prototype)
       if not mesh then error("companion sky mesh is unavailable", 0) end
       setMaterial(skyColor or color)
+      if primitive == "panorama" or primitive == "cloud_layer" then
+        -- Sky coverage must not reserve depth in front of terrain or actors
+        -- drawn later in the frame.
+        love.graphics.setDepthMode("lequal", false)
+      end
       drawVoxel(mesh, texture, model, borrowedTexture ~= nil)
     elseif primitive == "billboard" then
       setMaterial(color)
@@ -1205,6 +1258,7 @@ function VoxelCompanion.new(options)
     frameDraws = 0,
     meshes = {},
     texture = nil,
+    cloudTexture = nil,
     commandSignatures = {},
     commandSignatureOrder = {},
     commandSignatureCount = 0,
@@ -1423,6 +1477,10 @@ function VoxelCompanion:invalidate(reason)
   end
   if self.texture and self.texture.release then pcall(self.texture.release, self.texture) end
   self.texture = nil
+  if self.cloudTexture and self.cloudTexture.release then
+    pcall(self.cloudTexture.release, self.cloudTexture)
+  end
+  self.cloudTexture = nil
   self.commandSignatures = {}
   self.commandSignatureOrder = {}
   self.commandSignatureCount = 0

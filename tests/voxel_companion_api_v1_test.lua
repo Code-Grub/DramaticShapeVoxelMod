@@ -85,13 +85,23 @@ love = {
   graphics = {},
 }
 
-function love.image.newImageData()
-  return { setPixel = function() end }
+function love.image.newImageData(width, height)
+  local data = { width = width or 1, height = height or 1, pixels = 0,
+    minAlpha = 1, maxAlpha = 0 }
+  function data:setPixel(_, _, _, _, _, alpha)
+    alpha = alpha == nil and 1 or alpha
+    self.pixels = self.pixels + 1
+    self.minAlpha = math.min(self.minAlpha, alpha)
+    self.maxAlpha = math.max(self.maxAlpha, alpha)
+  end
+  return data
 end
 
-function love.graphics.newImage()
+function love.graphics.newImage(data)
   return {
+    sourceData = data,
     setFilter = function() end,
+    setWrap = function() end,
     release = function(self) self.released = true end,
   }
 end
@@ -172,6 +182,8 @@ function fakeVoxel3D.draw(mesh, texture, model)
     mesh = mesh,
     texture = texture,
     model = model,
+    color = graphicsState.color,
+    depth = graphicsState.depth,
   }
   if fakeVoxel3D.failNextDraw then
     fakeVoxel3D.failNextDraw = false
@@ -1013,6 +1025,8 @@ fixtureTexture.release = function(self) self.releases = self.releases + 1 end
 local fixtureRender = {}
 calls.fixturePrimitiveAccepted = {}
 calls.fixtureTextureCleared = true
+calls.fixtureModels = {}
+calls.fixtureDraws = {}
 for _, phase in ipairs({
   "background", "opaque_after_terrain", "translucent_after_actors",
 }) do
@@ -1029,6 +1043,10 @@ for _, phase in ipairs({
         or "explicit_billboards"
       calls.fixturePrimitiveAccepted[primitive] =
         (calls.fixturePrimitiveAccepted[primitive] or 0) + 1
+      if command.kind == "mesh" then
+        calls.fixtureModels[primitive] = fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog].model
+        calls.fixtureDraws[primitive] = fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog]
+      end
       if command.procedural then
         calls.fixtureStarsExpanded = (calls.fixtureStarsExpanded or 0)
           + (#fakeVoxel3D.drawLog - beforeDraws)
@@ -1091,6 +1109,62 @@ check(#companion.meshes.rainbow.vertices <= 96,
   "rainbow uses bounded host-owned geometry")
 equal(companion.meshes.panorama.texture, nil,
   "panorama mesh does not retain its borrowed texture")
+local panoramaTranslation = findTagged(calls.fixtureModels.panorama, "translate")[1]
+local panoramaScale = findTagged(calls.fixtureModels.panorama, "scale")[1]
+equal(panoramaTranslation[3], -550,
+  "deep panorama retains the released vertical midpoint")
+equal(panoramaScale[2], 1800,
+  "panorama diameter is fixed physical geometry, not texture resolution")
+equal(panoramaScale[3], 1700,
+  "deep panorama retains the released top and skirt bounds")
+equal(panoramaScale[4], 1800,
+  "panorama depth uses the fixed physical diameter")
+local cloudTranslation = findTagged(calls.fixtureModels.cloud_layer, "translate")[1]
+local cloudScale = findTagged(calls.fixtureModels.cloud_layer, "scale")[1]
+check(cloudTranslation[3] >= 200,
+  "cloud decks stay high above the first-person eye")
+check(cloudScale[2] <= 192 and cloudScale[4] <= 192,
+  "cloud decks stay inside the subtle bounded physical span")
+equal(calls.fixtureDraws.cloud_layer.depth, "lequal:false",
+  "cloud decks never occlude later world geometry through depth writes")
+check(companion.cloudTexture and companion.cloudTexture ~= companion.texture,
+  "clouds use a dedicated host-owned alpha mask instead of the white fallback")
+equal(companion.cloudTexture.sourceData.width, 32,
+  "cloud alpha mask has a bounded width")
+equal(companion.cloudTexture.sourceData.pixels, 32 * 32,
+  "cloud alpha mask initializes every bounded texel")
+check(companion.cloudTexture.sourceData.minAlpha < 0.5
+    and companion.cloudTexture.sourceData.maxAlpha >= 0.5,
+  "cloud alpha mask cuts away quad corners and retains a cloud body")
+check(calls.fixtureDraws.panorama.color:match(":1$") ~= nil,
+  "distance haze does not turn panorama alpha into checker coverage")
+equal(calls.fixtureDraws.panorama.depth, "lequal:false",
+  "panorama retains depth testing without occluding later world geometry")
+check(calls.fixtureDraws.cloud_layer.color:match(":1$") ~= nil,
+  "cloud material uses binary texture coverage without alpha dithering")
+local hostCloudTexture = companion.cloudTexture
+
+local panoramaModels = {}
+for index, width in ipairs({ 4096, 1024 }) do
+  local command = wireCommand("mesh", "background", 200 + index, {
+    cacheKey = "test.panorama.physical:" .. tostring(width),
+    material = "horizon:quality-probe",
+    texture = fixtureTexture,
+    geometry = {
+      primitive = "panorama", sourceWidth = width, targetWidth = width,
+      deepSkirt = true, distanceHaze = true,
+    },
+  })
+  local before = #fakeVoxel3D.drawLog
+  local panoramaAccepted, panoramaError = companion.draw.mesh(
+    command, companion:_context())
+  check(panoramaAccepted, panoramaError or "panorama quality probe is accepted")
+  equal(#fakeVoxel3D.drawLog, before + 1,
+    "panorama quality probe emits one bounded draw")
+  panoramaModels[index] = fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog].model
+end
+equal(treeSignature(panoramaModels[1]), treeSignature(panoramaModels[2]),
+  "panorama world geometry is independent of texture quality width")
 
 -- KFP marks both its ceiling and synthesized room walls with one cutaway
 -- intent. The host applies that intent only in first person and only near the
@@ -1149,6 +1223,13 @@ cutawayHandle, err = provider.register({
         primitive = "box", width = 1, height = 24, depth = 16,
         cutaway = true, role = "wall",
       }, { { x = 16, y = 24, z = 16 } })
+      draw("canopy-derived-cell", 107, {
+        primitive = "canopy", width = 16, cutaway = true,
+      }, {
+        { x = 16, y = 24, z = 16 },
+        { x = 80, y = 24, z = 80 },
+        { x = 96, y = 24, z = 16 },
+      })
     end,
   },
 })
@@ -1177,6 +1258,8 @@ equal(cutawayResults.first_person["other-role"], 1,
   "cutaway does not suppress a different semantic role")
 equal(cutawayResults.first_person["missing-cell"], 1,
   "cutaway fails open when an item has no cell position")
+equal(cutawayResults.first_person["canopy-derived-cell"], 1,
+  "first-person cutaway derives released canopy cell positions")
 for _, mode in ipairs({ "third_person", "diorama" }) do
   equal(cutawayResults[mode].ceiling, 3,
     mode .. " preserves all ceiling cells")
@@ -1186,6 +1269,8 @@ for _, mode in ipairs({ "third_person", "diorama" }) do
     mode .. " preserves cutaway=false ceilings")
   equal(cutawayResults[mode]["wall-disabled"], 1,
     mode .. " preserves cutaway=false walls")
+  equal(cutawayResults[mode]["canopy-derived-cell"], 3,
+    mode .. " preserves all canopy cells")
 end
 fakeCameraMode = "first_person"
 
@@ -1217,6 +1302,8 @@ equal(fixtureTexture.releases, 0,
   "adapter never releases shared panorama/poster texture during disposal")
 equal(companion.state, nil, "adapter drops retained world state on dispose")
 equal(companion.startContext, nil, "adapter drops retained activation context on dispose")
+check(hostCloudTexture.released,
+  "adapter releases its host-owned cloud alpha mask during disposal")
 equal(love.update, sentinelUpdate, "adapter does not replace global callbacks")
 
 local legacyMod = cleanMod()
