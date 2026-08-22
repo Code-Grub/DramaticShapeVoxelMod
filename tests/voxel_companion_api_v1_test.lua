@@ -1139,31 +1139,46 @@ equal(fixtureTexture.releases, 0,
 check(#companion.meshes.panorama_deep.vertices <= 256,
   "deep panorama uses bounded host-owned band and skirt geometry")
 local cloudMesh = companion.meshes.cloud_layer
-equal(#cloudMesh.vertices, 33,
-  "cloud layer uses one center and one bounded circular perimeter")
-equal(#cloudMesh.indices, 32 * 3,
-  "cloud layer uses one continuous 32-triangle fan")
-for segment = 0, 31 do
-  local base = segment * 3
-  equal(cloudMesh.indices[base + 1], 1,
-    "each cloud triangle shares the center vertex")
-  equal(cloudMesh.indices[base + 2], segment + 2,
-    "each cloud triangle starts at its perimeter vertex")
-  equal(cloudMesh.indices[base + 3], ((segment + 1) % 32) + 2,
-    "the cloud perimeter is continuous and closes without detached facets")
+equal(#cloudMesh.vertices, 2 + 15 * 32,
+  "cloud layer uses one bounded closed-shell vertex set")
+equal(#cloudMesh.indices, 960 * 3,
+  "cloud layer uses a finite closed-shell triangle set")
+local cloudEdges, cloudVertexUses = {}, {}
+local function useCloudEdge(a, b)
+  local low, high = math.min(a, b), math.max(a, b)
+  local key = tostring(low) .. ":" .. tostring(high)
+  local edge = cloudEdges[key] or { count = 0, orientation = 0 }
+  edge.count = edge.count + 1
+  edge.orientation = edge.orientation + (a < b and 1 or -1)
+  cloudEdges[key] = edge
 end
-equal(cloudMesh.vertices[1][1], 0,
-  "cloud fan center has a centered local X position")
-equal(cloudMesh.vertices[1][3], 0,
-  "cloud fan center has a centered local Z position")
-for index = 2, #cloudMesh.vertices do
-  local vertex = cloudMesh.vertices[index]
-  check(math.abs(vertex[1] * vertex[1] + vertex[3] * vertex[3] - 0.25)
-      <= 1e-12,
-    "cloud perimeter stays on the fixed half-unit radius")
+for index = 1, #cloudMesh.indices, 3 do
+  local a, b, c = cloudMesh.indices[index], cloudMesh.indices[index + 1],
+    cloudMesh.indices[index + 2]
+  cloudVertexUses[a], cloudVertexUses[b], cloudVertexUses[c] = true, true, true
+  useCloudEdge(a, b)
+  useCloudEdge(b, c)
+  useCloudEdge(c, a)
+end
+local cloudEdgeCount, badCloudEdge = 0, nil
+for key, edge in pairs(cloudEdges) do
+  cloudEdgeCount = cloudEdgeCount + 1
+  if edge.count ~= 2 or edge.orientation ~= 0 then badCloudEdge = key end
+end
+equal(badCloudEdge, nil,
+  "every cloud-shell edge has two oppositely wound faces and no boundary")
+equal(cloudEdgeCount, #cloudMesh.indices / 2,
+  "closed cloud-shell edges have exactly two triangle uses")
+equal(#cloudMesh.vertices - cloudEdgeCount + #cloudMesh.indices / 3, 2,
+  "cloud shell has the Euler characteristic of one closed sphere")
+for index, vertex in ipairs(cloudMesh.vertices) do
+  check(cloudVertexUses[index], "every cloud-shell vertex belongs to a face")
+  check(math.abs(vertex[1] * vertex[1] + vertex[2] * vertex[2]
+      + vertex[3] * vertex[3] - 0.25) <= 1e-12,
+    "cloud-shell vertices stay on the fixed half-unit sphere")
   check(math.abs(vertex[4] - (vertex[1] + 0.5)) <= 1e-12
       and math.abs(vertex[5] - (vertex[3] + 0.5)) <= 1e-12,
-    "cloud UVs stay continuous with local deck coordinates")
+    "cloud UVs are a continuous projection of shared shell coordinates")
 end
 check(#companion.meshes.rainbow.vertices <= 96,
   "rainbow uses bounded host-owned geometry")
@@ -1194,29 +1209,64 @@ for index, vertex in ipairs(deepVertices) do
       "deep panorama skirt samples only the texture bottom row")
   end
 end
-local cloudTranslation = findTagged(calls.fixtureModels.cloud_layer, "translate")[1]
-local cloudScale = findTagged(calls.fixtureModels.cloud_layer, "scale")[1]
-local cloudRotation = findTagged(calls.fixtureModels.cloud_layer, "rotateY")[1]
-check(cloudTranslation[3] >= 200,
-  "cloud decks stay high above the first-person eye")
-check(cloudScale[2] <= 192 and cloudScale[4] <= 192,
-  "cloud decks stay inside the subtle bounded physical span")
-local minCloudX, maxCloudX = math.huge, -math.huge
-local minCloudZ, maxCloudZ = math.huge, -math.huge
-local cosine, sine = math.cos(cloudRotation[2]), math.sin(cloudRotation[2])
-for _, vertex in ipairs(cloudMesh.vertices) do
-  local x, z = vertex[1] * cloudScale[2], vertex[3] * cloudScale[4]
-  local transformedX = x * cosine - z * sine + cloudTranslation[2]
-  local transformedZ = x * sine + z * cosine + cloudTranslation[4]
-  minCloudX, maxCloudX = math.min(minCloudX, transformedX),
-    math.max(maxCloudX, transformedX)
-  minCloudZ, maxCloudZ = math.min(minCloudZ, transformedZ),
-    math.max(maxCloudZ, transformedZ)
+local function assertCloudEnclosure(model, eye, label)
+  local translation = findTagged(model, "translate")[1]
+  local scale = findTagged(model, "scale")[1]
+  local rotation = findTagged(model, "rotateY")[1]
+  check(scale[2] >= 120 and scale[2] <= 192
+      and scale[4] >= 120 and scale[4] <= 192,
+    label .. " stays inside the bounded horizontal diameter")
+  check(scale[3] >= 544 and scale[3] <= 736,
+    label .. " stays inside the bounded vertical diameter")
+  equal(translation[2], eye[1],
+    label .. " remains centered on the public eye X position")
+  equal(translation[4], eye[3],
+    label .. " remains centered on the public eye Z position")
+  local top = translation[3] + scale[3] * 0.5
+  check(top >= eye[2] + 200,
+    label .. " retains a high overhead deck")
+  local localX = (eye[1] - translation[2]) / scale[2]
+  local localY = (eye[2] - translation[3]) / scale[3]
+  local localZ = (eye[3] - translation[4]) / scale[4]
+  check(localX * localX + localY * localY + localZ * localZ < 0.25,
+    label .. " strictly encloses the public eye")
+
+  local minX, maxX, minZ, maxZ = math.huge, -math.huge,
+    math.huge, -math.huge
+  local cosine, sine = math.cos(rotation[2]), math.sin(rotation[2])
+  for _, vertex in ipairs(cloudMesh.vertices) do
+    local x, z = vertex[1] * scale[2], vertex[3] * scale[4]
+    local transformedX = x * cosine - z * sine + translation[2]
+    local transformedZ = x * sine + z * cosine + translation[4]
+    minX, maxX = math.min(minX, transformedX), math.max(maxX, transformedX)
+    minZ, maxZ = math.min(minZ, transformedZ), math.max(maxZ, transformedZ)
+  end
+  check(maxX - minX <= 192 + 1e-9,
+    label .. " cannot exceed its claimed transformed X span")
+  check(maxZ - minZ <= 192 + 1e-9,
+    label .. " cannot exceed its claimed transformed Z span")
 end
-check(maxCloudX - minCloudX <= 192 + 1e-9,
-  "rotated cloud geometry cannot exceed its claimed X span")
-check(maxCloudZ - minCloudZ <= 192 + 1e-9,
-  "rotated cloud geometry cannot exceed its claimed Z span")
+
+assertCloudEnclosure(calls.fixtureModels.cloud_layer, fakeVoxel3D.eye,
+  "fixture cloud shell")
+for index, geometry in ipairs({
+  { primitive = "cloud_layer", layer = 1, parallax = -2,
+    density = 0, seed = 1 },
+  { primitive = "cloud_layer", layer = 16, parallax = 2,
+    density = 1, seed = 1 },
+}) do
+  local command = wireCommand("mesh", "background", 216 + index, {
+    cacheKey = "test.cloud.enclosure:" .. tostring(index),
+    material = "sky:clouds:enclosure-probe",
+    texture = fixtureTexture,
+    geometry = geometry,
+  })
+  local accepted, enclosureError = companion.draw.mesh(
+    command, companion:_context())
+  check(accepted, enclosureError or "cloud enclosure extreme is accepted")
+  assertCloudEnclosure(fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog].model,
+    fakeVoxel3D.eye, "cloud enclosure extreme " .. tostring(index))
+end
 equal(calls.fixtureDraws.cloud_layer.depth, "lequal:false",
   "cloud decks never occlude later world geometry through depth writes")
 check(calls.fixtureDraws.panorama.color:match(":1$") ~= nil,

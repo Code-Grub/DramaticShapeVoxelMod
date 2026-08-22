@@ -139,16 +139,20 @@ painted skyline is never stretched into the closure. Distance haze changes RGB
 only; texture alpha stays the only coverage source, which avoids the host
 shader's ordered-alpha bands.
 
-Cloud layers require a callback-borrowed KFP texture and use one fixed
-continuous 32-triangle circular host deck, a maximum 192-world-unit diameter,
-opaque material coverage, and no depth writes. Shared vertices and continuous
-UVs remove detached patch edges. The circular half-unit local radius keeps the
-transformed diameter bounded even when the deck rotates. A missing texture
-fails closed at the shared validator. The adapter unbinds a cloud texture after
-each draw and never retains or releases it. If unbinding fails, it evicts and
-releases only the host-owned mesh before it reports the failed draw. This keeps
-the layers high and non-occluding without the former screen-covering
-translucent fallback planes. Rainbow uses one fixed 24-segment ribbon.
+Cloud layers require a callback-borrowed KFP texture and use one fixed closed
+32-by-16 host shell with a maximum 192-world-unit horizontal diameter and a
+maximum 736-world-unit vertical diameter. The shell remains centered on and
+strictly encloses the public camera eye; its upper pole retains the high cloud
+deck position and its lower half closes below the world. Every geometric edge
+has two faces, so opaque mask pixels have no mesh perimeter at which to clip.
+Shared vertices and planar X/Z UV projection also remove longitude seams and
+detached facets. Material coverage is opaque and depth writes remain off. A
+missing texture fails closed at the shared validator. The adapter unbinds a
+cloud texture after each draw and never retains or releases it. If unbinding
+fails, it evicts and releases only the host-owned mesh before it reports the
+failed draw. This keeps the layers high and non-occluding without the former
+screen-covering translucent fallback planes. Rainbow uses one fixed
+24-segment ribbon.
 Required declarative fields select bounded transforms, density, parallax, and
 deterministic placement. These are conservative API baseline visuals. They do
 not claim rich parity with KFP 1.x sky art or weather.
@@ -221,7 +225,8 @@ transactional finite camera aggregation, defensive snapshots, edit coalescing,
 radian camera input, graphics restoration, exact draw results, generic safe
 keys, untrusted-key formatting, KFP producer keys, schema rejection, unsafe
 direct-resource texture refusal, borrowed panorama and cloud texture ownership,
-detach-failure mesh eviction, missing-cloud-texture refusal,
+detach-failure mesh eviction, closed-manifold cloud geometry, camera
+containment, transformed cloud bounds, missing-cloud-texture refusal,
 key-content collision refusal, all shared baseline
 primitives, producer-declared ceiling intent in every camera mode,
 far-shell-preserving wall cross-sections, first-person-only canopy cutaways,
@@ -236,7 +241,7 @@ luajit tools\run_tests.lua companion
 ```
 
 At integration time, the lifecycle test passed 11 checks, the focused host
-test passed 1,301 checks, the canonical
+test passed 2,610 checks, the canonical
 companion selector passed 54 tests, and the complete KFP suite passed 227
 tests. The complete 23-command ROM-free draw fixture has canonical LF SHA-256
 `DE1DCA98A04AD9446B0AF4C13523DAB7F365BC7A76E70BC44B24F323D98A9BFA`.

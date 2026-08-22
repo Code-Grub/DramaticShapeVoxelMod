@@ -44,7 +44,8 @@ local MAX_SIGNATURE_NODES = 32768
 local MAX_SIGNATURE_BYTES = 256 * 1024
 local MAX_SKY_LAYER = 16
 local PANORAMA_SEGMENTS = 32
-local CLOUD_SEGMENTS = 32
+local CLOUD_LONGITUDE_SEGMENTS = 32
+local CLOUD_LATITUDE_SEGMENTS = 16
 local RAINBOW_SEGMENTS = 24
 local PANORAMA_RADIUS = 900
 local PANORAMA_TOP = 300
@@ -342,20 +343,54 @@ local function buildPanorama(deepSkirt)
 end
 
 local function buildCloudLayer()
-  -- One planar fan keeps the texture continuous across the full cloud deck.
-  -- Its circular perimeter has a fixed radius, so rotation cannot expand the
-  -- declared span or expose the clipped edges of detached square patches.
-  local vertices = { { 0, 0, 0, 0.5, 0.5, 1 } }
-  local indices = {}
-  for segment = 0, CLOUD_SEGMENTS - 1 do
-    local angle = segment * math.pi * 2 / CLOUD_SEGMENTS
-    local x, z = math.cos(angle) * 0.5, math.sin(angle) * 0.5
-    vertices[#vertices + 1] = { x, 0, z, x + 0.5, z + 0.5, 1 }
+  -- A closed inward-facing shell has no perimeter at which an opaque cloud
+  -- texel can be clipped. Planar X/Z projection keeps UVs continuous across
+  -- every shared edge without a longitude seam or detached mesh facets.
+  local vertices, indices = {}, {}
+  vertices[1] = { 0, 0.5, 0, 0.5, 0.5, 1 }
+  for latitude = 1, CLOUD_LATITUDE_SEGMENTS - 1 do
+    local polar = latitude * math.pi / CLOUD_LATITUDE_SEGMENTS
+    local ringRadius = math.sin(polar) * 0.5
+    local y = math.cos(polar) * 0.5
+    for longitude = 0, CLOUD_LONGITUDE_SEGMENTS - 1 do
+      local azimuth = longitude * math.pi * 2 / CLOUD_LONGITUDE_SEGMENTS
+      local x = math.cos(azimuth) * ringRadius
+      local z = math.sin(azimuth) * ringRadius
+      vertices[#vertices + 1] = { x, y, z, x + 0.5, z + 0.5, 1 }
+    end
   end
-  for segment = 0, CLOUD_SEGMENTS - 1 do
+  local south = #vertices + 1
+  vertices[south] = { 0, -0.5, 0, 0.5, 0.5, 1 }
+
+  local function ringVertex(latitude, longitude)
+    return 2 + (latitude - 1) * CLOUD_LONGITUDE_SEGMENTS
+      + longitude % CLOUD_LONGITUDE_SEGMENTS
+  end
+
+  for longitude = 0, CLOUD_LONGITUDE_SEGMENTS - 1 do
     indices[#indices + 1] = 1
-    indices[#indices + 1] = segment + 2
-    indices[#indices + 1] = ((segment + 1) % CLOUD_SEGMENTS) + 2
+    indices[#indices + 1] = ringVertex(1, longitude)
+    indices[#indices + 1] = ringVertex(1, longitude + 1)
+  end
+  for latitude = 1, CLOUD_LATITUDE_SEGMENTS - 2 do
+    for longitude = 0, CLOUD_LONGITUDE_SEGMENTS - 1 do
+      local upper = ringVertex(latitude, longitude)
+      local upperNext = ringVertex(latitude, longitude + 1)
+      local lower = ringVertex(latitude + 1, longitude)
+      local lowerNext = ringVertex(latitude + 1, longitude + 1)
+      indices[#indices + 1] = upper
+      indices[#indices + 1] = lower
+      indices[#indices + 1] = lowerNext
+      indices[#indices + 1] = upper
+      indices[#indices + 1] = lowerNext
+      indices[#indices + 1] = upperNext
+    end
+  end
+  local lastRing = CLOUD_LATITUDE_SEGMENTS - 1
+  for longitude = 0, CLOUD_LONGITUDE_SEGMENTS - 1 do
+    indices[#indices + 1] = ringVertex(lastRing, longitude)
+    indices[#indices + 1] = south
+    indices[#indices + 1] = ringVertex(lastRing, longitude + 1)
   end
   return Voxel3D.newMesh(vertices, indices)
 end
@@ -694,19 +729,20 @@ local function skyPrimitive(self, prototype)
     local parallax = clamp(prototype.parallax, -2, 2, 0)
     local density = clamp(prototype.density, 0, 1, 0.5)
     local state = localSeed(prototype.seed) or 1
-    local offsetX, offsetZ, angle
-    state, offsetX = nextUnit(state)
-    state, offsetZ = nextUnit(state)
+    local angle
     state, angle = nextUnit(state)
-    local span = 128 + density * 64
-    local x = eyeX * (1 - parallax) + (offsetX - 0.5) * 48
-    local z = eyeZ * (1 - parallax) + (offsetZ - 0.5) * 48
+    local visualLayer = math.min(layer, 3)
+    local span = 112 + density * 56 + visualLayer * 8
+    local verticalSpan = 448 + visualLayer * 96
+    angle = math.fmod(angle * math.pi * 2
+      + (eyeX + eyeZ) * parallax / math.max(span, 1), math.pi * 2)
     local model = Mat4.mul(Mat4.translate(
-      clamp(x, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0),
-      clamp(eyeY + 160 + layer * 48,
+      eyeX,
+      clamp(eyeY - 64,
         -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0),
-      clamp(z, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)),
-      Mat4.mul(Mat4.rotateY(angle * math.pi * 2), Mat4.scale(span, 1, span)))
+      eyeZ),
+      Mat4.mul(Mat4.rotateY(angle),
+        Mat4.scale(span, verticalSpan, span)))
     return ensureMesh(self, "cloud_layer"), model,
       { 0.93, 0.96, 1.00, 1.00 }
   end
