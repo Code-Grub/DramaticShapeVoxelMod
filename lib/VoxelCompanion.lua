@@ -44,7 +44,7 @@ local MAX_SIGNATURE_NODES = 32768
 local MAX_SIGNATURE_BYTES = 256 * 1024
 local MAX_SKY_LAYER = 16
 local PANORAMA_SEGMENTS = 32
-local CLOUD_PATCHES = 8
+local CLOUD_SEGMENTS = 32
 local RAINBOW_SEGMENTS = 24
 local PANORAMA_RADIUS = 900
 local PANORAMA_TOP = 300
@@ -342,21 +342,20 @@ local function buildPanorama(deepSkirt)
 end
 
 local function buildCloudLayer()
-  local patches = {
-    { -0.38, -0.25, 0.24 }, { -0.08, -0.34, 0.20 },
-    {  0.25, -0.24, 0.27 }, {  0.39,  0.03, 0.19 },
-    {  0.16,  0.31, 0.25 }, { -0.18,  0.34, 0.22 },
-    { -0.40,  0.17, 0.18 }, {  0.02,  0.02, 0.30 },
-  }
-  local vertices, indices = {}, {}
-  for index = 1, math.min(CLOUD_PATCHES, #patches) do
-    local x, z, radius = patches[index][1], patches[index][2], patches[index][3]
-    local quad = #vertices / 4
-    vertices[#vertices + 1] = { x - radius, 0, z - radius, 0, 0, 1 }
-    vertices[#vertices + 1] = { x + radius, 0, z - radius, 1, 0, 1 }
-    vertices[#vertices + 1] = { x + radius, 0, z + radius, 1, 1, 1 }
-    vertices[#vertices + 1] = { x - radius, 0, z + radius, 0, 1, 1 }
-    Voxel3D.pushQuad(indices, quad)
+  -- One planar fan keeps the texture continuous across the full cloud deck.
+  -- Its circular perimeter has a fixed radius, so rotation cannot expand the
+  -- declared span or expose the clipped edges of detached square patches.
+  local vertices = { { 0, 0, 0, 0.5, 0.5, 1 } }
+  local indices = {}
+  for segment = 0, CLOUD_SEGMENTS - 1 do
+    local angle = segment * math.pi * 2 / CLOUD_SEGMENTS
+    local x, z = math.cos(angle) * 0.5, math.sin(angle) * 0.5
+    vertices[#vertices + 1] = { x, 0, z, x + 0.5, z + 0.5, 1 }
+  end
+  for segment = 0, CLOUD_SEGMENTS - 1 do
+    indices[#indices + 1] = 1
+    indices[#indices + 1] = segment + 2
+    indices[#indices + 1] = ((segment + 1) % CLOUD_SEGMENTS) + 2
   end
   return Voxel3D.newMesh(vertices, indices)
 end
@@ -484,6 +483,36 @@ local function playerCell(state)
   return integer(player.cellX, nil), integer(player.cellY, nil)
 end
 
+local function playerWorldPosition(self, cellX, cellZ)
+  local player = self.state and self.state.player
+  local size = self.snapshot and finite(self.snapshot.cellSize, nil) or 16
+  if type(player) == "table" then
+    local x = finite(player.px, finite(player.x, nil))
+    local z = finite(player.py, finite(player.y, nil))
+    if x ~= nil and z ~= nil then return x + size * 0.5, z + size * 0.5 end
+  end
+  if cellX ~= nil and cellZ ~= nil then
+    return (cellX + 0.5) * size, (cellZ + 0.5) * size
+  end
+  return nil, nil
+end
+
+local function wallIsCameraNear(self, item, camera, playerX, playerZ)
+  local eye = type(camera) == "table" and camera.eye or nil
+  if type(eye) ~= "table" then return false end
+  local eyeX = finite(eye[1], nil)
+  local eyeZ = finite(eye[3], nil)
+  local wallX = finite(item.x, nil)
+  local wallZ = finite(item.z, nil)
+  if not (eyeX and eyeZ and wallX and wallZ and playerX and playerZ) then
+    return false
+  end
+  local towardX, towardZ = eyeX - playerX, eyeZ - playerZ
+  if towardX * towardX + towardZ * towardZ < 0.0001 then return false end
+  return (wallX - playerX) * towardX
+      + (wallZ - playerZ) * towardZ > 0
+end
+
 local function shouldCutaway(self, prototype, item, context)
   if not (prototype and prototype.cutaway) then
     return false
@@ -492,10 +521,13 @@ local function shouldCutaway(self, prototype, item, context)
   if role ~= "ceiling" and role ~= "wall" and primitive ~= "canopy" then
     return false
   end
-  -- The callback context is the public, frame-local source of camera mode.
-  -- Do not infer it from extension data or retain the borrowed context.
+  -- The callback context is the public, frame-local source of camera mode and
+  -- eye position. Do not infer either from extension data or retain it.
   local camera = type(context) == "table" and context.camera or nil
-  if type(camera) ~= "table" or camera.mode ~= "first_person" then return false end
+  if primitive == "canopy"
+      and (type(camera) ~= "table" or camera.mode ~= "first_person") then
+    return false
+  end
   local px, pz = playerCell(self.state)
   local cx, cz = integer(item.cellX, nil), integer(item.cellZ, nil)
   -- Released KFP canopy packets predate explicit cell coordinates. Their
@@ -510,7 +542,15 @@ local function shouldCutaway(self, prototype, item, context)
     end
   end
   if not (px and pz and cx and cz) then return false end
-  return math.abs(px - cx) <= 4 and math.abs(pz - cz) <= 4
+  local nearby = math.abs(px - cx) <= 4 and math.abs(pz - cz) <= 4
+  if not nearby or role ~= "wall" then return nearby end
+
+  -- A room cutaway is a cross-section, not deletion of the room shell. Cull
+  -- only the nearby wall between the camera and player. Far and side walls
+  -- keep the room readable in every camera mode. Without a public eye, fail
+  -- open and preserve the wall.
+  local playerX, playerZ = playerWorldPosition(self, px, pz)
+  return wallIsCameraNear(self, item, camera, playerX, playerZ)
 end
 
 local function primitiveDimensions(prototype, item)
@@ -594,7 +634,18 @@ local function setMaterial(color)
   end
 end
 
-local function drawVoxel(mesh, texture, model, borrowed)
+local function evictMesh(self, mesh)
+  for key, cached in pairs(self.meshes) do
+    if cached == mesh then self.meshes[key] = nil end
+  end
+  if mesh and type(mesh.release) == "function" then
+    local released, releaseError = pcall(mesh.release, mesh)
+    if not released then return false, releaseError end
+  end
+  return true
+end
+
+local function drawVoxel(self, mesh, texture, model, borrowed)
   if borrowed and type(mesh and mesh.setTexture) ~= "function" then
     error("companion mesh cannot safely borrow an extension texture", 3)
   end
@@ -606,7 +657,16 @@ local function drawVoxel(mesh, texture, model, borrowed)
     cleared, clearError = pcall(mesh.setTexture, mesh)
   end
   if not cleared then
-    error("could not unbind borrowed extension texture: " .. tostring(clearError), 3)
+    -- The extension still owns the texture. Drop and release only the cached
+    -- host mesh so no host object can retain the borrowed image after return.
+    local released, releaseError = evictMesh(self, mesh)
+    local message = "could not unbind borrowed extension texture: "
+      .. tostring(clearError)
+    if not released then
+      message = message .. "; host mesh release failed: "
+        .. tostring(releaseError)
+    end
+    error(message, 3)
   end
   if not ok then error(err, 3) end
 end
@@ -696,12 +756,12 @@ local function drawItem(self, prototype, item, material, borrowedTexture, contex
         -- drawn later in the frame.
         love.graphics.setDepthMode("lequal", false)
       end
-      drawVoxel(mesh, texture, model, borrowedTexture ~= nil)
+      drawVoxel(self, mesh, texture, model, borrowedTexture ~= nil)
     elseif primitive == "billboard" then
       setMaterial(color)
       local mesh = ensureMesh(self, "billboard")
       if not mesh then error("companion billboard mesh is unavailable", 0) end
-      drawVoxel(mesh, texture, billboardTransform(item, width, height),
+      drawVoxel(self, mesh, texture, billboardTransform(item, width, height),
         borrowedTexture ~= nil)
     else
       setMaterial(color)
@@ -711,7 +771,7 @@ local function drawItem(self, prototype, item, material, borrowedTexture, contex
       local x = clamp(item.x, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
       local y = clamp(item.y, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
       local z = clamp(item.z, -MAX_WORLD_COORDINATE, MAX_WORLD_COORDINATE, 0)
-      drawVoxel(mesh, texture, transform(x, y, z, width,
+      drawVoxel(self, mesh, texture, transform(x, y, z, width,
         math.max(height, 0.01), depth), borrowedTexture ~= nil)
     end
   end, function(message) return tostring(message) end)
@@ -1185,11 +1245,12 @@ end
 
 local function cameraContext(self)
   local camera = Voxel3D.camera
+  local eye = camera and camera.eye or Voxel3D.eye
   local mode = Voxel.isFirstPerson() and "first_person"
     or (Voxel.isThirdPerson() and "third_person" or "diorama")
   return {
     mode = mode,
-    eye = camera and { camera.eye[1], camera.eye[2], camera.eye[3] } or nil,
+    eye = eye and { eye[1], eye[2], eye[3] } or nil,
     focus = camera and { camera.focus[1], camera.focus[2], camera.focus[3] } or nil,
     fov = camera and camera.fov or Voxel3D.fovY,
   }

@@ -156,8 +156,17 @@ function fakeVoxel3D.newMesh(vertices, indices)
   return {
     vertices = vertices,
     indices = indices,
-    setTexture = function(self, texture) self.texture = texture end,
-    release = function(self) self.released = true end,
+    releaseCount = 0,
+    setTexture = function(self, texture)
+      if texture == nil and self.failDetach then
+        error("synthetic borrowed texture detach failure", 0)
+      end
+      self.texture = texture
+    end,
+    release = function(self)
+      self.releaseCount = self.releaseCount + 1
+      self.released = true
+    end,
   }
 end
 
@@ -402,6 +411,28 @@ do
   contains(validationError, "<table key>",
     "dispatch labels a hostile phase without converting it")
   equal(conversionCalls, 0, "untrusted key conversion callbacks never run")
+end
+
+do
+  local command = wireCommand("mesh", "background", 91, {
+    mesh = { id = "extension-owned-mesh" },
+    texture = { id = "extension-owned-texture" },
+  })
+  local ok, validationError = API.validate_draw_command(command, "mesh")
+  equal(ok, nil,
+    "direct opaque mesh and borrowed texture cannot be combined")
+  contains(validationError,
+    "cannot combine an opaque mesh/resource with a texture",
+    "direct mesh and texture rejection explains the unsafe ownership mix")
+
+  command.mesh = nil
+  command.resource = { id = "extension-owned-resource" }
+  ok, validationError = API.validate_draw_command(command, "mesh")
+  equal(ok, nil,
+    "direct opaque resource and borrowed texture cannot be combined")
+  contains(validationError,
+    "cannot combine an opaque mesh/resource with a texture",
+    "direct resource and texture rejection explains the unsafe ownership mix")
 end
 
 do
@@ -1107,8 +1138,33 @@ equal(fixtureTexture.releases, 0,
   "shared panorama, cloud, and poster texture is not released")
 check(#companion.meshes.panorama_deep.vertices <= 256,
   "deep panorama uses bounded host-owned band and skirt geometry")
-check(#companion.meshes.cloud_layer.vertices <= 32,
-  "cloud layer uses bounded host-owned geometry")
+local cloudMesh = companion.meshes.cloud_layer
+equal(#cloudMesh.vertices, 33,
+  "cloud layer uses one center and one bounded circular perimeter")
+equal(#cloudMesh.indices, 32 * 3,
+  "cloud layer uses one continuous 32-triangle fan")
+for segment = 0, 31 do
+  local base = segment * 3
+  equal(cloudMesh.indices[base + 1], 1,
+    "each cloud triangle shares the center vertex")
+  equal(cloudMesh.indices[base + 2], segment + 2,
+    "each cloud triangle starts at its perimeter vertex")
+  equal(cloudMesh.indices[base + 3], ((segment + 1) % 32) + 2,
+    "the cloud perimeter is continuous and closes without detached facets")
+end
+equal(cloudMesh.vertices[1][1], 0,
+  "cloud fan center has a centered local X position")
+equal(cloudMesh.vertices[1][3], 0,
+  "cloud fan center has a centered local Z position")
+for index = 2, #cloudMesh.vertices do
+  local vertex = cloudMesh.vertices[index]
+  check(math.abs(vertex[1] * vertex[1] + vertex[3] * vertex[3] - 0.25)
+      <= 1e-12,
+    "cloud perimeter stays on the fixed half-unit radius")
+  check(math.abs(vertex[4] - (vertex[1] + 0.5)) <= 1e-12
+      and math.abs(vertex[5] - (vertex[3] + 0.5)) <= 1e-12,
+    "cloud UVs stay continuous with local deck coordinates")
+end
 check(#companion.meshes.rainbow.vertices <= 96,
   "rainbow uses bounded host-owned geometry")
 equal(companion.meshes.panorama_deep.texture, nil,
@@ -1140,10 +1196,27 @@ for index, vertex in ipairs(deepVertices) do
 end
 local cloudTranslation = findTagged(calls.fixtureModels.cloud_layer, "translate")[1]
 local cloudScale = findTagged(calls.fixtureModels.cloud_layer, "scale")[1]
+local cloudRotation = findTagged(calls.fixtureModels.cloud_layer, "rotateY")[1]
 check(cloudTranslation[3] >= 200,
   "cloud decks stay high above the first-person eye")
 check(cloudScale[2] <= 192 and cloudScale[4] <= 192,
   "cloud decks stay inside the subtle bounded physical span")
+local minCloudX, maxCloudX = math.huge, -math.huge
+local minCloudZ, maxCloudZ = math.huge, -math.huge
+local cosine, sine = math.cos(cloudRotation[2]), math.sin(cloudRotation[2])
+for _, vertex in ipairs(cloudMesh.vertices) do
+  local x, z = vertex[1] * cloudScale[2], vertex[3] * cloudScale[4]
+  local transformedX = x * cosine - z * sine + cloudTranslation[2]
+  local transformedZ = x * sine + z * cosine + cloudTranslation[4]
+  minCloudX, maxCloudX = math.min(minCloudX, transformedX),
+    math.max(maxCloudX, transformedX)
+  minCloudZ, maxCloudZ = math.min(minCloudZ, transformedZ),
+    math.max(maxCloudZ, transformedZ)
+end
+check(maxCloudX - minCloudX <= 192 + 1e-9,
+  "rotated cloud geometry cannot exceed its claimed X span")
+check(maxCloudZ - minCloudZ <= 192 + 1e-9,
+  "rotated cloud geometry cannot exceed its claimed Z span")
 equal(calls.fixtureDraws.cloud_layer.depth, "lequal:false",
   "cloud decks never occlude later world geometry through depth writes")
 check(calls.fixtureDraws.panorama.color:match(":1$") ~= nil,
@@ -1154,6 +1227,46 @@ check(calls.fixtureDraws.cloud_layer.color:match(":1$") ~= nil,
   "cloud material uses binary texture coverage without alpha dithering")
 equal(calls.fixtureDraws.cloud_layer.mesh.texture, nil,
   "cloud layer unbinds its borrowed texture after each draw")
+
+local detachTexture = {
+  releases = 0,
+  release = function(self) self.releases = self.releases + 1 end,
+}
+local failedDetachMesh = companion.meshes.cloud_layer
+failedDetachMesh.failDetach = true
+local detachCommand = wireCommand("mesh", "background", 219, {
+  cacheKey = "test.cloud.detach-failure",
+  material = "sky:clouds:detach-probe",
+  texture = detachTexture,
+  geometry = {
+    primitive = "cloud_layer", layer = 1, parallax = 0.14,
+    density = 0.5, seed = 99,
+  },
+})
+local detachAccepted, detachError = companion.draw.mesh(
+  detachCommand, companion:_context())
+equal(detachAccepted, false,
+  "a borrowed cloud texture detach failure fails the draw closed")
+contains(detachError, "could not unbind borrowed extension texture",
+  "detach failure reports the borrowed-texture ownership problem")
+equal(companion.meshes.cloud_layer, nil,
+  "detach failure evicts the mesh that still references borrowed texture")
+equal(failedDetachMesh.releaseCount, 1,
+  "detach failure releases the evicted host-owned mesh exactly once")
+equal(detachTexture.releases, 0,
+  "detach failure never releases the callback-borrowed cloud texture")
+
+detachAccepted, detachError = companion.draw.mesh(
+  detachCommand, companion:_context())
+check(detachAccepted, detachError or "cloud draw retries after safe mesh eviction")
+check(companion.meshes.cloud_layer ~= failedDetachMesh,
+  "a later cloud draw creates a fresh host-owned mesh")
+equal(companion.meshes.cloud_layer.texture, nil,
+  "the replacement cloud mesh unbinds the borrowed texture")
+equal(failedDetachMesh.releaseCount, 1,
+  "the evicted host mesh is not released twice")
+equal(detachTexture.releases, 0,
+  "successful retry still does not release the borrowed cloud texture")
 
 local panoramaModels = {}
 for index, width in ipairs({ 4096, 1024 }) do
@@ -1181,9 +1294,10 @@ check(#companion.meshes.panorama.vertices <= 128,
 equal(companion.meshes.panorama.texture, nil,
   "normal panorama mesh does not retain its borrowed texture")
 
--- KFP marks both its ceiling and synthesized room walls with one cutaway
--- intent. The host applies that intent only in first person and only near the
--- player. The public callback camera mode is the authoritative mode source.
+-- KFP emits explicit ceiling and wall cutaway intent for every camera mode.
+-- Ceiling intent opens a bounded player area. Wall intent opens only the
+-- camera-near shell, so a small room keeps a useful far cross-section.
+-- Canopy cutaway remains first-person-only.
 local cutawayResults = {}
 local cutawayHandle
 cutawayHandle, err = provider.register({
@@ -1194,7 +1308,10 @@ cutawayHandle, err = provider.register({
   render = {
     opaque_after_terrain = function(context)
       local mode = context.camera.mode
-      local result = { contextMode = mode }
+      local result = {
+        contextMode = mode,
+        contextEyeX = context.camera.eye and context.camera.eye[1] or nil,
+      }
       cutawayResults[mode] = result
 
       local function draw(label, sequence, prototype, items)
@@ -1245,13 +1362,30 @@ cutawayHandle, err = provider.register({
         { x = 80, y = 24, z = 80 },
         { x = 96, y = 24, z = 16 },
       })
+      draw("wall-cross-section", 108, {
+        primitive = "box", width = 1, height = 24, depth = 16,
+        cutaway = true, role = "wall",
+      }, {
+        { x = 16, y = 24, z = 24, cellX = 1, cellZ = 1 },
+        { x = 32, y = 24, z = 24, cellX = 1, cellZ = 1 },
+        { x = 24, y = 24, z = 16, cellX = 1, cellZ = 1 },
+        { x = 24, y = 24, z = 32, cellX = 1, cellZ = 1 },
+      })
     end,
   },
 })
 check(cutawayHandle, err or "KFP cutaway probe registers")
 
+local savedCamera, savedEye = fakeVoxel3D.camera, fakeVoxel3D.eye
 for _, mode in ipairs({ "first_person", "third_person", "diorama" }) do
   fakeCameraMode = mode
+  if mode == "diorama" then
+    fakeVoxel3D.camera = nil
+    fakeVoxel3D.eye = { 8, 16, 24 }
+  else
+    fakeVoxel3D.camera = savedCamera
+    fakeVoxel3D.eye = savedEye
+  end
   local report = companion:render("opaque_after_terrain", state)
   local cutawayStatus = cutawayHandle:status()
   check(report and report.failed == 0,
@@ -1259,31 +1393,30 @@ for _, mode in ipairs({ "first_person", "third_person", "diorama" }) do
       .. tostring(cutawayStatus.fault and cutawayStatus.fault.message))
   equal(cutawayResults[mode].contextMode, mode,
     "cutaway reads the public callback camera mode in " .. mode)
+  equal(cutawayResults[mode].contextEyeX, 8,
+    "cutaway reads a public host eye in " .. mode)
 end
+fakeVoxel3D.camera, fakeVoxel3D.eye = savedCamera, savedEye
 
-equal(cutawayResults.first_person.ceiling, 1,
-  "first-person cutaway removes nearby and radius-boundary ceilings")
-equal(cutawayResults.first_person.wall, 1,
-  "first-person cutaway removes nearby and radius-boundary walls")
-equal(cutawayResults.first_person["ceiling-disabled"], 1,
-  "cutaway=false preserves a nearby first-person ceiling")
-equal(cutawayResults.first_person["wall-disabled"], 1,
-  "cutaway=false preserves a nearby first-person wall")
-equal(cutawayResults.first_person["other-role"], 1,
-  "cutaway does not suppress a different semantic role")
-equal(cutawayResults.first_person["missing-cell"], 1,
-  "cutaway fails open when an item has no cell position")
-equal(cutawayResults.first_person["canopy-derived-cell"], 1,
-  "first-person cutaway derives released canopy cell positions")
-for _, mode in ipairs({ "third_person", "diorama" }) do
-  equal(cutawayResults[mode].ceiling, 3,
-    mode .. " preserves all ceiling cells")
-  equal(cutawayResults[mode].wall, 3,
-    mode .. " preserves all wall cells")
+for _, mode in ipairs({ "first_person", "third_person", "diorama" }) do
+  equal(cutawayResults[mode].ceiling, 1,
+    mode .. " applies emitted ceiling intent at the inclusive radius")
+  equal(cutawayResults[mode].wall, 2,
+    mode .. " removes only the camera-near wall and keeps the far shell")
+  equal(cutawayResults[mode]["wall-cross-section"], 3,
+    mode .. " keeps far and side walls in a one-cell room")
   equal(cutawayResults[mode]["ceiling-disabled"], 1,
     mode .. " preserves cutaway=false ceilings")
   equal(cutawayResults[mode]["wall-disabled"], 1,
     mode .. " preserves cutaway=false walls")
+  equal(cutawayResults[mode]["other-role"], 1,
+    mode .. " does not suppress a different semantic role")
+  equal(cutawayResults[mode]["missing-cell"], 1,
+    mode .. " fails open when an item has no cell position")
+end
+equal(cutawayResults.first_person["canopy-derived-cell"], 1,
+  "first-person cutaway derives released canopy cell positions")
+for _, mode in ipairs({ "third_person", "diorama" }) do
   equal(cutawayResults[mode]["canopy-derived-cell"], 3,
     mode .. " preserves all canopy cells")
 end

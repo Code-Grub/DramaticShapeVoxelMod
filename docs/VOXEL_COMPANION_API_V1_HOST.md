@@ -15,7 +15,7 @@
   2026-08-21T16:36:55-04:00.
 - Development source: <https://github.com/bryanthaboi/gen1recomp/commit/087a2751895899ad6e79800599ae27a8f40cf1e3>
 - Frozen Voxel Companion API reference dispatcher: byte-exact SHA-256
-  `864DA19493F773A52FB2111EFC02D79E9882B87C5A762AF5B124326A74A32B33`.
+  `6FDED9C804298AB064DB61B908382BE7C9A74AD29D611444C33E1BCC53A33D26`.
 
 The integration does not change the upstream mod identifier, manifest version,
 load priority, permissions, conflicts, or package layout. The existing package
@@ -102,16 +102,18 @@ cache key made only from `[A-Za-z0-9._:-]`. This generic host rule does not
 require a producer prefix. KFP-produced commands use the stricter profile
 `kfp1:<scene8>:<generation>:<phaseId>:<sequence>:<content16>`.
 
-For KFP instances, `cutaway = true` has one narrow host meaning. When the
-public callback value `context.camera.mode` is `first_person`, the adapter
-omits `role = "ceiling"`, `role = "wall"`, and `primitive = "canopy"` items
-within four cells of the player. The radius boundary is included. Released
-canopy packets have normalized cell-center positions but no explicit cell
-coordinates, so the adapter derives their cell from the defensive public
-world snapshot and its `cellSize`. Items outside the radius, other semantic
-roles, and all items in third-person or diorama mode remain visible.
-`cutaway = false` always preserves the item. The adapter reads the frame-local
-public camera context and does not retain it.
+For KFP instances, `cutaway = true` applies the declared interior intent in
+first-person, third-person, and diorama modes. The adapter omits nearby
+`role = "ceiling"` items within four cells of the player. For `role = "wall"`,
+it omits only the nearby shell between the public camera eye and player; far
+and side walls remain as a readable room cross-section. If the public eye is
+unavailable, the wall remains. `primitive = "canopy"` uses the same inclusive
+radius only in first person. Released canopy packets without explicit cell
+coordinates remain compatible: the adapter derives their cell from normalized
+cell-center positions and the defensive world snapshot's `cellSize`. Other
+missing player or item coordinates fail open and keep the geometry visible.
+`cutaway = false`, items outside the radius, and other roles remain visible.
+The adapter does not retain the frame-local camera context.
 
 The adapter copies each accepted cache key and stores an independent bounded
 digest of declarative command content. Reuse with the same content is valid.
@@ -122,7 +124,10 @@ command tables, texture handles, or derived command geometry.
 `command.texture` is an optional opaque resource borrowed only for the active
 draw callback. A string path is refused. The adapter can pass the borrowed
 texture to `Voxel3D.draw`, then unbinds it before returning. It never stores,
-releases, or substitutes ownership of that texture.
+releases, or substitutes ownership of that texture. The shared validator also
+refuses a direct opaque `command.mesh` or `command.resource` combined with a
+texture. That unsafe combination would require the host to mutate one borrowed
+resource to attach another.
 
 Panorama uses a fixed 32-segment host-owned cylinder and its callback-borrowed
 texture. The physical cylinder keeps the released radius of 900 world units,
@@ -135,14 +140,18 @@ only; texture alpha stays the only coverage source, which avoids the host
 shader's ordered-alpha bands.
 
 Cloud layers require a callback-borrowed KFP texture and use one fixed
-eight-quad host mesh, a maximum 192-world-unit span, opaque material coverage,
-and no depth writes. A missing texture fails closed at the shared validator.
-The adapter unbinds a cloud texture after each draw and never retains or
-releases it. This keeps the layers high and non-occluding without the former
-screen-covering translucent fallback planes. Rainbow uses one fixed
-24-segment ribbon. Required declarative fields select bounded transforms,
-density, parallax, and deterministic placement. These are conservative API
-baseline visuals. They do not claim rich parity with KFP 1.x sky art or weather.
+continuous 32-triangle circular host deck, a maximum 192-world-unit diameter,
+opaque material coverage, and no depth writes. Shared vertices and continuous
+UVs remove detached patch edges. The circular half-unit local radius keeps the
+transformed diameter bounded even when the deck rotates. A missing texture
+fails closed at the shared validator. The adapter unbinds a cloud texture after
+each draw and never retains or releases it. If unbinding fails, it evicts and
+releases only the host-owned mesh before it reports the failed draw. This keeps
+the layers high and non-occluding without the former screen-covering
+translucent fallback planes. Rainbow uses one fixed 24-segment ribbon.
+Required declarative fields select bounded transforms, density, parallax, and
+deterministic placement. These are conservative API baseline visuals. They do
+not claim rich parity with KFP 1.x sky art or weather.
 
 Procedural stars expand to at most 2,048 temporary camera-facing items with a
 local Park-Miller stream. The stream is seeded only from the command. It does
@@ -210,12 +219,15 @@ optional capabilities, late registration, guarded hot attach, hot start, and
 handle-invalidate fault cleanup, direct world/update/camera payloads,
 transactional finite camera aggregation, defensive snapshots, edit coalescing,
 radian camera input, graphics restoration, exact draw results, generic safe
-keys, untrusted-key formatting, KFP producer keys, schema rejection, borrowed
-panorama and cloud texture ownership, missing-cloud-texture refusal,
+keys, untrusted-key formatting, KFP producer keys, schema rejection, unsafe
+direct-resource texture refusal, borrowed panorama and cloud texture ownership,
+detach-failure mesh eviction, missing-cloud-texture refusal,
 key-content collision refusal, all shared baseline
-primitives, mode-aware KFP ceiling, wall, and canopy cutaways, cutaway radius boundaries,
-fail-open cell metadata, draw fault isolation, dispatch recovery, deterministic
-continuation, disposal, legacy refusal, and the no-write rule.
+primitives, producer-declared ceiling intent in every camera mode,
+far-shell-preserving wall cross-sections, first-person-only canopy cutaways,
+cutaway radius boundaries, fail-open cell metadata, draw fault isolation,
+dispatch recovery, deterministic continuation, disposal, legacy refusal, and
+the no-write rule.
 
 The canonical KFP dispatcher conformance command is:
 
@@ -224,8 +236,8 @@ luajit tools\run_tests.lua companion
 ```
 
 At integration time, the lifecycle test passed 11 checks, the focused host
-test passed 1,112 checks, the canonical
-companion selector passed 54 tests, and the complete KFP suite passed 215
+test passed 1,301 checks, the canonical
+companion selector passed 54 tests, and the complete KFP suite passed 227
 tests. The complete 23-command ROM-free draw fixture has canonical LF SHA-256
 `DE1DCA98A04AD9446B0AF4C13523DAB7F365BC7A76E70BC44B24F323D98A9BFA`.
 All changed Lua files also compiled with LuaJIT. The large upstream
