@@ -50,7 +50,6 @@ local PANORAMA_RADIUS = 900
 local PANORAMA_TOP = 300
 local PANORAMA_BOTTOM = -120
 local PANORAMA_DEEP_BOTTOM = -1400
-local CLOUD_TEXTURE_SIZE = 32
 
 local MESH_PRIMITIVES = {
   box = true,
@@ -559,36 +558,6 @@ local function ensureTexture(self)
   return self.texture or nil
 end
 
-local function ensureCloudTexture(self)
-  if self.cloudTexture ~= nil then return self.cloudTexture or nil end
-  if not (love and love.image and love.image.newImageData
-      and love.graphics and love.graphics.newImage) then
-    self.cloudTexture = false
-    return nil
-  end
-  local ok, texture = pcall(function()
-    local data = love.image.newImageData(CLOUD_TEXTURE_SIZE, CLOUD_TEXTURE_SIZE)
-    local half = (CLOUD_TEXTURE_SIZE - 1) * 0.5
-    for y = 0, CLOUD_TEXTURE_SIZE - 1 do
-      for x = 0, CLOUD_TEXTURE_SIZE - 1 do
-        local dx, dy = (x - half) / half, (y - half) / half
-        local r = math.sqrt(dx * dx + dy * dy)
-        -- The scene shader uses an alpha cutout. A bounded radial mask
-        -- removes the opaque quad corners that made the old white fallback
-        -- read as giant translucent polygons.
-        local alpha = r <= 0.88 and 1 or 0
-        data:setPixel(x, y, 1, 1, 1, alpha)
-      end
-    end
-    local image = love.graphics.newImage(data)
-    image:setFilter("linear", "linear")
-    image:setWrap("clamp", "clamp")
-    return image
-  end)
-  self.cloudTexture = ok and texture or false
-  return self.cloudTexture or nil
-end
-
 local function ensureMesh(self, kind)
   if self.meshes[kind] ~= nil then return self.meshes[kind] or nil end
   local mesh
@@ -698,9 +667,10 @@ local function drawItem(self, prototype, item, material, borrowedTexture, contex
   local primitive, width, height, depth = primitiveDimensions(prototype, item)
   -- An extension-owned texture is borrowed for this call only. Never place it
   -- on the adapter, a mesh cache, or any cleanup list.
-  local texture = borrowedTexture
-    or (primitive == "cloud_layer" and ensureCloudTexture(self))
-    or ensureTexture(self)
+  if primitive == "cloud_layer" and not borrowedTexture then
+    error("companion cloud texture is unavailable", 3)
+  end
+  local texture = borrowedTexture or ensureTexture(self)
   if not texture then error("companion material texture is unavailable", 3) end
   local color = colorFor(material)
   local ok, err = xpcall(function()
@@ -1258,7 +1228,6 @@ function VoxelCompanion.new(options)
     frameDraws = 0,
     meshes = {},
     texture = nil,
-    cloudTexture = nil,
     commandSignatures = {},
     commandSignatureOrder = {},
     commandSignatureCount = 0,
@@ -1477,10 +1446,6 @@ function VoxelCompanion:invalidate(reason)
   end
   if self.texture and self.texture.release then pcall(self.texture.release, self.texture) end
   self.texture = nil
-  if self.cloudTexture and self.cloudTexture.release then
-    pcall(self.cloudTexture.release, self.cloudTexture)
-  end
-  self.cloudTexture = nil
   self.commandSignatures = {}
   self.commandSignatureOrder = {}
   self.commandSignatureCount = 0

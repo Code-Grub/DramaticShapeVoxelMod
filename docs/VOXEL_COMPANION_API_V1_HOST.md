@@ -131,9 +131,11 @@ top at 300, normal bottom at -120, and deep-skirt bottom at -1400.
 world geometry. Distance haze changes RGB only; texture alpha stays the only
 coverage source, which avoids the host shader's ordered-alpha bands.
 
-Cloud layers use one fixed eight-quad host mesh, a bounded host-owned 32 by 32
-binary alpha mask, a maximum 192-world-unit span, and no depth writes. This
-keeps the texture-free portable baseline high and non-occluding without the
+Cloud layers require a callback-borrowed KFP texture and use one fixed
+eight-quad host mesh, a maximum 192-world-unit span, opaque material coverage,
+and no depth writes. A missing texture fails closed at the shared validator.
+The adapter unbinds a cloud texture after each draw and never retains or
+releases it. This keeps the layers high and non-occluding without the former
 screen-covering translucent fallback planes. Rainbow uses one fixed
 24-segment ribbon. Required declarative fields select bounded transforms,
 density, parallax, and deterministic placement. These are conservative API
@@ -206,7 +208,8 @@ handle-invalidate fault cleanup, direct world/update/camera payloads,
 transactional finite camera aggregation, defensive snapshots, edit coalescing,
 radian camera input, graphics restoration, exact draw results, generic safe
 keys, untrusted-key formatting, KFP producer keys, schema rejection, borrowed
-texture ownership, key-content collision refusal, all shared baseline
+panorama and cloud texture ownership, missing-cloud-texture refusal,
+key-content collision refusal, all shared baseline
 primitives, mode-aware KFP ceiling, wall, and canopy cutaways, cutaway radius boundaries,
 fail-open cell metadata, draw fault isolation, dispatch recovery, deterministic
 continuation, disposal, legacy refusal, and the no-write rule.
@@ -220,8 +223,8 @@ luajit tools\run_tests.lua companion
 At integration time, the lifecycle test passed 11 checks, the focused host
 test passed 725 checks, the canonical
 companion selector passed 54 tests, and the complete KFP suite passed 215
-tests. The complete 23-command ROM-free draw fixture has SHA-256
-`4CD7A8C9D258B247CB9AE0A9730E56DE3E9541B63358149A2AD09513F655A113`.
+tests. The complete 23-command ROM-free draw fixture has canonical LF SHA-256
+`DE1DCA98A04AD9446B0AF4C13523DAB7F365BC7A76E70BC44B24F323D98A9BFA`.
 All changed Lua files also compiled with LuaJIT. The large upstream
 `tests/battle_art_voxel_fork_test.lua` cannot compile as one LuaJIT chunk
 because its main function already exceeds LuaJIT's 200-local limit. This is an

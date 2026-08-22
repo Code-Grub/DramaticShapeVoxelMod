@@ -85,23 +85,13 @@ love = {
   graphics = {},
 }
 
-function love.image.newImageData(width, height)
-  local data = { width = width or 1, height = height or 1, pixels = 0,
-    minAlpha = 1, maxAlpha = 0 }
-  function data:setPixel(_, _, _, _, _, alpha)
-    alpha = alpha == nil and 1 or alpha
-    self.pixels = self.pixels + 1
-    self.minAlpha = math.min(self.minAlpha, alpha)
-    self.maxAlpha = math.max(self.maxAlpha, alpha)
-  end
-  return data
+function love.image.newImageData()
+  return { setPixel = function() end }
 end
 
-function love.graphics.newImage(data)
+function love.graphics.newImage()
   return {
-    sourceData = data,
     setFilter = function() end,
-    setWrap = function() end,
     release = function(self) self.released = true end,
   }
 end
@@ -826,6 +816,11 @@ local invalidBaseline = {
     geometry = { primitive = "cloud_layer", layer = 1, parallax = 0.2,
       density = 2, seed = 1 },
   }),
+  wireCommand("mesh", "background", 251, {
+    cacheKey = "other.extension:cloud-no-texture",
+    geometry = { primitive = "cloud_layer", layer = 1, parallax = 0.2,
+      density = 0.5, seed = 1 },
+  }),
   wireCommand("mesh", "background", 26, {
     cacheKey = "other.extension:rainbow-bad-seed",
     geometry = { primitive = "rainbow", seed = 0 / 0 },
@@ -841,6 +836,10 @@ for _, command in ipairs(invalidBaseline) do
   equal(accepted, false, "invalid complete-baseline command returns exactly false")
   check(type(rejection) == "string" and rejection ~= "",
     "invalid complete-baseline command explains its rejection")
+  if command.cacheKey == "other.extension:cloud-no-texture" then
+    contains(rejection, "texture is required for cloud_layer",
+      "untextured cloud fails closed at the shared validator")
+  end
 end
 equal(fakeVoxel3D.draws, rejectedDraws,
   "invalid complete-baseline commands never reach Voxel3D.draw")
@@ -1057,6 +1056,9 @@ for _, phase in ipairs({
         if primitive == "panorama" then
           calls.panoramaTextureUsed = fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog]
             .texture == command.texture
+        elseif primitive == "cloud_layer" then
+          calls.cloudTextureUsed = fakeVoxel3D.drawLog[#fakeVoxel3D.drawLog]
+            .texture == command.texture
         end
       end
     end
@@ -1095,12 +1097,14 @@ equal(calls.fixtureStarsExpanded, 48,
   "the fixture expands 24 deterministic stars on each pass")
 equal(calls.panoramaTextureUsed, true,
   "panorama uses its callback-borrowed texture")
+equal(calls.cloudTextureUsed, true,
+  "cloud layer uses its callback-borrowed texture")
 equal(calls.fixtureTextureCleared, true,
-  "shared panorama and poster textures are unbound before return")
+  "shared panorama, cloud, and poster textures are unbound before return")
 check(companion.texture ~= fixtureTexture,
   "shared fixture texture is not retained as a host fallback")
 equal(fixtureTexture.releases, 0,
-  "shared panorama and poster texture is not released")
+  "shared panorama, cloud, and poster texture is not released")
 check(#companion.meshes.panorama.vertices <= 128,
   "panorama uses bounded host-owned geometry")
 check(#companion.meshes.cloud_layer.vertices <= 32,
@@ -1127,22 +1131,14 @@ check(cloudScale[2] <= 192 and cloudScale[4] <= 192,
   "cloud decks stay inside the subtle bounded physical span")
 equal(calls.fixtureDraws.cloud_layer.depth, "lequal:false",
   "cloud decks never occlude later world geometry through depth writes")
-check(companion.cloudTexture and companion.cloudTexture ~= companion.texture,
-  "clouds use a dedicated host-owned alpha mask instead of the white fallback")
-equal(companion.cloudTexture.sourceData.width, 32,
-  "cloud alpha mask has a bounded width")
-equal(companion.cloudTexture.sourceData.pixels, 32 * 32,
-  "cloud alpha mask initializes every bounded texel")
-check(companion.cloudTexture.sourceData.minAlpha < 0.5
-    and companion.cloudTexture.sourceData.maxAlpha >= 0.5,
-  "cloud alpha mask cuts away quad corners and retains a cloud body")
 check(calls.fixtureDraws.panorama.color:match(":1$") ~= nil,
   "distance haze does not turn panorama alpha into checker coverage")
 equal(calls.fixtureDraws.panorama.depth, "lequal:false",
   "panorama retains depth testing without occluding later world geometry")
 check(calls.fixtureDraws.cloud_layer.color:match(":1$") ~= nil,
   "cloud material uses binary texture coverage without alpha dithering")
-local hostCloudTexture = companion.cloudTexture
+equal(calls.fixtureDraws.cloud_layer.mesh.texture, nil,
+  "cloud layer unbinds its borrowed texture after each draw")
 
 local panoramaModels = {}
 for index, width in ipairs({ 4096, 1024 }) do
@@ -1299,11 +1295,9 @@ equal(borrowedTexture.releases, 0,
 equal(starTexture.releases, 0,
   "adapter never releases a procedural-star texture during disposal")
 equal(fixtureTexture.releases, 0,
-  "adapter never releases shared panorama/poster texture during disposal")
+  "adapter never releases shared panorama/cloud/poster texture during disposal")
 equal(companion.state, nil, "adapter drops retained world state on dispose")
 equal(companion.startContext, nil, "adapter drops retained activation context on dispose")
-check(hostCloudTexture.released,
-  "adapter releases its host-owned cloud alpha mask during disposal")
 equal(love.update, sentinelUpdate, "adapter does not replace global callbacks")
 
 local legacyMod = cleanMod()
