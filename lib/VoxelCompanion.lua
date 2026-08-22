@@ -52,6 +52,20 @@ local PANORAMA_TOP = 300
 local PANORAMA_BOTTOM = -120
 local PANORAMA_DEEP_BOTTOM = -1400
 
+-- Semantic density roles are intentionally narrower than TileShape classes.
+-- A `cylinder` is only a host geometry choice; it is not proof that a cell is
+-- a tree. Likewise, a generic wall or cliff is not proof of mountain rock.
+-- These authored OVERWORLD ids are the public KFP 1.60 distinctions that the
+-- host can verify without exposing engine state to an extension.
+local SEMANTIC_TILESETS = {
+  OVERWORLD = {
+    tree_support = { [64] = true, [65] = true, [80] = true, [81] = true },
+    boulder_tree = { [42] = true, [43] = true, [58] = true, [59] = true },
+    mountain_seed = { [2] = true, [36] = true },
+  },
+}
+local MOUNTAIN_REACH = 2
+
 local MESH_PRIMITIVES = {
   box = true,
   plane = true,
@@ -1156,10 +1170,9 @@ local function cellRecord(map, shapes, x, z, worldTags)
   if water then tags.water = true end
   if grass then tags.grass = true end
   if warp then tags.door = true end
-  if class == "tree" or class == "canopy" or class == "cylinder" then
+  if (class == "tree" or class == "canopy") and not walkable and not water then
     tags.tree = true
   end
-  if class == "cliff" or class == "rock" then tags.mountain = true end
   if class == "flower" then tags.flower = true end
   if class == "wall" or class == "tree" or class == "cliff" then
     tags.object = true
@@ -1177,6 +1190,133 @@ local function cellRecord(map, shapes, x, z, worldTags)
     tags = tags,
     metadata = { tile = tile, class = class },
   }
+end
+
+local function cellAt(cells, width, height, x, z)
+  if x < 0 or z < 0 or x >= width or z >= height then return nil end
+  return cells[z * width + x + 1]
+end
+
+local function stableObstacle(cell)
+  return cell ~= nil and cell.solid == true and cell.walkable ~= true
+    and not (cell.tags and cell.tags.water)
+end
+
+local function nearClass(cells, width, height, cell, class, radius)
+  for dz = -radius, radius do
+    for dx = -radius, radius do
+      if dx ~= 0 or dz ~= 0 then
+        local neighbor = cellAt(cells, width, height,
+          cell.x + dx, cell.z + dz)
+        if neighbor and neighbor.metadata
+            and neighbor.metadata.class == class then
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
+local function nearTag(cells, width, height, cell, tag, radius)
+  for dz = -radius, radius do
+    for dx = -radius, radius do
+      if dx ~= 0 or dz ~= 0 then
+        local neighbor = cellAt(cells, width, height,
+          cell.x + dx, cell.z + dz)
+        if neighbor and neighbor.tags and neighbor.tags[tag] then return true end
+      end
+    end
+  end
+  return false
+end
+
+local function inConnectionBand(def, width, height, cell)
+  local connections = type(def) == "table" and def.connections or nil
+  if type(connections) ~= "table" then return false end
+  return (connections.north and cell.z < 2)
+    or (connections.south and cell.z > height - 3)
+    or (connections.west and cell.x < 2)
+    or (connections.east and cell.x > width - 3)
+    or false
+end
+
+-- Add only host-proven semantic roles. Seeds and support candidates use the
+-- corrected KFP 1.60 mountain gates: authored OVERWORLD rock ids start a
+-- bounded four-neighbor flood through upright, solid cells. Roof proximity
+-- rejects every candidate; door proximity rejects only non-seed support so a
+-- real cave mouth can retain its rock shoulders. Unknowns fail closed.
+local function applySemanticTags(cells, width, height, map, worldTags)
+  if not (worldTags and worldTags.outdoor) then return end
+  local def = map and map.def or {}
+  local tilesetId = tostring(map and map.tileset and map.tileset.id
+    or def.tileset or ""):upper()
+  local semantic = SEMANTIC_TILESETS[tilesetId]
+  if not semantic then return end
+
+  local mountainCandidates = {}
+  local mountainSeeds = {}
+  local queue, distance = {}, {}
+  local cardinalX = { -1, 1, 0, 0 }
+  local cardinalZ = { 0, 0, -1, 1 }
+  for index, cell in ipairs(cells) do
+    local metadata = cell.metadata or {}
+    local tile, class = metadata.tile, metadata.class
+    if stableObstacle(cell) and class == "cylinder" then
+      if semantic.tree_support[tile] then
+        cell.tags.tree_support = true
+        cell.tags.tree = true
+        cell.tags.object = true
+      elseif semantic.boulder_tree[tile] then
+        cell.tags.boulder_tree = true
+        cell.tags.boulder = true
+        cell.tags.object = true
+      end
+    end
+
+    if stableObstacle(cell) and (class == "wall" or class == "cliff")
+        and not inConnectionBand(def, width, height, cell)
+        and not nearClass(cells, width, height, cell, "roof", MOUNTAIN_REACH)
+    then
+      local seed = semantic.mountain_seed[tile] == true
+      if seed or not nearTag(cells, width, height, cell,
+          "door", MOUNTAIN_REACH) then
+        mountainCandidates[index] = true
+        if seed then
+          mountainSeeds[index] = true
+          distance[index] = 0
+          queue[#queue + 1] = index
+        end
+      end
+    end
+  end
+
+  local head = 1
+  while queue[head] do
+    local index = queue[head]
+    head = head + 1
+    local cell = cells[index]
+    if distance[index] < MOUNTAIN_REACH then
+      for direction = 1, 4 do
+        local nextCell = cellAt(cells, width, height,
+          cell.x + cardinalX[direction], cell.z + cardinalZ[direction])
+        local nextIndex = nextCell and nextCell.z * width + nextCell.x + 1
+        if nextIndex and mountainCandidates[nextIndex]
+            and distance[nextIndex] == nil then
+          distance[nextIndex] = distance[index] + 1
+          queue[#queue + 1] = nextIndex
+        end
+      end
+    end
+  end
+
+  for index in pairs(distance) do
+    local tags = cells[index].tags
+    tags.mountain_support = true
+    tags.mountain = true
+    tags.object = true
+    if mountainSeeds[index] then tags.mountain_seed = true end
+  end
 end
 
 local function poseOf(entity)
@@ -1226,6 +1366,7 @@ local function snapshotFor(self)
       cells[#cells + 1] = cellRecord(map, shapes, x, z, tags)
     end
   end
+  applySemanticTags(cells, width, height, map, tags)
 
   local actors = {}
   for index, entity in ipairs(state.entities or {}) do

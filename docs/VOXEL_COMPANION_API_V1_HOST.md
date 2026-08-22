@@ -82,6 +82,41 @@ protected by one outer fault boundary. It does not use a protected call for
 each cell query. This keeps map-change work bounded without adding several
 protected calls per cell. Player movement does not rebuild the full map.
 
+### Semantic density-tag contract
+
+Density roles are Boolean values in each normalized cell's existing `tags`
+table. They are host facts, not guesses from broad geometry classes:
+
+| Tag | Battle Art meaning |
+|---|---|
+| `tree_support` | Verified solid, non-walkable OVERWORLD cylinder tile 64, 65, 80, or 81 |
+| `boulder_tree` | Verified solid, non-walkable OVERWORLD cylinder tile 42, 43, 58, or 59; eligible for KFP's optional boulder-tree conversion |
+| `mountain_seed` | Authored OVERWORLD rock tile 2 or 36 that passes the mountain-context gates |
+| `mountain_support` | A seed, or an eligible upright rock cell reached within two four-neighbor steps of a seed |
+
+Water and walkable cells never receive a density role. Thus a connection
+overlay that exposes a walkable cylinder remains a raw `cylinder` record and
+does not become a tree or boulder. An unknown cylinder also keeps only its raw
+shape facts. Broad `tree` is added only for a verified tree (or a solid host
+class that is itself explicitly `tree` or `canopy`). Broad `mountain` is added
+only with `mountain_support`; generic `wall`, `cliff`, `rock`, and `cylinder`
+names do not imply it.
+
+Mountain candidates must be outdoors, solid, non-walkable, non-water,
+`wall` or `cliff` cells, and outside active two-cell connection bands. A roof
+in the surrounding 5-by-5 cell neighborhood rejects both a seed and a support
+candidate. A door in that neighborhood rejects only non-seed support, so an
+authored cliff can still form the shoulders of a cave mouth. Seeds also carry
+`mountain_support`. The bounded four-neighbor flood never promotes an unrelated
+wall more than two cells from an accepted seed.
+
+The tile identities and mountain gates are taken from the public KFP 1.60
+`payload_flora.lua` in [Kanto in First Person 1.60.0](https://github.com/mrmushrooms11/kanto-first-person/releases/tag/firstperson1.60.0).
+The audited release ZIP SHA-256 is
+`b54b28271918aaab9a11ced66247898e51cff5e5f03d3530ff3b81bb3b25af29`.
+The host remains the only layer that interprets its tile ids and classes. KFP
+consumes these normalized roles and does not inspect host or engine internals.
+
 ## Draw adapter and safety
 
 The draw facade implements the three v1 draw methods:
@@ -231,8 +266,10 @@ key-content collision refusal, all shared baseline
 primitives, producer-declared ceiling intent in every camera mode,
 far-shell-preserving wall cross-sections, first-person-only canopy cutaways,
 cutaway radius boundaries, fail-open cell metadata, draw fault isolation,
-dispatch recovery, deterministic continuation, disposal, legacy refusal, and
-the no-write rule.
+dispatch recovery, deterministic continuation, disposal, legacy refusal, the
+no-write rule, exact tree and boulder roles, walkable and unknown cylinder
+rejection, and bounded mountain seed, support, roof, door, and connection
+policies.
 
 The canonical KFP dispatcher conformance command is:
 
@@ -241,7 +278,7 @@ luajit tools\run_tests.lua companion
 ```
 
 At integration time, the lifecycle test passed 11 checks, the focused host
-test passed 2,610 checks, the canonical
+test passed 2,636 checks, the canonical
 companion selector passed 54 tests, and the complete KFP suite passed 227
 tests. The complete 23-command ROM-free draw fixture has canonical LF SHA-256
 `DE1DCA98A04AD9446B0AF4C13523DAB7F365BC7A76E70BC44B24F323D98A9BFA`.

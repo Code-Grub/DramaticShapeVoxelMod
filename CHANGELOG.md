@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Exact KFP world semantics.** The companion snapshot now separates verified
+  OVERWORLD tree supports from boulder-tree candidates, rejects walkable and
+  unknown cylinder ghosts, and marks mountain seeds and their bounded support
+  cells with explicit normalized tags. Generic cylinders and cliffs no longer
+  become trees or mountains by class-name guesswork.
+
 - **StadiumBattleFX API-1 providers.** Battle Art now registers its voxel-map
   arena, native battle cards, placed camera, projected HUD, and exit fade as
   independent SBFX selections. The projected HUD respects Battle Art's

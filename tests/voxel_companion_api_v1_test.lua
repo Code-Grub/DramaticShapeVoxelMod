@@ -953,6 +953,157 @@ firstSnapshot.cells[1].kind = "corrupted-copy"
 equal(companion.world.snapshot().cells[1].kind, "grass",
   "snapshot facade returns defensive copies")
 
+do
+  -- ROM-free semantic fixture. Tile ids match the public KFP 1.60 authored
+  -- OVERWORLD policy; all map, collision, roof, door, and connection facts are
+  -- synthetic host inputs.
+  local previousShapes = fakeShapes
+  fakeShapes = {
+    [0] = { class = "ground", h = 0 },
+    [2] = { class = "wall", h = 16 },
+    [9] = { class = "cliff", h = 32 },
+    [10] = { class = "wall", h = 16 },
+    [36] = { class = "wall", h = 16 },
+    [42] = { class = "cylinder", h = 16 },
+    [64] = { class = "cylinder", h = 16 },
+    [90] = { class = "cylinder", h = 16 },
+    [100] = { class = "roof", h = 28 },
+  }
+
+  local width, height = 12, 7
+  local tiles = {}
+  local function key(x, z) return x .. ":" .. z end
+  local function put(x, z, tile) tiles[key(x, z)] = tile end
+  put(0, 0, 64)   -- verified tree cylinder
+  put(1, 0, 42)   -- verified boulder cylinder
+  put(2, 0, 64)   -- walkable seam ghost
+  put(3, 0, 90)   -- unknown cylinder
+  put(4, 0, 42)   -- water-shaped boulder id
+  put(11, 0, 2)   -- rock seed inside an active north connection band
+  put(9, 3, 100)  -- roof that vetoes the nearby seed below
+  put(9, 4, 36)   -- authored rock id, but part of a building context
+  put(0, 4, 2)    -- valid mountain seed
+  put(1, 4, 9)    -- first support cell
+  put(2, 4, 10)   -- second support cell, at the exact reach limit
+  put(3, 4, 10)   -- third cell, beyond the bounded seed reach
+  put(5, 5, 36)   -- valid seed beside a cave-style doorway
+  put(6, 5, 10)   -- non-seed support vetoed by that doorway
+  put(11, 6, 9)   -- isolated generic cliff
+
+  local semanticMap = {
+    id = "SYNTHETIC_SEMANTICS",
+    widthCells = width,
+    heightCells = height,
+    def = {
+      width = 6,
+      height = 4,
+      tileset = "OVERWORLD",
+      connections = { north = {} },
+    },
+    tileset = { id = "OVERWORLD", image = "synthetic-overworld-atlas" },
+  }
+  function semanticMap:cellTile(x, z) return tiles[key(x, z)] or 0 end
+  function semanticMap:isWalkableCell(x, z)
+    return self:cellTile(x, z) == 0 or (x == 2 and z == 0)
+      or (x == 7 and z == 5)
+  end
+  function semanticMap:isWaterCell(x, z) return x == 4 and z == 0 end
+  function semanticMap:isGrassCell() return false end
+  function semanticMap:warpAtCell(x, z)
+    return x == 7 and z == 5 and { target = "SYNTHETIC_CAVE" } or nil
+  end
+  function semanticMap:isWarpTileCell() return false end
+
+  local semanticPlayer = { id = "player", px = 0, py = 0,
+    cellX = 0, cellY = 0, facing = "down", gh = 0 }
+  local semanticState = {
+    map = semanticMap,
+    player = semanticPlayer,
+    entities = { semanticPlayer },
+    neighbors = {},
+  }
+  local semanticCompanion = VoxelCompanion.new({ mod = cleanMod() })
+  local callbackWorldId, callbackTreeSupport
+  local semanticHandle, semanticError = semanticCompanion.provider.register({
+    api = 1,
+    id = "test.semantic-world-output",
+    requires = { "world_snapshot" },
+    worldChanged = function(snapshot)
+      callbackWorldId = snapshot.id
+      callbackTreeSupport = snapshot.cells[1].tags.tree_support
+    end,
+  })
+  check(semanticHandle,
+    semanticError or "semantic world-output extension registers")
+  check(semanticCompanion:start(), "semantic world-output host starts")
+  check(semanticCompanion:update(0.016, semanticState),
+    "semantic fixture dispatches through the normal world lifecycle")
+  equal(callbackWorldId, "SYNTHETIC_SEMANTICS",
+    "worldChanged receives the semantic fixture")
+
+  local semanticSnapshot = assert(semanticCompanion.world.snapshot())
+  local function cell(x, z)
+    return semanticSnapshot.cells[z * width + x + 1]
+  end
+  check(cell(0, 0).tags.tree_support,
+    "known OVERWORLD tree cylinder receives tree_support")
+  check(cell(0, 0).tags.tree and cell(0, 0).tags.object,
+    "verified tree support retains truthful broad tags")
+  check(not cell(0, 0).tags.boulder_tree,
+    "tree cylinder is not mislabeled as a boulder")
+  check(cell(1, 0).tags.boulder_tree and cell(1, 0).tags.boulder,
+    "known OVERWORLD boulder cylinder receives boulder_tree")
+  check(not cell(1, 0).tags.tree,
+    "boulder cylinder does not retain the old generic tree guess")
+  check(not cell(2, 0).tags.tree_support
+      and not cell(2, 0).tags.boulder_tree
+      and not cell(2, 0).tags.tree,
+    "walkable cylinder ghost fails closed")
+  check(cell(2, 0).walkable and cell(2, 0).tags.cylinder,
+    "walkable ghost keeps only its truthful raw shape facts")
+  check(not cell(3, 0).tags.tree_support
+      and not cell(3, 0).tags.boulder_tree
+      and not cell(3, 0).tags.tree,
+    "unknown cylinder fails closed")
+  check(not cell(4, 0).tags.boulder_tree,
+    "water suppresses an otherwise known boulder id")
+
+  check(cell(0, 4).tags.mountain_seed
+      and cell(0, 4).tags.mountain_support,
+    "authored rock seed is also a mountain support cell")
+  check(cell(0, 4).tags.mountain and cell(0, 4).tags.object,
+    "verified mountain seed retains truthful broad tags")
+  check(cell(1, 4).tags.mountain_support
+      and not cell(1, 4).tags.mountain_seed,
+    "adjacent upright rock receives support but not seed")
+  check(cell(2, 4).tags.mountain_support,
+    "upright rock at the exact two-cell reach limit receives support")
+  check(not cell(3, 4).tags.mountain_support
+      and not cell(3, 4).tags.mountain,
+    "upright rock beyond the seed reach fails closed")
+  check(cell(5, 5).tags.mountain_seed,
+    "authored rock seed survives a nearby cave doorway")
+  check(not cell(6, 5).tags.mountain_support,
+    "door proximity vetoes non-seed mountain support")
+  check(not cell(9, 4).tags.mountain_seed
+      and not cell(9, 4).tags.mountain_support,
+    "roof proximity vetoes an authored rock id")
+  check(not cell(11, 0).tags.mountain_seed,
+    "active connection band suppresses a mountain seed")
+  check(not cell(11, 6).tags.mountain_support
+      and not cell(11, 6).tags.mountain,
+    "isolated generic cliff is not guessed to be a mountain")
+
+  check(callbackTreeSupport,
+    "worldChanged output contains the normalized tree_support tag")
+  semanticSnapshot.cells[1].tags.tree_support = false
+  check(semanticCompanion.world.snapshot().cells[1].tags.tree_support,
+    "semantic tags survive defensive snapshot copying")
+  check(semanticCompanion:dispose("semantic-fixture"),
+    "semantic fixture disposes cleanly")
+  fakeShapes = previousShapes
+end
+
 state.player.px, state.player.py = 16, 16
 state.player.cellX, state.player.cellY = 1, 1
 companion:update(0.016, state)
