@@ -1105,24 +1105,39 @@ check(companion.texture ~= fixtureTexture,
   "shared fixture texture is not retained as a host fallback")
 equal(fixtureTexture.releases, 0,
   "shared panorama, cloud, and poster texture is not released")
-check(#companion.meshes.panorama.vertices <= 128,
-  "panorama uses bounded host-owned geometry")
+check(#companion.meshes.panorama_deep.vertices <= 256,
+  "deep panorama uses bounded host-owned band and skirt geometry")
 check(#companion.meshes.cloud_layer.vertices <= 32,
   "cloud layer uses bounded host-owned geometry")
 check(#companion.meshes.rainbow.vertices <= 96,
   "rainbow uses bounded host-owned geometry")
-equal(companion.meshes.panorama.texture, nil,
-  "panorama mesh does not retain its borrowed texture")
+equal(companion.meshes.panorama_deep.texture, nil,
+  "deep panorama mesh does not retain its borrowed texture")
 local panoramaTranslation = findTagged(calls.fixtureModels.panorama, "translate")[1]
 local panoramaScale = findTagged(calls.fixtureModels.panorama, "scale")[1]
-equal(panoramaTranslation[3], -550,
-  "deep panorama retains the released vertical midpoint")
+equal(panoramaTranslation[3], 0,
+  "deep panorama keeps authored vertical positions in its mesh")
 equal(panoramaScale[2], 1800,
   "panorama diameter is fixed physical geometry, not texture resolution")
-equal(panoramaScale[3], 1700,
-  "deep panorama retains the released top and skirt bounds")
+equal(panoramaScale[3], 1,
+  "panorama model does not stretch the authored vertical band")
 equal(panoramaScale[4], 1800,
   "panorama depth uses the fixed physical diameter")
+local deepVertices = companion.meshes.panorama_deep.vertices
+equal(#deepVertices, 32 * 8,
+  "deep panorama has one band quad and one skirt quad per segment")
+for index, vertex in ipairs(deepVertices) do
+  local y, v = vertex[2], vertex[5]
+  if index <= 32 * 4 then
+    check((y == -120 and v == 1) or (y == 300 and v == 0),
+      "authored panorama band retains its full vertical UV range")
+  else
+    check(y == -1400 or y == -120,
+      "deep panorama skirt retains the released vertical bounds")
+    equal(v, 1,
+      "deep panorama skirt samples only the texture bottom row")
+  end
+end
 local cloudTranslation = findTagged(calls.fixtureModels.cloud_layer, "translate")[1]
 local cloudScale = findTagged(calls.fixtureModels.cloud_layer, "scale")[1]
 check(cloudTranslation[3] >= 200,
@@ -1148,7 +1163,7 @@ for index, width in ipairs({ 4096, 1024 }) do
     texture = fixtureTexture,
     geometry = {
       primitive = "panorama", sourceWidth = width, targetWidth = width,
-      deepSkirt = true, distanceHaze = true,
+      deepSkirt = index == 1, distanceHaze = true,
     },
   })
   local before = #fakeVoxel3D.drawLog
@@ -1161,6 +1176,10 @@ for index, width in ipairs({ 4096, 1024 }) do
 end
 equal(treeSignature(panoramaModels[1]), treeSignature(panoramaModels[2]),
   "panorama world geometry is independent of texture quality width")
+check(#companion.meshes.panorama.vertices <= 128,
+  "normal panorama uses one bounded authored-band cylinder")
+equal(companion.meshes.panorama.texture, nil,
+  "normal panorama mesh does not retain its borrowed texture")
 
 -- KFP marks both its ceiling and synthesized room walls with one cutaway
 -- intent. The host applies that intent only in first person and only near the

@@ -310,21 +310,33 @@ end
 -- They are bounded visual proxies, not a claim of legacy panorama or weather
 -- parity. Declarative commands and callback-borrowed textures stay outside all
 -- host caches; only these fixed meshes are retained by the adapter.
-local function buildPanorama()
-  local vertices, indices = {}, {}
+local function addPanoramaRing(vertices, indices, bottom, top, bottomV, topV)
+  local radius = 0.5
   for segment = 0, PANORAMA_SEGMENTS - 1 do
     local a0 = segment * math.pi * 2 / PANORAMA_SEGMENTS
     local a1 = (segment + 1) * math.pi * 2 / PANORAMA_SEGMENTS
-    local x0, z0 = math.cos(a0) * 0.5, math.sin(a0) * 0.5
-    local x1, z1 = math.cos(a1) * 0.5, math.sin(a1) * 0.5
+    local x0, z0 = math.cos(a0) * radius, math.sin(a0) * radius
+    local x1, z1 = math.cos(a1) * radius, math.sin(a1) * radius
     local u0, u1 = segment / PANORAMA_SEGMENTS,
       (segment + 1) / PANORAMA_SEGMENTS
     local quad = #vertices / 4
-    vertices[#vertices + 1] = { x0, -0.5, z0, u0, 1, 1 }
-    vertices[#vertices + 1] = { x1, -0.5, z1, u1, 1, 1 }
-    vertices[#vertices + 1] = { x1,  0.5, z1, u1, 0, 1 }
-    vertices[#vertices + 1] = { x0,  0.5, z0, u0, 0, 1 }
+    vertices[#vertices + 1] = { x0, bottom, z0, u0, bottomV, 1 }
+    vertices[#vertices + 1] = { x1, bottom, z1, u1, bottomV, 1 }
+    vertices[#vertices + 1] = { x1, top, z1, u1, topV, 1 }
+    vertices[#vertices + 1] = { x0, top, z0, u0, topV, 1 }
     Voxel3D.pushQuad(indices, quad)
+  end
+end
+
+local function buildPanorama(deepSkirt)
+  local vertices, indices = {}, {}
+  addPanoramaRing(vertices, indices, PANORAMA_BOTTOM, PANORAMA_TOP, 1, 0)
+  if deepSkirt then
+    -- The deep closure samples only the authored bottom row. Stretching the
+    -- full panorama through this range compressed its skyline near the
+    -- horizon and repeated transparent bands across the frame.
+    addPanoramaRing(vertices, indices,
+      PANORAMA_DEEP_BOTTOM, PANORAMA_BOTTOM, 1, 1)
   end
   return Voxel3D.newMesh(vertices, indices)
 end
@@ -563,7 +575,8 @@ local function ensureMesh(self, kind)
   local mesh
   if kind == "plane" then mesh = buildPlane()
   elseif kind == "billboard" then mesh = buildBillboard()
-  elseif kind == "panorama" then mesh = buildPanorama()
+  elseif kind == "panorama" then mesh = buildPanorama(false)
+  elseif kind == "panorama_deep" then mesh = buildPanorama(true)
   elseif kind == "cloud_layer" then mesh = buildCloudLayer()
   elseif kind == "rainbow" then mesh = buildRainbow()
   else mesh = buildBox() end
@@ -604,17 +617,15 @@ local function skyPrimitive(self, prototype)
   if primitive == "panorama" then
     -- sourceWidth and targetWidth describe texture quality, not world scale.
     -- Keep the released physical panorama bounds at every quality tier.
-    local bottom = prototype.deepSkirt == true
-      and PANORAMA_DEEP_BOTTOM or PANORAMA_BOTTOM
-    local height = PANORAMA_TOP - bottom
-    local y = bottom + height * 0.5
     -- Battle's scene shader converts partial material alpha to ordered
     -- coverage. Keep the material opaque so only the panorama texture's
     -- authored alpha controls its silhouette.
     local color = prototype.distanceHaze == true
       and { 0.92, 0.94, 0.98, 1.00 } or COLORS.panorama
-    return ensureMesh(self, "panorama"),
-      transform(eyeX, y, eyeZ, PANORAMA_RADIUS * 2, height,
+    local meshKind = prototype.deepSkirt == true and "panorama_deep"
+      or "panorama"
+    return ensureMesh(self, meshKind),
+      transform(eyeX, 0, eyeZ, PANORAMA_RADIUS * 2, 1,
         PANORAMA_RADIUS * 2), color
   end
 

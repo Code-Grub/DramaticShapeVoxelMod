@@ -128,8 +128,11 @@ Panorama uses a fixed 32-segment host-owned cylinder and its callback-borrowed
 texture. The physical cylinder keeps the released radius of 900 world units,
 top at 300, normal bottom at -120, and deep-skirt bottom at -1400.
 `sourceWidth` and `targetWidth` are texture quality metadata and never scale
-world geometry. Distance haze changes RGB only; texture alpha stays the only
-coverage source, which avoids the host shader's ordered-alpha bands.
+world geometry. The authored texture spans only -120 through 300. A separate
+deep-skirt ring samples its bottom texture row from -1400 through -120, so the
+painted skyline is never stretched into the closure. Distance haze changes RGB
+only; texture alpha stays the only coverage source, which avoids the host
+shader's ordered-alpha bands.
 
 Cloud layers require a callback-borrowed KFP texture and use one fixed
 eight-quad host mesh, a maximum 192-world-unit span, opaque material coverage,
@@ -221,7 +224,7 @@ luajit tools\run_tests.lua companion
 ```
 
 At integration time, the lifecycle test passed 11 checks, the focused host
-test passed 725 checks, the canonical
+test passed 1,112 checks, the canonical
 companion selector passed 54 tests, and the complete KFP suite passed 215
 tests. The complete 23-command ROM-free draw fixture has canonical LF SHA-256
 `DE1DCA98A04AD9446B0AF4C13523DAB7F365BC7A76E70BC44B24F323D98A9BFA`.
