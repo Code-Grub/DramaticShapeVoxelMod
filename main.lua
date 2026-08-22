@@ -115,13 +115,19 @@ local PoisonFlash = V.require("PoisonFlash")
 local MomHealFlash = V.require("MomHealFlash")
 local TransformCompat = V.require("TransformCompat")
 local VoxelCompanion = V.require("VoxelCompanion")
+local CompanionLifecycle = V.require("CompanionLifecycle")
 
 -- The public provider is created while this mod loads, before consumers resolve
 -- optional dependencies. The dispatcher starts at mods.loaded; a consumer that
 -- registers later in that event joins the running dispatcher automatically.
 local Companion = VoxelCompanion.new({ mod = mod })
 V.companion = Companion
-local companionUpdateFault = false
+
+-- mods.loaded runs before Game.overworld necessarily has a live map. Use the
+-- engine's public per-frame hook to retry after the real overworld update and
+-- to observe later map/revision changes. This must not depend on a render
+-- pipeline being active: KFP can attach while Battle Art's voxel mode is off.
+CompanionLifecycle.install(mod, Companion)
 
 -- `mods.loaded` is the first point at which every content mod has finished
 -- patching the registries and the last point before a save can mutate live map
@@ -256,15 +262,6 @@ mod.content.render_pipelines:register("voxel", {
     -- battles and menus, and a CYCLE evening falls mid-fight exactly as it
     -- would mid-walk
     DayNight.update(dt)
-    -- Companion work is additive and fault-contained. It runs with the mode
-    -- off so a newly selected voxel rung can use an already compiled scene.
-    local companionOk, companionError = pcall(Companion.update, Companion, dt,
-      Game and Game.overworld)
-    if not companionOk and not companionUpdateFault
-        and mod.log and mod.log.error then
-      companionUpdateFault = true
-      mod.log:error("Voxel Companion update failed: %s", tostring(companionError))
-    end
     -- The overworld battle rides this hook rather than owning a pipeline of
     -- its own, because it owns no pass of the FRAME: it draws under a battle
     -- screen the engine composites, which is not a stage the registry has.

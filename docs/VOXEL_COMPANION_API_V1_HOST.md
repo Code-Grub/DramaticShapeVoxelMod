@@ -43,11 +43,13 @@ those passes.
 
 The adapter uses only existing host-owned seams:
 
-1. `update(frame)` runs from the voxel pipeline update. It also runs while the
-   voxel display level is off, so extension compilation can finish before the
-   player selects the mode.
-2. `worldChanged(snapshot)` runs after a real world identity change. Multiple
-   block edits before one update coalesce into one snapshot revision.
+1. The public `core.update` hook runs the engine update first, then observes
+   `game.overworld` and sends `update(frame)`. It also runs while the voxel
+   display level is off, so extension compilation can finish before the player
+   selects the mode.
+2. Startup can have no map. The adapter keeps one snapshot pending and sends
+   `worldChanged(snapshot)` when the real overworld becomes ready. Later map
+   identities and coalesced block edits send one newer revision.
 3. `modifyCamera(camera)` runs after the first-person rig is built and before
    projection. The host applies finite additive values only. Position is
    limited to 32 world units per axis, rotation to 0.5 radians per axis, and
@@ -181,10 +183,12 @@ scan and refusal do not write, restore, remove, or rename any file.
 Run the focused host test from the repository root:
 
 ```text
+luajit tests\companion_lifecycle_test.lua
 luajit tests\voxel_companion_api_v1_test.lua
 ```
 
-It covers descriptor truthfulness, canonical flat callbacks, callback snapshots,
+They cover delayed overworld readiness through the public core hook, descriptor
+truthfulness, canonical flat callbacks, callback snapshots,
 optional capabilities, late registration, guarded hot attach, hot start, and
 handle-invalidate fault cleanup, direct world/update/camera payloads,
 transactional finite camera aggregation, defensive snapshots, edit coalescing,
@@ -201,7 +205,8 @@ The canonical KFP dispatcher conformance command is:
 luajit tools\run_tests.lua companion
 ```
 
-At integration time, the focused host test passed 684 checks, the canonical
+At integration time, the lifecycle test passed 11 checks, the focused host
+test passed 702 checks, the canonical
 companion selector passed 54 tests, and the complete KFP suite passed 215
 tests. The complete 23-command ROM-free draw fixture has SHA-256
 `4CD7A8C9D258B247CB9AE0A9730E56DE3E9541B63358149A2AD09513F655A113`.

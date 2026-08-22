@@ -288,6 +288,68 @@ local mod = cleanMod()
 local companion = VoxelCompanion.new({ mod = mod })
 local provider = companion.provider
 
+do
+  local delayedMod = cleanMod()
+  local delayed = VoxelCompanion.new({ mod = delayedMod })
+  local delayedWorlds, delayedUpdates = {}, 0
+  local delayedHandle, delayedError = delayed.provider.register({
+    api = 1,
+    id = "test.delayed-world-readiness",
+    requires = { "world_snapshot" },
+    worldChanged = function(snapshot)
+      delayedWorlds[#delayedWorlds + 1] = {
+        id = snapshot.id,
+        revision = snapshot.revision,
+      }
+    end,
+    update = function() delayedUpdates = delayedUpdates + 1 end,
+  })
+  check(delayedHandle, delayedError or "delayed-world extension registers")
+  check(delayed:start(), "delayed-world host starts before the overworld")
+
+  local game = {}
+  check(delayed:updateFromGame(0.016, game),
+    "a missing startup overworld does not fault the dispatcher")
+  equal(#delayedWorlds, 0,
+    "no worldChanged callback is sent before a real map exists")
+  check(delayed.worldPending,
+    "missing startup state keeps one world snapshot pending")
+
+  game.overworld = worldState()
+  check(delayed:updateFromGame(0.016, game),
+    "the public game object supplies a later ready overworld")
+  equal(#delayedWorlds, 1,
+    "the first ready overworld dispatches one normalized snapshot")
+  equal(delayedWorlds[1].id, "PALLET_TOWN",
+    "the delayed snapshot reports the live map identity")
+  check(not delayed.worldPending,
+    "a successful delayed snapshot clears the pending state")
+
+  local firstRevision = delayedWorlds[1].revision
+  game.overworld = worldState()
+  game.overworld.map.id = "VIRIDIAN_CITY"
+  check(delayed:updateFromGame(0.016, game),
+    "a replacement overworld remains observable through the same game object")
+  equal(#delayedWorlds, 2,
+    "a later map identity dispatches one replacement snapshot")
+  equal(delayedWorlds[2].id, "VIRIDIAN_CITY",
+    "the replacement snapshot reports the new live map")
+  check(delayedWorlds[2].revision > firstRevision,
+    "the replacement snapshot advances the adapter revision")
+
+  delayed:worldChanged("synthetic-block-edit")
+  check(delayed:updateFromGame(0.016, game),
+    "an announced map revision is pumped by core lifecycle updates")
+  equal(#delayedWorlds, 3,
+    "an announced revision dispatches one refreshed snapshot")
+  check(delayedWorlds[3].revision > delayedWorlds[2].revision,
+    "the refreshed snapshot carries the newer revision")
+  check(delayedUpdates >= 4,
+    "extension updates continue before and after world readiness")
+  check(delayed:dispose("delayed-world-test"),
+    "delayed-world host disposes cleanly")
+end
+
 local function wireCommand(kind, phase, sequence, fields)
   local command = fields or {}
   command.schemaVersion = 1

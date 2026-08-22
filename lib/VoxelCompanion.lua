@@ -1377,6 +1377,15 @@ function VoxelCompanion:update(dt, state)
   return self.dispatcher:update(self.frame)
 end
 
+-- Pump the adapter from the engine's public core.update hook. The companion
+-- starts during mods.loaded, before Game.overworld necessarily has a map, so
+-- the first calls can legitimately have no state. A later call observes the
+-- live overworld and dispatches the pending normalized snapshot.
+function VoxelCompanion:updateFromGame(dt, game)
+  local state = type(game) == "table" and game.overworld or nil
+  return self:update(dt, state)
+end
+
 function VoxelCompanion:cameraDelta(state)
   self:_observeState(state)
   if not self.started then return nil end
