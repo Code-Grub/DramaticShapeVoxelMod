@@ -504,8 +504,9 @@ local SETTINGS = {
   { WorldUnderlay.setting,
     "Choose the solid outdoor world beneath terrain holes and beyond map edges: "
     .. "CYAN or BLACK. OFF/KFP leaves the underlay to Kanto First Person. "
-    .. "NATURE uses a black underlay and continues each biome beyond loaded "
-    .. "ROM cells with stable random-sized tree or rock billboards. "
+    .. "NATURE uses cyan by default and continues each biome beyond loaded "
+    .. "ROM cells with stable random-sized tree or rock billboards; selected "
+    .. "forest, Safari-house and Seafoam void maps use black and stay clear. "
     .. "Indoor horizons automatically match "
     .. "the room's own border/void material so the finite map ring cannot reveal "
     .. "a differently coloured infinite fill behind it.",
@@ -537,6 +538,10 @@ local SETTINGS = {
   { OverworldBattle.setting,
     "Fight on the map: the battle draws over the nearest clear ground, "
     .. "shot over the shoulder with a slow parallax drift.",
+    full = true },
+  { FirstPerson.invertYSetting,
+    "Invert vertical look input in 1ST and 3RD free-camera modes only. "
+    .. "It does not change overhead camera movement.",
     full = true },
   -- HUD SCALE lives with the battle rows: SCALED is the mod's default HUD
   -- (it grows with the battle zoom); OG pins it to the window-fit scale like
@@ -742,6 +747,22 @@ local HOTKEYS = {
   ["9"] = Water.setting,
 }
 
+-- GBC FX was a private engine module in older Gen1Recomp builds. Newer builds
+-- expose the generalized ShaderFX system instead, and sandbox require errors
+-- are fatal even when the effect is only being cleared. Detect the legacy
+-- seam once and keep this mod's compatibility policy narrow: clear it when
+-- present, but never disable a newer engine effect by guessing its API.
+local legacyGBCFX
+local function clearLegacyGBCFX()
+  if legacyGBCFX == nil then
+    local ok, module = pcall(require, "src.render.GBCFX")
+    legacyGBCFX = ok and type(module) == "table" and module or false
+  end
+  if legacyGBCFX and type(legacyGBCFX.setLevel) == "function" then
+    pcall(legacyGBCFX.setLevel, 0)
+  end
+end
+
 do
   local Game = require("src.core.Game")
   local Pipelines = require("src.render.Pipelines")
@@ -782,7 +803,7 @@ do
           if key == "3" then
             self.save.options.tilt = 0
             self.save.options.gbcfx = 0
-            require("src.render.GBCFX").setLevel(0)
+            clearLegacyGBCFX()
           end
           require("src.render.Tilt").setLevel(self.save.options.tilt or 0)
           self:writeOptions()
@@ -870,14 +891,13 @@ local function pinEngineFx(game)
   game = game or require("src.core.Game")
   local opts = game and game.save and game.save.options
   local Tilt = require("src.render.Tilt")
-  local GBCFX = require("src.render.GBCFX")
   local changed = false
   if opts then
     changed = (opts.tilt or 0) ~= 0 or (opts.gbcfx or 0) ~= 0
     opts.tilt, opts.gbcfx = 0, 0
   end
   pcall(Tilt.setLevel, 0)
-  pcall(GBCFX.setLevel, 0)
+  clearLegacyGBCFX()
   if changed and game.writeOptions then pcall(game.writeOptions, game) end
 end
 

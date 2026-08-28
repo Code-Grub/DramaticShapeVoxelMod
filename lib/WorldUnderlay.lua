@@ -17,6 +17,7 @@ local Voxel3D = V.require("Voxel3D")
 local Mat4 = V.require("Mat4")
 local ModSetting = V.require("ModSetting")
 local TerrainAtlas = V.require("TerrainAtlas")
+local biomes = V.data("world_fill_biomes")
 
 local WorldUnderlay = {}
 
@@ -124,6 +125,11 @@ end
 function WorldUnderlay.resolve(state, colors)
   if not WorldUnderlay.enabled() then return nil, "world:off" end
   local map = state and state.map
+  local mapId = map and (map.id or (map.def and map.def.id))
+  if WorldUnderlay.selected() == "nature"
+      and biomes.black and biomes.black[mapId] then
+    return COLORS.black, "nature:black"
+  end
   if map and map.def and not Map.isOutdoor(map.def) then
     local borderId = TileRenderer.borderBlockFor(map)
     if borderId == false then return { 0, 0, 0, 1 }, "indoor:black" end

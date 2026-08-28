@@ -64,10 +64,12 @@ Key visual controls include:
 - `CYAN` is the default classic underlay.
 - `BLACK` uses the dark `#181818` underlay.
 - `OFF/KFP` draws no underlay, allowing Kanto First Person to own that space.
-- `NATURE` uses the cyan underlay and adds biome-aware trees or rocks.
+- `NATURE` uses the cyan underlay and adds biome-aware trees or rocks; selected
+  forest, Safari-house and Seafoam void maps use black and stay clear.
 
-With `NATURE`, transparent nature billboards populate every 16×16
-world cell beyond the loaded map and its connected neighbors. Towns, forests,
+With `NATURE`, transparent nature billboards populate 16×16 world cells beyond
+the loaded map and its connected neighbors where the map's fill profile allows
+them. Towns, forests,
 and leafy routes continue with trees; Safari/open-field routes use broadleaf
 trees; rocky routes (including Route 23) and cavern maps use rock pillars.
 Their variant and 100%/150%/200% size are randomized deterministically, so they do not
@@ -175,6 +177,9 @@ The hotkeys work in free roam and mirror rows in the Options menu:
 | `7` | Cycle `V-CURVE` |
 | `8` | Toggle `3D-BTL` |
 | `9` | Cycle `WATER` |
+
+The `Y-CONTROL INVERT` option reverses vertical look input in 1ST/3RD only;
+it is OFF by default and does not affect overhead camera controls.
 
 Battle Art suppresses the engine's flat `TILT` and full-screen `GBC FX` while installed because those passes conflict with the 3D renderer. Uninstalling the mod restores their normal rows and saved values.
 

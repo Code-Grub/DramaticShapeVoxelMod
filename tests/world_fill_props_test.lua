@@ -21,10 +21,25 @@ local V = {
 }
 local Props = assert(loadfile(MOD_PATH .. "/lib/WorldFillProps.lua"))(V)
 
-T.eq(Props.biomeFor({ id = "VIRIDIAN_FOREST", def = {} }), "forest",
-  "Viridian Forest uses forest props")
+T.eq(Props.biomeFor({ id = "VIRIDIAN_FOREST", def = {} }), nil,
+  "Viridian Forest leaves its black void free of generated trees")
 T.eq(Props.biomeFor({ id = "SAFARI_ZONE_EAST", def = {} }), "field",
   "Safari Zone uses field props")
+T.eq(Props.biomeFor({ id = "SAFARI_ZONE_EAST_REST_HOUSE",
+                      def = { tileset = "FOREST" } }), nil,
+  "Safari rest houses do not receive outdoor trees")
+T.eq(Props.biomeFor({ id = "CINNABAR_ISLAND",
+                      def = { tileset = "OVERWORLD" } }), nil,
+  "Cinnabar Island keeps its cyan fill without generated trees")
+T.eq(Props.biomeFor({ id = "SEAFOAM_ISLANDS_B4F",
+                      def = { tileset = "CAVERN" } }), nil,
+  "Seafoam interiors do not receive generated rocks")
+local biomeData = V.data("world_fill_biomes")
+T.check(biomeData.black.VIRIDIAN_FOREST
+    and biomeData.black.SEAFOAM_ISLANDS_B4F,
+  "problem locations select the black NATURE underlay")
+T.check(not biomeData.black.CINNABAR_ISLAND,
+  "Cinnabar keeps the cyan NATURE underlay")
 T.eq(Props.biomeFor({ id = "ROUTE_23", def = {} }), "rocky",
   "Route 23 uses rocky props")
 T.eq(Props.biomeFor({ id = "ROCK_TUNNEL_1F",
@@ -48,10 +63,10 @@ T.eq(s1, 1 + b1 * 0.5,
   "size buckets 0, 1 and 2 select 100%, 150% and 200% scale")
 T.eq(jx1, 0, "every world cell stays centered without spacing jitter")
 T.eq(jz1, 0, "every world cell stays centered without depth jitter")
-T.eq(Props.radiusFor(160, 144, false), 23,
-  "world-fill scenery extends the former 15-cell view radius by 1.5x")
-T.eq(Props.radiusFor(0, 0, true), 18,
-  "free-camera scenery extends its former 12-cell minimum radius by 1.5x")
+T.eq(Props.radiusFor(160, 144, false), 11,
+  "world-fill scenery keeps the normal mesh radius")
+T.eq(Props.radiusFor(0, 0, true), 11,
+  "free-camera scenery keeps its minimum mesh radius")
 
 local state = {
   map = { id = "ROUTE_1", widthCells = 4, heightCells = 3, def = {} },

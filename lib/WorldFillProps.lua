@@ -48,10 +48,10 @@ local function biomeFor(map)
   local def = map and map.def
   local id = map and map.id or (def and def.id)
   if not id then return nil end
+  if biomes.excluded and biomes.excluded[id] then return nil end
   if biomes.rocky[id] then return "rocky" end
   if biomes.field[id] then return "field" end
   if biomes.forest[id] then return "forest" end
-  if id:find("SAFARI_ZONE_", 1, true) == 1 then return "field" end
   local tileset = def and def.tileset
   if tileset == "CAVERN" then return "rocky" end
   if tileset == "FOREST" then return "forest" end

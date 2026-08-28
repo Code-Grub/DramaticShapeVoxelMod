@@ -55,6 +55,7 @@ local Voxel = V.require("VoxelState")
 local Voxel3D = V.require("Voxel3D")
 local WorldCurve = V.require("WorldCurve")
 local ThirdPerson = V.require("ThirdPerson")
+local ModSetting = V.require("ModSetting")
 
 local FirstPerson = {}
 
@@ -100,6 +101,9 @@ FirstPerson.STICK_PITCH = 2.4
 FirstPerson.STICK_DEAD = 0.18
 FirstPerson.TOUCH_TURN = 2.2 * math.pi
 FirstPerson.MOVE_DEAD = 0.25
+
+FirstPerson.invertYSetting = ModSetting.new(
+  "invertY", "Y-CONTROL INVERT", { false, true }, { "OFF", "ON" })
 
 -- ------- state
 --
@@ -257,6 +261,15 @@ function FirstPerson.lookBy(dyaw, dpitch)
   FirstPerson.pitch = math.max(FirstPerson.PITCH_UP,
                        math.min(FirstPerson.PITCH_DOWN,
                                 FirstPerson.pitch + dpitch))
+end
+
+-- Resolve the player's vertical look preference at the shared input seam.
+-- `lookBy` remains a raw camera primitive because battle/camera callers use
+-- its signed deltas directly; mouse, stick, and touch all come through this
+-- adapter so the preference cannot affect yaw or overhead camera input.
+function FirstPerson.lookInput(dyaw, dpitch)
+  if FirstPerson.invertYSetting:get() then dpitch = -dpitch end
+  return FirstPerson.lookBy(dyaw, dpitch)
 end
 
 -- A bearing as one of the grid's four directions -- the 45-degree
@@ -539,8 +552,8 @@ function FirstPerson.update(dt)
   local dx, dy = mouseDX, mouseDY
   mouseDX, mouseDY = 0, 0
   if driving and (dx ~= 0 or dy ~= 0) then
-    FirstPerson.lookBy(-dx * FirstPerson.MOUSE_SENS,
-                       dy * FirstPerson.MOUSE_SENS)
+    FirstPerson.lookInput(-dx * FirstPerson.MOUSE_SENS,
+                          dy * FirstPerson.MOUSE_SENS)
   end
 
   -- the right stick is a rate: radians per second, squared response so
@@ -556,8 +569,8 @@ function FirstPerson.update(dt)
     local cy, cp = curve(rx), curve(ry)
     if cy ~= 0 or cp ~= 0 then
       -- negated yaw for the same reason as the mouse above
-      FirstPerson.lookBy(-cy * FirstPerson.STICK_YAW * dt,
-                         cp * FirstPerson.STICK_PITCH * dt)
+      FirstPerson.lookInput(-cy * FirstPerson.STICK_YAW * dt,
+                            cp * FirstPerson.STICK_PITCH * dt)
     end
   end
 end
@@ -885,8 +898,8 @@ function FirstPerson.install()
         if FirstPerson.driving() then
           -- negated yaw for the same reason as the mouse (see update):
           -- drag right, look right, the mobile-shooter convention
-          FirstPerson.lookBy(-(x - lookTouch.x) * per,
-                             (y - lookTouch.y) * per)
+          FirstPerson.lookInput(-(x - lookTouch.x) * per,
+                                (y - lookTouch.y) * per)
         end
         lookTouch.x, lookTouch.y = x, y
         return

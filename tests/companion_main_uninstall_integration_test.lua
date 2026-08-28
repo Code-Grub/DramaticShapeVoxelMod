@@ -89,7 +89,7 @@ local settings = {
   frontFlipSetting = true, backPlacementSetting = true,
   hudScaleSetting = true, spriteLight = true, hudColor = true,
   arenaFill = true, stadiumCircle = true, backdropOffset = true,
-  bossBg = true, textboxFill = true,
+  bossBg = true, textboxFill = true, invertYSetting = true,
 }
 
 local module = {}
@@ -224,6 +224,7 @@ local fakeOptionsMenu = {
 package.loaded["src.world.Map"] = fakeMapModule
 package.loaded["src.core.Game"] = fakeGame
 package.loaded["src.render.Pipelines"] = fakePipelines
+package.loaded["src.render.Tilt"] = { setLevel = function() end }
 package.loaded["src.ui.OptionsMenu"] = fakeOptionsMenu
 
 local actualModules = {
@@ -284,6 +285,12 @@ end
 
 assert(loadfile("main.lua"))(mod)
 _G.__COMPANION_TEST_VOXEL3D = nil
+
+-- Newer engine builds no longer ship src.render.GBCFX. Pressing the legacy
+-- voxel key must remain safe while the optional compatibility seam is absent.
+fakePipelines.canToggle = function() return true end
+check(fakeGame:keypressed("3") == nil,
+  "the voxel hotkey tolerates a missing legacy GBCFX module")
 
 equal(#(hooks["core.update"] or {}), 1,
   "main.lua installs one companion update hook")

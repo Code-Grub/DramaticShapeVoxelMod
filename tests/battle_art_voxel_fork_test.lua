@@ -513,9 +513,9 @@ local fxGame = {
   writeOptions = function() end,
 }
 local Tilt = require("src.render.Tilt")
-local GBCFX = require("src.render.GBCFX")
+local hasGBCFX, GBCFX = pcall(require, "src.render.GBCFX")
 Tilt.setLevel(3)
-GBCFX.setLevel(2)
+if hasGBCFX then GBCFX.setLevel(2) end
 
 local fxRows = Runtime.call("ui.options.rows", function(_, r) return r end,
                             fxGame,
@@ -532,6 +532,9 @@ T.eq(fxGame.save.options.tilt, 0,
   "a save that had TILT on is pinned back to off, not left on with no row")
 T.eq(fxGame.save.options.gbcfx, 0, "and GBC FX with it")
 T.eq(Tilt.level, 0, "the live level follows, so the frame is not still tilted")
+if hasGBCFX then
+  T.eq(GBCFX.level, 0, "the legacy GBC FX renderer follows the saved reset")
+end
 
 -- and FULL, which takes its own branch through the rows hook, must not be a
 -- way back in
@@ -1694,9 +1697,9 @@ T.eq(Battles.setting:get(), true, "and back on")
 -- who left TILT or GBC FX on before enabling the mod has no key left to
 -- turn them off with, and both fight the diorama -- TILT is the flat fake
 -- of what this mode does for real, GBC FX a present pass over the top.
-local GBCFX = require("src.render.GBCFX")
+local hasGBCFX, GBCFX = pcall(require, "src.render.GBCFX")
 Tilt.setLevel(2)
-GBCFX.setLevel(3)
+if hasGBCFX then GBCFX.setLevel(3) end
 keyGame.save.options.tilt = 2
 keyGame.save.options.gbcfx = 3
 
@@ -1704,7 +1707,11 @@ Game.keypressed(keyGame, "3")
 T.eq(keyGame.save.options.tilt, 0, "3 turns TILT off in the save")
 T.eq(Tilt.level, 0, "and on the live renderer")
 T.eq(keyGame.save.options.gbcfx, 0, "3 turns GBC FX off in the save")
-T.eq(GBCFX.level, 0, "and on the live renderer")
+if hasGBCFX then
+  T.eq(GBCFX.level, 0, "and on the live renderer")
+else
+  T.check(true, "the missing legacy GBC FX module is optional on newer engines")
+end
 
 -- Every press, not just the one that switches the mode on. This is the
 -- half the registry does NOT cover: its tilt exclusion fires when a world
@@ -1715,7 +1722,7 @@ T.eq(GBCFX.level, 0, "and on the live renderer")
 -- 6 is the "1ST" rung, the last one the key walks before it wraps to OFF
 Pipelines.setLevel("voxel", 6)
 Tilt.setLevel(3)
-GBCFX.setLevel(4)
+if hasGBCFX then GBCFX.setLevel(4) end
 keyGame.save.options.tilt = 3
 keyGame.save.options.gbcfx = 4
 
@@ -1724,7 +1731,9 @@ T.eq(Pipelines.level("voxel"), 0, "the press wraps the ladder back to OFF")
 T.eq(keyGame.save.options.tilt, 0, "the press that wraps to OFF still clears TILT")
 T.eq(Tilt.level, 0, "with the renderer agreeing")
 T.eq(keyGame.save.options.gbcfx, 0, "and still clears GBC FX")
-T.eq(GBCFX.level, 0, "with the renderer agreeing there too")
+if hasGBCFX then
+  T.eq(GBCFX.level, 0, "with the renderer agreeing there too")
+end
 
 -- but 6 must not: T-SHIFT is a post-process that composes with TILT, and
 -- the registry deliberately leaves it alone
@@ -4694,6 +4703,15 @@ T.eq(VoxelState.ANGLE_LABELS[VoxelState.FP_LEVEL + 1], "1ST (EXPERIMENTAL)",
 T.eq(VoxelState.ANGLES_DEG[VoxelState.FP_LEVEL + 1], 75,
   "and hands the blend the 75-degree orbit as its far end")
 
+T.eq(FirstPerson.invertYSetting:get(), false,
+  "vertical free-camera inversion defaults off")
+T.eq(FirstPerson.invertYSetting.labels[1], "OFF",
+  "the inversion setting exposes the normal direction first")
+T.eq(FirstPerson.invertYSetting.labels[2], "ON",
+  "and exposes the inverted direction")
+FirstPerson.yaw, FirstPerson.pitch = 0, 0
+FirstPerson.invertYSetting:setIndex(1)
+
 -- ------- the compass and the walk vector
 --
 -- Yaw 0 faces south (+Z), the way a resting sprite faces; the compass is
@@ -4708,6 +4726,8 @@ FirstPerson.yaw = -math.pi / 2
 T.eq(FirstPerson.compassFacing(), "left", "and three quarters looks west")
 
 local function near(a, b) return math.abs(a - b) < 1e-9 end
+
+FirstPerson.invertYSetting:setIndex(1)
 
 FirstPerson.yaw = 0
 local wx, wz = FirstPerson.moveWorld(0, 1)

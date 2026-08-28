@@ -64,7 +64,9 @@ local function annotatedMap(id)
   function map:isWarpTileCell() return false end
 
   local sign = { class = "signpost", authored = true, art = "upright", h = 16 }
-  local ground = { class = "ground", flat = true, art = "flat", h = 0 }
+  -- Keep one ordinary column in the fixture so the visual sidecar is tested
+  -- alongside a non-empty canonical terrain mesh under a real LOVE context.
+  local ground = { class = "ground", flat = true, art = "flat", h = 8 }
   local S = {
     shapeAt = {}, tileAt = {}, outdoor = true,
     runs = {}, skip = {}, ground = {}, doorFold = {}, objectQuads = {},
@@ -96,7 +98,10 @@ Structures.forMap = function(map) return analyses[map.id] end
 
 local meshSequence = 0
 local Voxel3D = {
-  FORMAT = {}, FACE_CORNERS = {}, FACE_SHADE = {},
+  FORMAT = {}, FACE_CORNERS = {}, FACE_SHADE = {
+    [1] = 0.84, [2] = 0.72, [3] = 1.00, [4] = 0.55,
+    [5] = 0.90, [6] = 0.68,
+  },
   pushQuad = function(indices, quad)
     local first = quad * 4 + 1
     for _, index in ipairs({ first, first + 1, first + 2,
@@ -130,6 +135,9 @@ function namespace.require(name)
 end
 local ChunkMesher = assert(loadfile("lib/ChunkMesher.lua"))(namespace)
 
+-- Force the deterministic table sink: this contract test supplies a fake
+-- Voxel3D format, which cannot be uploaded through the real LOVE renderer.
+love = nil
 local currentFull = assert(ChunkMesher.get(current, false))
 local currentBody = assert(ChunkMesher.get(current, true))
 local neighborFull = assert(ChunkMesher.get(neighbor, false))
