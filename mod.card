@@ -1,7 +1,7 @@
 -- Sharing metadata (25-community-and-ecosystem.md 3.2).  Read by tooling
 -- and the manager detail pane; never by the loader's merge.
 return {
-  summary = "The overworld as a 3D diorama, and battles fought on it: real occlusion, tilt-shift, over-the-shoulder fights.",
+  summary = "Gen 1 Red, Blue, and Yellow only: the overworld as a 3D diorama, and battles fought on it with real occlusion, tilt-shift, and over-the-shoulder fights.",
   author = "DramaticShape",
   contact = "https://github.com/DramaticShape/BATTLE_ART_VOXEL_FORK",
   tags = { "graphics", "3d", "voxel", "render-pipeline", "presentation",
@@ -51,5 +51,6 @@ return {
   credits = {
     { who = "pret/pokered", for_ = "the tile and sprite data the geometry is derived from" },
   },
-  compat = { engine = ">=0.1.37 <2.0.0", modApi = 2 },
+  compat = { engine = ">=0.1.37 <2.0.0", modApi = 2,
+             games = { "red", "blue", "yellow" } },
 }

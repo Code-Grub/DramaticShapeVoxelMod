@@ -7,7 +7,9 @@
   "profile": "content",
   "category": "GRAPHICS",
   "games": [
-    "gen1"
+    "red",
+    "blue",
+    "yellow"
   ],
   "game_version": "0.0.0-dev || >=0.1.69 <3.0.0",
   "priority": 100,
