@@ -18,6 +18,7 @@ local namespace = { data = function()
   return { black = {
     VIRIDIAN_FOREST = true,
     SEAFOAM_ISLANDS_B4F = true,
+    MT_MOON_B2F = true,
   } }
 end }
 function namespace.require(name)
@@ -45,6 +46,9 @@ check(color == WorldUnderlay.COLORS.black and reason == "nature:black",
 color, reason = resolve("SEAFOAM_ISLANDS_B4F")
 check(color == WorldUnderlay.COLORS.black and reason == "nature:black",
   "Seafoam interiors use the black NATURE underlay")
+color, reason = resolve("MT_MOON_B2F")
+check(color == WorldUnderlay.COLORS.black and reason == "nature:black",
+  "cave interiors keep the familiar dark NATURE underlay")
 color, reason = resolve("CINNABAR_ISLAND")
 check(color == WorldUnderlay.COLORS.cyan and reason == "world:cyan",
   "Cinnabar Island keeps the cyan NATURE underlay")

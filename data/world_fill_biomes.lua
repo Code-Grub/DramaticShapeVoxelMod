@@ -47,6 +47,14 @@ local excluded = {
   SEAFOAM_ISLANDS_B2F = true,
   SEAFOAM_ISLANDS_B3F = true,
   SEAFOAM_ISLANDS_B4F = true,
+  MT_MOON_1F = true,
+  MT_MOON_B1F = true,
+  MT_MOON_B2F = true,
+  ROCK_TUNNEL_1F = true,
+  ROCK_TUNNEL_B1F = true,
+  DIGLETTS_CAVE = true,
+  DIGLETTS_CAVE_ROUTE_2 = true,
+  DIGLETTS_CAVE_ROUTE_11 = true,
 }
 
 -- These maps use NATURE's black material under the authored geometry. Keeping
@@ -64,6 +72,14 @@ local black = {
   SEAFOAM_ISLANDS_B2F = true,
   SEAFOAM_ISLANDS_B3F = true,
   SEAFOAM_ISLANDS_B4F = true,
+  MT_MOON_1F = true,
+  MT_MOON_B1F = true,
+  MT_MOON_B2F = true,
+  ROCK_TUNNEL_1F = true,
+  ROCK_TUNNEL_B1F = true,
+  DIGLETTS_CAVE = true,
+  DIGLETTS_CAVE_ROUTE_2 = true,
+  DIGLETTS_CAVE_ROUTE_11 = true,
 }
 
 return {
