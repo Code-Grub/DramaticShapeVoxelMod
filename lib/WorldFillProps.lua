@@ -53,7 +53,6 @@ local function biomeFor(map)
   if biomes.field[id] then return "field" end
   if biomes.forest[id] then return "forest" end
   local tileset = def and def.tileset
-  if tileset == "CAVERN" then return "rocky" end
   if tileset == "FOREST" then return "forest" end
   return nil
 end

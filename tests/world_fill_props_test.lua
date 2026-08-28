@@ -23,6 +23,19 @@ local Props = assert(loadfile(MOD_PATH .. "/lib/WorldFillProps.lua"))(V)
 
 T.eq(Props.biomeFor({ id = "VIRIDIAN_FOREST", def = {} }), nil,
   "Viridian Forest leaves its black void free of generated trees")
+local function checkMaps(ids, expected, label)
+  for _, id in ipairs(ids) do
+    T.eq(Props.biomeFor({ id = id, def = {} }), expected,
+      label .. " (" .. id .. ")")
+  end
+end
+checkMaps({ "FUCHSIA_CITY", "VERMILION_CITY", "LAVENDER_TOWN",
+            "CELADON_CITY", "SAFFRON_CITY", "ROUTE_6", "ROUTE_7",
+            "ROUTE_8", "ROUTE_10", "ROUTE_12", "ROUTE_13", "ROUTE_14",
+            "ROUTE_15", "ROUTE_16" }, "field",
+  "fieldSafari routing")
+checkMaps({ "ROUTE_3", "ROUTE_4", "ROUTE_9" }, "forest",
+  "grassyForest routing")
 T.eq(Props.biomeFor({ id = "SAFARI_ZONE_EAST", def = {} }), "field",
   "Safari Zone uses field props")
 T.eq(Props.biomeFor({ id = "SAFARI_ZONE_EAST_REST_HOUSE",
@@ -40,11 +53,13 @@ T.check(biomeData.black.VIRIDIAN_FOREST
   "problem locations select the black NATURE underlay")
 T.check(not biomeData.black.CINNABAR_ISLAND,
   "Cinnabar keeps the cyan NATURE underlay")
-T.eq(Props.biomeFor({ id = "ROUTE_23", def = {} }), "rocky",
-  "Route 23 uses rocky props")
-T.eq(Props.biomeFor({ id = "ROCK_TUNNEL_1F",
-                      def = { tileset = "CAVERN" } }), "rocky",
-  "cavern maps fall back to rocky props")
+checkMaps({ "ROUTE_23", "VICTORY_ROAD_1F", "VICTORY_ROAD_2F",
+            "VICTORY_ROAD_3F", "INDIGO_PLATEAU" }, "rocky",
+  "rocky routing")
+checkMaps({ "ROCK_TUNNEL_1F", "ROCK_TUNNEL_B1F", "MT_MOON_1F",
+            "MT_MOON_B1F", "MT_MOON_B2F", "DIGLETTS_CAVE",
+            "DIGLETTS_CAVE_ROUTE_2", "DIGLETTS_CAVE_ROUTE_11" }, nil,
+  "dark cave exclusion")
 T.eq(Props.biomeFor({ id = "PALLET_TOWN",
                       def = { tileset = "OVERWORLD" } }), "forest",
   "towns continue forest scenery beyond ROM tiles")

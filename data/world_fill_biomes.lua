@@ -5,30 +5,35 @@
 
 local forest = {
   PALLET_TOWN = true, VIRIDIAN_CITY = true, PEWTER_CITY = true,
-  CERULEAN_CITY = true, VERMILION_CITY = true, LAVENDER_TOWN = true,
-  CELADON_CITY = true, FUCHSIA_CITY = true, SAFFRON_CITY = true,
-  ROUTE_1 = true, ROUTE_2 = true, ROUTE_5 = true, ROUTE_6 = true,
-  ROUTE_7 = true, ROUTE_8 = true, ROUTE_22 = true,
+  CERULEAN_CITY = true,
+  ROUTE_1 = true, ROUTE_2 = true, ROUTE_5 = true,
+  ROUTE_3 = true, ROUTE_4 = true, ROUTE_9 = true,
+  ROUTE_22 = true,
   ROUTE_24 = true, ROUTE_25 = true,
 }
 
 local field = {
+  ROUTE_6 = true, ROUTE_7 = true, ROUTE_8 = true, ROUTE_10 = true,
   ROUTE_11 = true, ROUTE_12 = true, ROUTE_13 = true, ROUTE_14 = true,
   ROUTE_15 = true, ROUTE_16 = true, ROUTE_17 = true, ROUTE_18 = true,
+  VERMILION_CITY = true, LAVENDER_TOWN = true, CELADON_CITY = true,
+  FUCHSIA_CITY = true, SAFFRON_CITY = true,
   SAFARI_ZONE_CENTER = true, SAFARI_ZONE_EAST = true,
   SAFARI_ZONE_NORTH = true, SAFARI_ZONE_WEST = true,
 }
 
 local rocky = {
-  ROUTE_3 = true, ROUTE_4 = true, ROUTE_9 = true, ROUTE_10 = true,
-  ROUTE_23 = true, INDIGO_PLATEAU = true,
+  ROUTE_23 = true,
+  VICTORY_ROAD_1F = true, VICTORY_ROAD_2F = true, VICTORY_ROAD_3F = true,
+  INDIGO_PLATEAU = true,
 }
 
 -- NATURE is an outside-the-map treatment, not a second layer over authored
 -- scenery. These locations either have an indoor/black void or an explicit
 -- cyan/black visual identity, so generated cards must not be placed beyond
--- their loaded geometry. The exact IDs also prevent the CAVERN fallback from
--- decorating Seafoam's interior maps with rocks.
+-- their loaded geometry. The rocky profile is intentionally explicit: cave
+-- tilesets do not imply rocks, because Mt. Moon, Rock Tunnel and Diglett's
+-- Cave keep their familiar dark void beyond the authored map.
 local excluded = {
   CINNABAR_ISLAND = true,
   VIRIDIAN_FOREST = true,
