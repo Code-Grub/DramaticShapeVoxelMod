@@ -1313,7 +1313,9 @@ local function runJob(job)
   local mesh, water, visualMeshes
   -- Annotated originals are small session meshes beside the canonical terrain.
   -- Older persistent terrain records contain those quads, so annotated maps do
-  -- not read or write that record. Other maps keep the existing disk cache.
+  -- not read those records. New records contain only the canonical terrain;
+  -- write them so the title precache can complete, while the sign sidecars are
+  -- rebuilt in-session and remain available to the companion pass.
   local annotatedVisuals = mapHasVisualObjects(map)
   local cached = not annotatedVisuals
     and MeshDisk.loadTerrain(map, job.slot, job.masks) or nil
@@ -1341,7 +1343,7 @@ local function runJob(job)
       releaseVisualMeshes(visualMeshes)
       return
     end
-    if terrainRaw and waterRaw and not annotatedVisuals then
+    if terrainRaw and waterRaw then
       local savedTerrain, terrainError =
         MeshDisk.saveTerrain(map, job.slot, job.masks, terrainRaw, waterRaw)
       if not savedTerrain then
