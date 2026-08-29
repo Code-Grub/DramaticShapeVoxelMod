@@ -195,6 +195,8 @@ love = {
 
 local host = VoxelCompanion.new({ mod = companionNamespace.mod })
 namespace.companion = host
+check(not host:wantsVisualObjects(),
+  "an idle companion host does not force signpost sidecar analysis")
 local owner, firstSignature, thirdSignature, replacementFrames
 local callbackClaimed, callbackClaimError
 replacementFrames = 0
@@ -220,6 +222,8 @@ owner = assert(host.provider.register({
     opaque_after_terrain = function() replacementFrames = replacementFrames + 1 end,
   },
 }))
+check(host:wantsVisualObjects(),
+  "an eligible visual replacement consumer enables signpost sidecars")
 local player = { id = "player", px = 0, py = 0, cellX = 0, cellY = 0 }
 local state = {
   map = current, player = player, entities = { player },

@@ -39,13 +39,15 @@ local BattleArt = {
   setting = { get = function() return artMode end },
   frontAnimationSetting = { get = function() return generation end },
   displayMode = function() return "gbc" end,
-  staticSpeciesRelativePath = function()
-    return "assets/battle/front-static/pikachu.png"
+  staticSpeciesRelativePath = function(_, _, shiny)
+    return "assets/battle/front-static/" .. (shiny and "shiny/" or "")
+      .. "pikachu.png"
   end,
   generationRelativePath = function()
     return "assets/battle/front-animated/gen1/pikachu.png"
   end,
   interfaceStaticFrontImage = function() return staticImage end,
+  isShiny = function(battler) return battler and battler.shiny == true end,
   metrics = function(img)
     if img == footFrame1 or img == footFrame2 then
       return { y1=49, padBottom=6 }
@@ -63,10 +65,11 @@ local BattleArt = {
     return { summaryFrame1, summaryFrame2 }
   end,
 }
-local lastInterfaceSource
+local lastInterfaceSource, lastInterfaceBattler
 local AnimatedBattleArt = {
-  interfaceFront = function(species, selected, _, source)
+  interfaceFront = function(species, selected, _, source, battler)
     lastInterfaceSource = source
+    lastInterfaceBattler = battler
     if species == "LUGIA" and selected == "gen2" then
       return { frame1, frame2 }, { 100, 100 }
     elseif species == "FOOTMON" and selected == "gen2" then
@@ -235,7 +238,7 @@ DexEntryMenu.update(dex, 0.11)
 DexEntryMenu.draw(dex)
 ok(dexSprite == frame2, "Pokédex animation advances with atlas timing")
 
-local summaryMon = {species="LUGIA"}
+local summaryMon = {species="LUGIA", shiny=true}
 wrapped(function() return "provider-summary.png" end, "rom-summary.png",
   {kind="summary", species="LUGIA", mon=summaryMon})
 local summary = SummaryMenu.new({}, summaryMon)
@@ -247,6 +250,8 @@ ok(fittedArgs and fittedArgs.frames[1] == frame1
   "summary fits the animation into its canonical 56x56 viewport")
 ok(lastInterfaceSource == "provider-summary.png",
   "summary decoder receives the provider path from the sprite hook")
+ok(lastInterfaceBattler == summaryMon,
+  "summary decoder receives the caught Pokemon for shiny routing")
 SummaryMenu.update(summary, 0.11)
 SummaryMenu.draw(summary)
 ok(summarySprite == summaryFrame2, "fitted summary animation advances")
@@ -261,5 +266,16 @@ local staticCtx = {kind="hof",species="PIKACHU",trueColor=false}
 local path = wrapped(function(old) return old end, "rom-static.png", staticCtx)
 ok(path == "mod/assets/battle/front-static/pikachu.png"
   and staticCtx.trueColor, "static interface paths opt out of SGB recoloring")
+
+local shinyStaticCtx = {
+  kind="summary", species="PIKACHU", mon={shiny=true}, trueColor=false,
+}
+-- A summary normally uses its Image adapter; calling the path resolver here
+-- verifies that any other mon-aware static interface uses the same shiny rule.
+shinyStaticCtx.kind = "hof"
+local shinyPath = wrapped(function(old) return old end,
+  "rom-shiny-static.png", shinyStaticCtx)
+ok(shinyPath == "mod/assets/battle/front-static/shiny/pikachu.png",
+  "mon-aware static interfaces route shiny Pokemon through the shiny folder")
 
 print(("%d checks passed (Interface Sprites install/playback)"):format(checks))

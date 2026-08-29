@@ -56,10 +56,10 @@ end
 -- playthrough identity.
 local STATIC_PLAYTHROUGH = "bavc_static_mesh_v2"
 
--- Revision 5 includes one-sided enterable south/front building facades and
--- authored side-door geometry for connective gate houses. Older meshes either
--- show mirrored facade backs or omit the side entrances entirely.
-Disk.CACHE_REVISION = 5
+-- Revision 6 restores visual-object quads to ordinary cached terrain when no
+-- extension can replace them. Revision 5 stripped signposts unconditionally,
+-- then bypassed its own cache on Continue to reconstruct their sidecars.
+Disk.CACHE_REVISION = 6
 -- Patch releases which do not change emitted vertices must keep the existing
 -- world cache usable. This token matches the first static-mesh-cache-v2 build;
 -- CACHE_REVISION, not the public mod version, owns geometry compatibility.
@@ -542,7 +542,48 @@ end
 -- CONTINUE may preload the compressed BAVC containers. They remain compressed
 -- here (~745 MiB for the current full world rather than ~2.7 GiB of vertices)
 -- and are decoded into temporary ByteData only when a map is uploaded.
-function Disk.ramPlan()
+local function safePriority(priority)
+  local rank = {}
+  for i, id in ipairs(priority or {}) do rank[safeId(id)] = i end
+  return rank
+end
+
+function Disk.orderRamNames(names, priority)
+  local rank = safePriority(priority)
+  local prefix = Disk.DIRECTORY .. "/"
+  local function parts(path)
+    local tail = path:sub(1, #prefix) == prefix and path:sub(#prefix + 1) or ""
+    local id, product = tail:match("^([^/]+)/(.+)$")
+    local mapRank = rank[id] or math.huge
+    local current = mapRank == 1
+    local phase
+    if current then
+      -- Decorations are small and required beside the current full terrain;
+      -- the current map's neighbour-only BODY duplicate can wait.
+      phase = product == "deco" and 1
+           or product == "full-terrain" and 2
+           or product == "body-terrain" and 5 or 7
+    elseif mapRank < math.huge then
+      -- Connected strips are drawn as BODY meshes during the first frame.
+      phase = product == "body-terrain" and 3
+           or product == "deco" and 4
+           or product == "full-terrain" and 6 or 7
+    else
+      phase = 7
+    end
+    return phase, mapRank
+  end
+  table.sort(names, function(a, b)
+    local ap, ar = parts(a)
+    local bp, br = parts(b)
+    if ap ~= bp then return ap < bp end
+    if ar ~= br then return ar < br end
+    return a < b
+  end)
+  return names
+end
+
+function Disk.ramPlan(priority)
   if not available() then return {}, 0 end
   local names, bytes = {}, 0
   local ok, listed = pcall(storage.list, storage, Disk.DIRECTORY)
@@ -554,7 +595,7 @@ function Disk.ramPlan()
       bytes = bytes + (held and #held or knownSizes[key] or 0)
     end
   end
-  table.sort(names)
+  Disk.orderRamNames(names, priority)
   return names, bytes
 end
 
@@ -576,13 +617,13 @@ function Disk.loadIntoRam(name)
   end
   local path = name
   local prior = ramFiles[path]
-  if prior then return true, #prior end
+  if prior then return true, #prior, false end
   local ok, blob = pcall(storage.readBytes, storage, path)
-  if not ok or type(blob) ~= "string" then return false, 0 end
+  if not ok or type(blob) ~= "string" then return false, 0, false end
   ramFiles[path] = blob
   ramBytes = ramBytes + #blob
   knownSizes[path] = #blob
-  return true, #blob
+  return true, #blob, true
 end
 
 function Disk.ramReady(names)

@@ -89,6 +89,7 @@ local VoxelPrecacheScreen = V.require("VoxelPrecacheScreen")
 local VoxelCacheRamScreen = V.require("VoxelCacheRamScreen")
 local VoxelMeshDisk = V.require("VoxelMeshDisk")
 local ModSetting = V.require("ModSetting")
+local RamPrecache = V.require("RamPrecache")
 local StaticGeometry = V.require("StaticGeometry")
 local VoxelGrid = V.require("VoxelGrid")
 local WorldCurve = V.require("WorldCurve")
@@ -517,6 +518,11 @@ local SETTINGS = {
     .. "sandboxed engine's pure-Lua mesh path; FULL preserves the uncapped "
     .. "legacy draw distance.",
     full = true },
+  { RamPrecache.setting,
+    "Maximum compressed voxel cache eagerly loaded after CONTINUE, in MiB. "
+    .. "FULL loads every generated cache file; OFF skips the preload and "
+    .. "handles voxel data on demand during play.",
+    full = true },
   { Water.setting,
     "Reflections on water. FULL adds screen-space reflections of the "
     .. "shoreline, the trees and the buildings behind it; SKY is the sky, "
@@ -747,6 +753,95 @@ local HOTKEYS = {
   ["9"] = Water.setting,
 }
 
+-- The latest engine can drive fixed-row OPTIONS submenus. Sort this mod's
+-- settings into a few small pages there; engines before that screen contract
+-- retain the original flat list, including v0.2.36.
+local OPTION_CATEGORIES = {
+  { id = "world", label = "WORLD", settings = {
+    VoxelGrid.setting, WorldCurve.setting, WorldUnderlay.setting,
+    Water.setting, DayNight.setting, FirstPerson.invertYSetting,
+  } },
+  { id = "performance", label = "PERFORMANCE", settings = {
+    RenderDistance.setting, RamPrecache.setting,
+    Shadows.setting, AntiAlias.setting,
+  } },
+  { id = "pokemon", label = "POKEMON ART", settings = {
+    InterfaceSprites.setting, BattleArt.setting, BattleArt.trainerSetting,
+    BattleArt.playerArtSetting, BattleArt.playerAnimationSetting,
+    BattleArt.frontAnimationSetting, BattleArt.backAnimationSetting,
+    BattleArt.duplicateSetting, BattleArt.viewSetting,
+    BattleArt.frontFlipSetting,
+  } },
+  { id = "battle", label = "BATTLE SCENE", settings = {
+    OverworldBattle.setting, OverworldBattle.hudScaleSetting,
+    BattleArt.backPlacementSetting,
+    UiBackplates.spriteLight, UiBackplates.hudColor, UiBackplates.arenaFill,
+    UiBackplates.stadiumCircle, UiBackplates.backdropOffset,
+    UiBackplates.bossBg, UiBackplates.textboxFill,
+  } },
+}
+
+local OPTION_CATEGORY = {}
+for _, category in ipairs(OPTION_CATEGORIES) do
+  for _, setting in ipairs(category.settings) do
+    OPTION_CATEGORY[setting] = category
+  end
+end
+
+-- Categorized OPTIONS first shipped in 0.2.37. Development trees keep the
+-- deliberately non-orderable 0.0.0-dev version, so they must advertise the
+-- exact extension instead; this also prevents an old checkout at the same
+-- placeholder version from accidentally taking the new path.
+local function categorizedOptionsAvailable()
+  local okVersion, Version = pcall(require, "src.core.Version")
+  if not okVersion or type(Version) ~= "table" then return false end
+  local major, minor, patch = tostring(Version.engine or "")
+    :match("^(%d+)%.(%d+)%.(%d+)")
+  major, minor, patch = tonumber(major), tonumber(minor), tonumber(patch)
+  local released = major and (major > 0
+    or minor > 2 or (minor == 2 and patch >= 37))
+  if released then return true end
+  if Version.isDev and Version.isDev() then
+    local okMenu, OptionsMenu = pcall(require, "src.ui.OptionsMenu")
+    return okMenu and type(OptionsMenu.focusRow) == "function"
+  end
+  return false
+end
+
+local function categorizedRows(rows)
+  local buckets = {}
+  for _, category in ipairs(OPTION_CATEGORIES) do buckets[category] = {} end
+  local uncategorized = {}
+  for _, row in ipairs(rows) do
+    local category = row.optionSetting and OPTION_CATEGORY[row.optionSetting]
+    local bucket = category and buckets[category] or uncategorized
+    bucket[#bucket + 1] = row
+  end
+
+  local out = {}
+  local OptionsMenu = require("src.ui.OptionsMenu")
+  local function opener(category, members)
+    local id = "BATTLE_ART_VOXEL_FORK:group:" .. category.id
+    return {
+      id = id, label = category.label, group = true, members = members,
+      value = function() return ("%d OPTIONS"):format(#members) end,
+      activate = function(game)
+        local sub = OptionsMenu.new(game, { rows = members })
+        sub.dramaticShapeCategory = id
+        game.stack:push(sub)
+      end,
+    }
+  end
+  for _, category in ipairs(OPTION_CATEGORIES) do
+    local members = buckets[category]
+    if #members > 0 then
+      out[#out + 1] = opener(category, members)
+    end
+  end
+  for _, row in ipairs(uncategorized) do out[#out + 1] = row end
+  return out
+end
+
 -- GBC FX was a private engine module in older Gen1Recomp builds. Newer builds
 -- expose the generalized ShaderFX system instead, and sandbox require errors
 -- are fatal even when the effect is only being cleared. Detect the legacy
@@ -948,7 +1043,11 @@ mod.hooks:wrap("ui.options.rows", function(next, game, rows)
     -- manager's page carries every one of them either way.
     local offered = (entry.full or not full)
                     and (not entry.when or entry.when())
-    if offered then extra[#extra + 1] = entry[1]:row() end
+    if offered then
+      local row = entry[1]:row()
+      row.optionSetting = entry[1]
+      extra[#extra + 1] = row
+    end
   end
   return insertGrouped(out, extra)
 end)
@@ -972,11 +1071,20 @@ mod.hooks:wrap("ui.title_menu.items", function(next, game, items)
       local continue = item.onSelect
       item.onSelect = function()
         VoxelMeshDisk.beginSession()
-        local names = select(1, VoxelMeshDisk.ramPlan())
-        if not names or #names == 0 or VoxelMeshDisk.ramReady(names) then
+        local savedMap
+        local okSave, saved = pcall(require("src.core.SaveData").load)
+        if okSave and saved and saved.player then savedMap = saved.player.map end
+        local priority = RamPrecache.priorityMaps(game.data, savedMap, 2)
+        local names, total = VoxelMeshDisk.ramPlan(priority)
+        local limit = RamPrecache.bytes()
+        local held = VoxelMeshDisk.ramStats().bytes or 0
+        local ready = limit ~= nil and held >= limit
+                   or limit == nil and VoxelMeshDisk.ramReady(names)
+        if limit == 0 or not names or #names == 0 or ready then
           continue()
         else
-          game.stack:push(VoxelCacheRamScreen.new(game, continue))
+          game.stack:push(VoxelCacheRamScreen.new(
+            game, continue, limit, names, total))
         end
       end
     elseif tostring(item and item.label or "") == "NEW GAME"
@@ -1200,10 +1308,45 @@ do
   local OptionsMenu = require("src.ui.OptionsMenu")
   if not OptionsMenu.dramaticShapeFullHook then
     local Pipelines = require("src.render.Pipelines")
+    local newMenu = OptionsMenu.new
     local inner = OptionsMenu.update
 
+    -- Keep ui.options.rows flat, as promised by the hook contract. Only the
+    -- latest screen's visible list is collapsed, just like the engine's own
+    -- categories keep OptionsMenu.rows flat for mods and focus helpers.
+    function OptionsMenu.new(game, opts)
+      local menu = newMenu(game, opts)
+      if (opts and opts.rows) or not categorizedOptionsAvailable() then
+        return menu
+      end
+      local source, own, first = menu.view or menu.rows or {}, {}, nil
+      for i, row in ipairs(source) do
+        if row.optionSetting then
+          own[#own + 1] = row
+          first = first or i
+        end
+      end
+      if not first then return menu end
+      local categories = categorizedRows(own)
+      local view = {}
+      for i, row in ipairs(source) do
+        if i == first then
+          for _, category in ipairs(categories) do
+            view[#view + 1] = category
+          end
+        end
+        if not row.optionSetting then view[#view + 1] = row end
+      end
+      menu.view = view
+      return menu
+    end
+
+    local function visibleRows(menu)
+      return menu.view or menu.rows or {}
+    end
+
     local function idAt(menu, index)
-      local row = menu.rows and menu.rows[index or 1]
+      local row = visibleRows(menu)[index or 1]
       return type(row) == "table" and row.id or nil
     end
 
@@ -1221,14 +1364,28 @@ do
       if crossedFull or OverworldBattle.enabled() ~= hadBattles
          or hasBattleArt ~= hadBattleArt then
         local rebuilt = OptionsMenu.new(self.game)
-        self.rows = rebuilt.rows
+        if self.dramaticShapeCategory then
+          local members = nil
+          for _, row in ipairs(rebuilt.view or rebuilt.rows or {}) do
+            if row.id == self.dramaticShapeCategory then
+              members = row.members
+              break
+            end
+          end
+          self.rows = members or {}
+          self.view = self.rows
+        else
+          self.rows = rebuilt.rows
+          self.view = rebuilt.view
+        end
         -- Follow the row the cursor was ON rather than the slot it was in:
         -- 3D-BTL takes BATTLE LAYOUT off the list ABOVE itself, which would
         -- otherwise slide the cursor onto the row under the one just used.
-        for i = 1, #self.rows do
+        local visible = visibleRows(self)
+        for i = 1, #visible do
           if wasOn and idAt(self, i) == wasOn then self.index = i; break end
         end
-        local cancel = #self.rows + 1
+        local cancel = #visible + 1
         if (self.index or 1) > cancel then self.index = cancel end
       end
     end
@@ -1415,7 +1572,7 @@ mod.hooks:wrap("world.tod", function(next, tod, ctx)
   return DayNight.tod()
 end)
 
-mod.exports.version = "1.9.9"
+mod.exports.version = "1.10.0"
 mod.exports.battlePresentation = BattlePresentation.export()
 mod.exports.battleStage = BattleStage.export(OverworldBattle)
 mod.exports.voxel_companion = Companion.provider

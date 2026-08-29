@@ -286,19 +286,26 @@ local function definition(battler, side)
 end
 AnimatedBattleArt.definitionFor = definition
 
--- Prepared regular-form frames for non-battle interfaces. The title and
--- summary screens accept Image objects but not atlas descriptors, so their
--- adapters consume this narrow decoder instead of returning the whole sheet
--- through pokemon.sprite's string-path contract.
-function AnimatedBattleArt.interfaceFront(species, generation, mode, source)
+-- Prepared frames for non-battle interfaces. Mon-aware screens pass the caught
+-- Pokemon so shiny DVs select the shiny atlas; species-only screens omit it and
+-- retain the regular collection. The title and summary screens accept Image
+-- objects but not atlas descriptors, so their adapters consume this narrow
+-- decoder instead of returning the whole sheet through pokemon.sprite's
+-- string-path contract.
+function AnimatedBattleArt.interfaceFront(species, generation, mode, source, battler)
   if not tostring(generation or ""):match("^gen[1-5]$") then return nil end
   local key = species and tostring(BattleArt.speciesAlias(species)):upper()
   local selected = SETS[generation]
+  if BattleArt.isShiny(battler) and BattleArt.ownsShinyArt()
+      and SHINY_SETS[generation] then
+    selected = SHINY_SETS[generation]
+  end
   local bySide = selected and key and selected[key]
   local def = bySide and bySide.front or nil
   if FRONT_SOURCE_KIND[generation] == "static"
       or (generation == "gen2" and not def) then
-    local image = BattleArt.interfaceGenerationFrontImage(species, generation, mode)
+    local image = BattleArt.interfaceGenerationFrontImage(
+      species, generation, mode, battler)
     return image and { image } or nil, nil
   end
   if not def then return nil end

@@ -1188,6 +1188,11 @@ local function swapVisualSlot(c, slot, visuals)
 end
 
 local function mapHasVisualObjects(map)
+  local companion = V.companion
+  if companion and type(companion.wantsVisualObjects) == "function" then
+    local ok, wanted = pcall(companion.wantsVisualObjects, companion)
+    if ok and not wanted then return false end
+  end
   for _, quad in ipairs(Structures.forMap(map).objectQuads or {}) do
     if quad.visualObjectId then return true end
   end

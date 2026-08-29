@@ -23,16 +23,18 @@ local function put(text, row)
   Font.draw(tostring(text or ""), 8, row * 8)
 end
 
-function Screen.new(game, onReady)
+function Screen.new(game, onReady, limit, names, total)
   Disk.beginSession()
-  local names, total = Disk.ramPlan()
+  if not names then names, total = Disk.ramPlan() end
+  local resident = Disk.ramStats().bytes or 0
   return setmetatable({
     game = game,
     onReady = onReady,
-    names = names,
-    total = total,
+    names = names or {},
+    total = total or 0,
+    limit = limit,
     index = 1,
-    loaded = 0,
+    loaded = resident,
     failed = 0,
     titleUiBox = { 0, 0, 19, 17 },
   }, Screen)
@@ -50,13 +52,20 @@ function Screen:update()
   -- A large route is intentionally one loading-screen frame rather than a
   -- traversal hitch later.
   local slice, processed = 0, 0
-  while self.names[self.index] and (processed == 0 or slice < 8 * 1024 * 1024) do
-    local ok, bytes = Disk.loadIntoRam(self.names[self.index])
-    if ok then self.loaded = self.loaded + bytes else self.failed = self.failed + 1 end
+  while self.names[self.index]
+      and (self.limit == nil or self.loaded < self.limit)
+      and (processed == 0 or slice < 8 * 1024 * 1024) do
+    local ok, bytes, added = Disk.loadIntoRam(self.names[self.index])
+    if ok and added then
+      self.loaded = self.loaded + bytes
+    elseif not ok then
+      self.failed = self.failed + 1
+    end
     self.index = self.index + 1
-    slice, processed = slice + bytes, processed + 1
+    slice, processed = slice + (added and bytes or 0), processed + 1
   end
-  if not self.names[self.index] then
+  if not self.names[self.index]
+      or (self.limit ~= nil and self.loaded >= self.limit) then
     collectgarbage("collect")
     self:finish()
   end
@@ -71,7 +80,11 @@ function Screen:draw()
   put(("FILE %d/%d"):format(math.min(self.index - 1, #self.names),
                               #self.names), 5)
   put(("RAM %s"):format(sizeText(self.loaded)), 7)
-  put(("TOTAL %s"):format(sizeText(self.total)), 8)
+  if self.limit == nil then
+    put(("TOTAL %s"):format(sizeText(self.total)), 8)
+  else
+    put(("LIMIT %s"):format(sizeText(self.limit)), 8)
+  end
   if self.failed > 0 then put(("DISK FALLBACK %d"):format(self.failed), 11) end
   put("PLEASE WAIT", 14)
 end

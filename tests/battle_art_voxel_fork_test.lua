@@ -644,7 +644,7 @@ end
 Pipelines.setLevel("voxel", 2)
 local hookedRows = Runtime.call("ui.options.rows", function(_, r) return r end,
                                { data = Data }, { { id = "text_speed" } })
-T.eq(#hookedRows, 18,
+T.eq(#hookedRows, 19,
   "the options hook added the upstream and visible Battle Art settings")
 local hookedByLabel = {}
 for _, row in ipairs(hookedRows) do hookedByLabel[row.label] = row end
@@ -653,6 +653,7 @@ local grid, curve, water = hookedByLabel["V-GRID"], hookedByLabel["V-CURVE"],
 local battles, battleArt, daytime = hookedByLabel["3D-BTL"],
                                     hookedByLabel["BATTLE ART"],
                                     hookedByLabel.DAYTIME
+local ramPrecache = hookedByLabel["RAM PRECACHE MB"]
 -- the AA row is read in its own block below, because this chunk is one main
 -- function and has 200 local slots to spend
 T.eq(water.label, "WATER", "the water row carries its label")
@@ -664,6 +665,8 @@ T.eq(water.value(), "SKY",
 T.eq(daytime.label, "DAYTIME", "the day/night row carries its label")
 T.eq(daytime.value(), "SYNC",
   "and defaults to SYNC -- no value set follows the clock on the wall")
+T.eq(ramPrecache.value(), "256",
+  "RAM PRECACHE MB starts at its first, 256 MiB rung")
 T.eq(grid.label, "V-GRID", "the grid row carries its label")
 T.eq(grid.value(), "OFF", "the grid starts off")
 T.eq(curve.label, "V-CURVE", "the curve row carries its label")

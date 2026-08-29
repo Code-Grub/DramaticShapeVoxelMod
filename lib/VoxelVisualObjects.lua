@@ -691,6 +691,16 @@ function Registry:isSuppressed(id)
   return type(id) == "string" and self.owners[id] ~= nil or false
 end
 
+-- Geometry only needs suppressible sidecars when a registered extension can
+-- actually claim them. Advertising the optional host capability by itself
+-- must not force every standalone Battle Art install to analyse every sign.
+function Registry:hasEligibleConsumer()
+  for record in pairs(self.records) do
+    if record.eligible then return true end
+  end
+  return false
+end
+
 function Registry:owner(id)
   local record = type(id) == "string" and self.owners[id] or nil
   return record and record.id or nil

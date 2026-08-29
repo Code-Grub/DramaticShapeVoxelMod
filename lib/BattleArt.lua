@@ -432,17 +432,20 @@ function BattleArt.generationFrontImage(species, generation, battler)
   return prepare(path, displayMode())
 end
 
--- Non-battle interfaces have their own ownership setting. These regular-form
--- helpers deliberately do not consult DUPLICATE FIX, which governs battle
--- pictures only; InterfaceSprites decides whether it owns the caller.
-function BattleArt.interfaceStaticFrontImage(species, mode)
-  local rel = staticSpeciesRelativePath(species, "front", false)
+-- Non-battle interfaces have their own ownership setting. Mon-aware callers
+-- (STATUS/summary, party, Hall of Fame) may supply the caught Pokemon so its
+-- DVs select the same shiny child as battle. Species-only callers such as the
+-- title and Pokedex omit it and deliberately retain the regular form.
+function BattleArt.interfaceStaticFrontImage(species, mode, battler)
+  local rel = staticSpeciesRelativePath(
+    species, "front", BattleArt.isShiny(battler))
   local path = rel and V.mod.assets:path(rel)
   return path and prepare(path, mode or displayMode()) or nil
 end
 
-function BattleArt.interfaceGenerationFrontImage(species, generation, mode)
-  local rel = generationRelativePath(species, generation, "front", false)
+function BattleArt.interfaceGenerationFrontImage(species, generation, mode, battler)
+  local rel = generationRelativePath(
+    species, generation, "front", BattleArt.isShiny(battler))
   local path = rel and V.mod.assets:path(rel)
   return path and prepare(path, mode or displayMode()) or nil
 end

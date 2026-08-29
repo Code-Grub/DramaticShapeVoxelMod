@@ -4,7 +4,7 @@ local function ok(value, message)
   if not value then error("FAIL " .. message, 0) end
 end
 
-local sets = {}
+local sets, shinySets = {}, {}
 for n = 2, 5 do
   local generation = "gen" .. n
   local def = {
@@ -13,10 +13,18 @@ for n = 2, 5 do
     durations = { 100, 200 },
   }
   sets[generation] = { SQUIRTLE = { front = def } }
+  local shinyDef = {
+    image = "assets/private/" .. generation .. "/shiny/squirtle.png",
+    width = 2, height = 2, columns = 2, frames = 2,
+    durations = { 300, 400 },
+  }
+  shinySets[generation] = { SQUIRTLE = { front = shinyDef } }
 end
 local gen1Image = { id = "gen1-static-front" }
 local BattleArt = {
   speciesAlias = function(species) return species end,
+  isShiny = function(battler) return battler and battler.shiny == true end,
+  ownsShinyArt = function() return true end,
   prepareData = function(cell)
     return { width=cell.width, height=cell.height, paste=cell.lastPaste }
   end,
@@ -30,6 +38,9 @@ local V = {
 }
 function V.require(name) assert(name == "BattleArt"); return BattleArt end
 function V.data(name)
+  local shinyGeneration = name:match(
+    "^animated_battle_sprites_(gen[2-5])_shiny$")
+  if shinyGeneration then return shinySets[shinyGeneration] end
   local generation = name:match("^animated_battle_sprites_(gen[2-5])$")
   if generation then return sets[generation] end
   return {}
@@ -78,5 +89,12 @@ end
 local rejected = Animated.interfaceFront(
   "SQUIRTLE", "gen2", "gbc", "rom-front.png")
 ok(rejected == nil, "ordinary ROM image is rejected as a two-frame atlas")
+
+local shinyFrames, shinyDurations = Animated.interfaceFront(
+  "SQUIRTLE", "gen2", "gbc", "provider-atlas.png", {shiny=true})
+ok(shinyFrames and #shinyFrames == 2,
+  "mon-aware interface playback selects the shiny atlas definition")
+ok(shinyDurations[1] == 300 and shinyDurations[2] == 400,
+  "shiny interface playback retains the shiny atlas timing")
 
 print(("%d checks passed (external interface atlas decoder)"):format(checks))

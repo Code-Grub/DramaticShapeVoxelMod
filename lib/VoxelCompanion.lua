@@ -1646,22 +1646,25 @@ local function snapshotFor(self)
   end
 
 
-  local visualObjects, visualById, visualCounts = {}, {}, {}
-  local visualScan = { count = 0 }
-  appendVisualObjects(map, "current", 0, 0,
-    visualById, visualCounts, visualScan)
-  for index = 1, math.min(#(state.neighbors or {}), MAX_NEIGHBORS) do
-    local neighbor = state.neighbors[index]
-    if neighbor and neighbor.map then
-      appendVisualObjects(neighbor.map, "neighbor",
-        finite(neighbor.ox, 0), finite(neighbor.oy, 0),
-        visualById, visualCounts, visualScan)
+  local visualObjects = {}
+  if self:wantsVisualObjects() then
+    local visualById, visualCounts = {}, {}
+    local visualScan = { count = 0 }
+    appendVisualObjects(map, "current", 0, 0,
+      visualById, visualCounts, visualScan)
+    for index = 1, math.min(#(state.neighbors or {}), MAX_NEIGHBORS) do
+      local neighbor = state.neighbors[index]
+      if neighbor and neighbor.map then
+        appendVisualObjects(neighbor.map, "neighbor",
+          finite(neighbor.ox, 0), finite(neighbor.oy, 0),
+          visualById, visualCounts, visualScan)
+      end
     end
+    for _, object in pairs(visualById) do
+      visualObjects[#visualObjects + 1] = object
+    end
+    table.sort(visualObjects, function(a, b) return a.id < b.id end)
   end
-  for _, object in pairs(visualById) do
-    visualObjects[#visualObjects + 1] = object
-  end
-  table.sort(visualObjects, function(a, b) return a.id < b.id end)
 
   local mode = "diorama"
   if Voxel.isFirstPerson() then mode = "first_person"
@@ -2176,6 +2179,10 @@ end
 
 function VoxelCompanion:suppressesVisualObject(id)
   return self.started and self.visuals:isSuppressed(id) or false
+end
+
+function VoxelCompanion:wantsVisualObjects()
+  return self.visuals:hasEligibleConsumer()
 end
 
 function VoxelCompanion:render(phase, state)

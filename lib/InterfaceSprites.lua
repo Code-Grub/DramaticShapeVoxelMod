@@ -1,4 +1,4 @@
--- Interface sprites: show BATTLE ART's regular-form FRONT outside battles.
+-- Interface sprites: show BATTLE ART's FRONT outside battles.
 -- Title and Gen 1 summary have Image-frame adapters; other hook-aware callers
 -- can consume ordinary single-image collections. Independently toggleable of
 -- DUPLICATE FIX, which owns only battle pictures.
@@ -37,8 +37,8 @@ end
 -- Build our front path for a species, or nil to fall back to the engine/ROM.
 --
 -- Rules (owner):
---  * regular form only -- never the shiny child (no DV/shiny check for
---    interfaces); if there is no species sprite at all, use ROM.
+--  * mon-aware callers use the caught Pokemon's DVs to select a shiny child;
+--    species-only callers (title/dex) retain the regular form.
 --  * STATIC mode  -> front-static/<slug>.png (generation-neutral).
 --  * ANIMATED mode -> title/summary consume prepared frames from the generation
 --    atlas; path-only interfaces use Gen 1's single image or retain ROM art.
@@ -57,9 +57,11 @@ local function ourFront(ctx)
   if not species then return nil end
   local mode = BattleArt.setting:get()
   if mode == "rom" then return nil end
+  local battler = ctx and ctx.mon or nil
+  local shiny = BattleArt.isShiny(battler)
   local rel
   if mode == "static" then
-    rel = BattleArt.staticSpeciesRelativePath(species, "front", false)
+    rel = BattleArt.staticSpeciesRelativePath(species, "front", shiny)
   else
     -- ANIMATED (or any other non-rom mode): generation atlas, regular form.
     local gen = BattleArt.frontAnimationSetting:get()
@@ -67,7 +69,7 @@ local function ourFront(ctx)
     -- single image; later generations need a screen adapter. Until a caller
     -- has one, retaining its ROM image is safer than drawing the whole sheet.
     if gen ~= "gen1" then return nil end
-    rel = BattleArt.generationRelativePath(species, gen, "front", false)
+    rel = BattleArt.generationRelativePath(species, gen, "front", shiny)
   end
   if not rel then return nil end
   if ctx then ctx.trueColor = true end
@@ -241,7 +243,7 @@ local function redrawTitleTrainer(title)
   end
 end
 
-local function selectedPlayback(owner, states, species, source)
+local function selectedPlayback(owner, states, species, source, battler)
   if not (owner and species and active()) then
     if owner then states[owner] = nil end
     return nil
@@ -251,7 +253,8 @@ local function selectedPlayback(owner, states, species, source)
   local generation = artMode == "animated"
     and BattleArt.frontAnimationSetting:get() or "static"
   local display = BattleArt.displayMode()
-  local key = table.concat({ tostring(species), artMode,
+  local shiny = BattleArt.isShiny(battler)
+  local key = table.concat({ tostring(species), artMode, tostring(shiny),
                              tostring(generation), tostring(display),
                              tostring(source) }, "|")
   local state = states[owner]
@@ -259,11 +262,11 @@ local function selectedPlayback(owner, states, species, source)
 
   local frames, durations
   if artMode == "static" then
-    local image = BattleArt.interfaceStaticFrontImage(species, display)
+    local image = BattleArt.interfaceStaticFrontImage(species, display, battler)
     frames = image and { image } or nil
   else
     frames, durations = AnimatedBattleArt.interfaceFront(
-      species, generation, display, source)
+      species, generation, display, source, battler)
   end
   if not (frames and frames[1]) then states[owner] = nil; return nil end
   -- Imported sets end on their neutral/rest pose. Title uses that single
@@ -426,7 +429,8 @@ function InterfaceSprites.installSummary()
         selectedPlayback(self, summaryStates,
           self.mon and self.mon.species,
           self.mon and summarySources[self.mon]
-            or self.__battleArtOriginalSprite)
+            or self.__battleArtOriginalSprite,
+          self.mon)
       end
       return self
     end
@@ -447,7 +451,8 @@ function InterfaceSprites.installSummary()
     local state = selectedPlayback(self, summaryStates,
       self and self.mon and self.mon.species,
       self and self.mon and summarySources[self.mon]
-        or (self and self.__battleArtOriginalSprite))
+        or (self and self.__battleArtOriginalSprite),
+      self and self.mon)
     if state then
       if not state.summaryFrames then
         state.summaryFrames = BattleArt.fitPreparedFrames
