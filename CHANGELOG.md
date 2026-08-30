@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **No more dark band on water at a map connection.** The corner AO probe
+  counted the border ring as a raised neighbour on every map edge, including
+  the edges a connection covers, where the ring is never drawn. Water sits
+  below everything so it took the full step, and both maps shaded their own
+  side, which is what made the band symmetric. Cells past a connected edge
+  are now treated as flush. Bumps the static mesh cache revision, since the
+  shading is baked into vertex colours.
+
 - **Exact KFP world semantics.** The companion snapshot now separates verified
   OVERWORLD tree supports from boulder-tree candidates, rejects walkable and
   unknown cylinder ghosts, and marks mountain seeds and their bounded support

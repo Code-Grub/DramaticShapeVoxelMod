@@ -56,10 +56,13 @@ end
 -- playthrough identity.
 local STATIC_PLAYTHROUGH = "bavc_static_mesh_v2"
 
--- Revision 6 restores visual-object quads to ordinary cached terrain when no
--- extension can replace them. Revision 5 stripped signposts unconditionally,
--- then bypassed its own cache on Continue to reconstruct their sidecars.
-Disk.CACHE_REVISION = 6
+-- Revision 7 stops the corner AO probe shading a connected map edge against
+-- border ring the connection hides, which changes the baked vertex shade of
+-- every tile along a seam. Revision 6 restores visual-object quads to
+-- ordinary cached terrain when no extension can replace them. Revision 5
+-- stripped signposts unconditionally, then bypassed its own cache on Continue
+-- to reconstruct their sidecars.
+Disk.CACHE_REVISION = 7
 -- Patch releases which do not change emitted vertices must keep the existing
 -- world cache usable. This token matches the first static-mesh-cache-v2 build;
 -- CACHE_REVISION, not the public mod version, owns geometry compatibility.
