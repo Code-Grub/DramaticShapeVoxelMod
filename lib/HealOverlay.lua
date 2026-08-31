@@ -81,6 +81,34 @@ local BALL_INK = { x = 5, y = 5 }
 -- middle shades swap in place.  ha.visible == false is that half of the beat.
 local FLASH_MAP = { [0] = 0, [1] = 2, [2] = 1, [3] = 3 }
 
+-- The overlay's OBJECT palette out of an ADVANCED (RED++) pack's `world`
+-- table, plus the group it came from, or nil when the pack has no OBJ data.
+--
+-- ADVANCED bakes the world true colour and bakes the OBP into every sprite
+-- SHEET as it loads (SpriteRenderer:resolveImage), which is why
+-- ctx.spriteColors answers nil there: nothing is left to colorize.  The heal
+-- sheet is the exception.  It is not a sprite def, nothing bakes it, and it
+-- reaches the canvas in its raw DMG greys -- grey Poke Balls on a fully
+-- coloured machine.
+--
+-- The GB gives the whole overlay one palette (OBP1) and so does this, taking
+-- the pack's own OBJ group 0, the one it assigns the player.  That is not an
+-- arbitrary pick: the ball art is drawn as outline, upper body, lower body
+-- over shades 3, 2 and 1, and group 0 answers those with black, (255,58,8)
+-- red and a pale body -- a Poke Ball, which is what the art is.
+--
+-- Pure, and separate from the pack lookup, so the choice is checkable
+-- without a GPU or a running map.
+function HealOverlay.objPalette(world)
+  local palettes = world and world.spritePalettes
+  local assign = world and world.spriteAssignment
+  local group = assign and assign[0]
+  if not (palettes and type(group) == "number" and palettes[group]) then
+    return nil
+  end
+  return palettes[group], group
+end
+
 -- The plot's north-west corner in world pixels, from the heal cell.
 function HealOverlay.plot(ha)
   return ha.px + PLOT_DX, ha.py + PLOT_DY
@@ -188,11 +216,24 @@ function HealOverlay.draw(ha, project, scale, ctx)
   if not img then return false end
 
   local PaletteFX = require("src.render.PaletteFX")
-  -- the flashed half of the beat recolours the sprites in place, and wins
-  -- over the world's own sprite palette exactly as it does on the flat path
-  local colors = (not ha.visible)
-    and PaletteFX.permute(PaletteFX.GRAYS, FLASH_MAP)
-    or (ctx.spriteColors and ctx.spriteColors() or nil)
+  -- ADVANCED hands out no sprite palette (see objPalette), the SGB modes
+  -- hand out the map's, and the mono ones hand out none and want none
+  local colors
+  if PaletteFX.usesGbcPack() then
+    local pack = PaletteFX.gbcPack()
+    local palette, group = HealOverlay.objPalette(pack and pack.world)
+    colors = palette and PaletteFX.darkObp(palette, group) or nil
+  else
+    colors = ctx.spriteColors and ctx.spriteColors() or nil
+  end
+  -- The flashed half of the beat swaps the two middle shades IN PLACE --
+  -- rOBP1 ^= $28 recolours the sprites, it does not repaint them grey. So
+  -- permute whatever palette is in force rather than always permuting GRAYS
+  -- the way the flat closure does, which is what would otherwise drop a
+  -- coloured overlay to grey twice a second on the ADVANCED pack.
+  if not ha.visible then
+    colors = PaletteFX.permute(colors or PaletteFX.GRAYS, FLASH_MAP)
+  end
   local shader = colors and PaletteFX.shader() or nil
   if shader then
     PaletteFX.sendColors(shader, colors)

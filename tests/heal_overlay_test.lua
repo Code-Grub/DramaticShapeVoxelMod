@@ -199,6 +199,46 @@ T.eq(cs, 7, "...and falls back to the flat scale for its size")
 T.eq(HealOverlay.place(function() return nil end, target, 1), nil,
   "a piece behind the camera is not drawn at all")
 
+-- ------- and what colour it draws in, which is a third question
+--
+-- ADVANCED (RED++) bakes the OBP into every sprite sheet as it loads, so
+-- ctx.spriteColors answers nil there.  The heal sheet is not a sprite def
+-- and nothing bakes it, so it reached the canvas in raw DMG greys: grey
+-- Poke Balls on a fully coloured machine.  objPalette picks the pack's own
+-- OBJ palette for it.
+
+local pack = dofile(ROOT .. "/data/palettes_gbc.lua")
+local palette, group = HealOverlay.objPalette(pack and pack.world)
+T.check(palette ~= nil, "the ADVANCED pack yields an object palette")
+T.eq(group, pack.world.spriteAssignment[0],
+  "it is the pack's own OBJ group for sprite sheet 0, not a number picked here")
+
+-- The ball art draws its outline on shade 3, its upper body on 2 and its
+-- lower body on 1.  A palette that cannot answer those with black, a red and
+-- something pale does not make a Poke Ball, whatever else it is.  Declining
+-- to answer is the grey the overlay had, so a nil stands in as the DMG greys
+-- and fails these rather than skipping them.
+local pal = palette or { { 255, 255, 255 }, { 170, 170, 170 },
+                         { 85, 85, 85 }, { 0, 0, 0 } }
+local band, upper, lower = pal[4], pal[3], pal[2]
+T.check(band[1] == 0 and band[2] == 0 and band[3] == 0,
+  "shade 3 is black, for the ball's outline and its band")
+T.check(upper[1] > 200 and upper[2] < 120 and upper[3] < 120,
+  ("shade 2 is a red, for the ball's upper body (got %d,%d,%d)")
+    :format(upper[1], upper[2], upper[3]))
+T.check(lower[1] > 200 and lower[2] > 120,
+  ("shade 1 is pale, for the ball's lower body (got %d,%d,%d)")
+    :format(lower[1], lower[2], lower[3]))
+T.neq(upper[1] == lower[1] and upper[2] == lower[2] and upper[3] == lower[3],
+  true, "and the two halves of the ball are not the same colour")
+
+T.eq(HealOverlay.objPalette(nil), nil, "no pack yields no palette")
+T.eq(HealOverlay.objPalette({ spritePalettes = {}, spriteAssignment = {} }), nil,
+  "and a pack with no group 0 is declined rather than guessed at")
+T.eq(HealOverlay.objPalette({ spritePalettes = { [0] = { 1, 2, 3, 4 } },
+                              spriteAssignment = { [0] = "random" } }), nil,
+  "a randomized assignment is not a palette index and is declined too")
+
 -- lit balls track the party, and nothing is drawn before the first one lights
 T.eq(#HealOverlay.points({ px = 48, py = 48, balls = 6, lit = 0 }), 1,
   "before any ball lights, only the monitor is drawn")
