@@ -169,6 +169,64 @@ local function sheet(state)
   return img, state.healMachineQuads
 end
 
+-- ------- standing behind what stands in front
+
+-- The overlay is composited flat, after the geometry, with the depth test
+-- off -- so it paints over the counter the player is standing at, and in a
+-- low orbit or in first person the balls hang in front of a counter that is
+-- nearer the eye than they are.
+--
+-- The frame's own depth buffer already knows better.  beginOverlay binds the
+-- colour canvas alone, which leaves that texture readable, so the sprites can
+-- do the test the hardware would have done: sample the scene's depth under
+-- each fragment and drop the ones the scene is in front of.  Same comparison,
+-- same window-depth convention, as the water's self-occlusion test.
+--
+-- The palette remap rides along in the same shader because a fragment can
+-- only be discarded where it is coloured; the three thresholds are
+-- PaletteFX.shader()'s, which is the copy to keep this honest against.
+local OCCLUDE_SHADER = [[
+  extern vec3 c0; extern vec3 c1; extern vec3 c2; extern vec3 c3;
+  extern LOVE_HIGHP_OR_MEDIUMP Image depthTex;
+  extern float pieceZ;
+  vec4 effect(vec4 color, Image tex, vec2 tc, vec2 sc) {
+    if (pieceZ > Texel(depthTex, sc / love_ScreenSize.xy).r) discard;
+    vec4 p = Texel(tex, tc);
+    vec3 mapped = p.r > 0.83 ? c0 : (p.r > 0.5 ? c1 : (p.r > 0.17 ? c2 : c3));
+    return vec4(mapped, p.a);
+  }
+]]
+
+local occluder  -- false once the driver has refused to compile it
+
+local function occludeShader()
+  if occluder == nil then
+    local ok, sh = pcall(love.graphics.newShader, OCCLUDE_SHADER)
+    occluder = ok and sh or false
+  end
+  return occluder or nil
+end
+
+-- A piece is painted ON the face it belongs to, so its own depth TIES with
+-- that face's and the test above would throw the whole overlay away.  Nudge
+-- the point the depth is taken at toward the eye first -- the same move
+-- Voxel3D.draw's `pull` makes for a character card leaning over the wall in
+-- front of it.
+--
+-- Two world pixels is the whole margin needed: it clears a tie against the
+-- surface the piece is painted on, and anything that genuinely stands in the
+-- way is a whole tile row nearer, not two pixels.
+HealOverlay.PULL = 2
+
+function HealOverlay.depthPoint(p, eye)
+  if not eye then return p.x, p.h, p.z end
+  local dx, dy, dz = eye[1] - p.x, eye[2] - p.h, eye[3] - p.z
+  local len = math.sqrt(dx * dx + dy * dy + dz * dz)
+  if len < 1e-6 then return p.x, p.h, p.z end
+  local k = HealOverlay.PULL / len
+  return p.x + dx * k, p.h + dy * k, p.z + dz * k
+end
+
 -- Where a piece lands on the canvas, and how big one world pixel draws
 -- there.  nil when the point is behind the camera.
 --
@@ -234,9 +292,27 @@ function HealOverlay.draw(ha, project, scale, ctx)
   if not ha.visible then
     colors = PaletteFX.permute(colors or PaletteFX.GRAYS, FLASH_MAP)
   end
-  local shader = colors and PaletteFX.shader() or nil
+  -- The occluding shader colours as well as discards, so it replaces the
+  -- palette one outright wherever there is a depth texture to test against.
+  -- Where there is not -- a driver with no readable depth, the same case that
+  -- turns the water back into ordinary terrain -- the overlay falls back to
+  -- colour alone and draws in front, which is exactly what it did before.
+  local Voxel3D = V.require("Voxel3D")
+  local depthTex = Voxel3D.depthTexture and Voxel3D.depthTexture() or nil
+  local shader = depthTex and occludeShader() or nil
+  -- only the occluder has a pieceZ to be told about, and a driver that
+  -- refused to compile it must not be sent one
+  local eye = shader and Voxel3D.eye or nil
   if shader then
-    PaletteFX.sendColors(shader, colors)
+    pcall(shader.send, shader, "depthTex", depthTex)
+  else
+    shader = colors and PaletteFX.shader() or nil
+  end
+  -- GRAYS is the identity remap for a DMG sheet, so the occluding shader has
+  -- something to colour with in the modes that hand out no palette at all
+  -- rather than mapping every shade onto an unsent uniform.
+  if shader then
+    PaletteFX.sendColors(shader, colors or PaletteFX.GRAYS)
     love.graphics.setShader(shader)
   end
 
@@ -244,6 +320,10 @@ function HealOverlay.draw(ha, project, scale, ctx)
   for _, p in ipairs(HealOverlay.points(ha)) do
     local sx, sy, s = HealOverlay.place(project, p, scale)
     if sx then
+      if eye then
+        local _, _, _, pz = project(HealOverlay.depthPoint(p, eye))
+        if pz then pcall(shader.send, shader, "pieceZ", pz) end
+      end
       local quad = quads[p.kind == "monitor" and 1 or 2]
       local top = sy - p.ink.y * s
       if p.flip then

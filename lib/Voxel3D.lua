@@ -1470,7 +1470,23 @@ function Voxel3D.project(wx, wy, wz)
   -- convention, so both axes map the same way here -- no second flip
   local x = (cx / cw * 0.5 + 0.5) * canvasW
   local y = (cy / cw * 0.5 + 0.5) * canvasH
-  return x, y, (Voxel3D.focusW or cw) / cw
+  -- ...and the WINDOW depth of that point, fourth, for an overlay that has
+  -- to know whether the scene stands in front of it. Same expression the
+  -- water's own occlusion test uses on its self depth, so a value from here
+  -- compares directly against a sample of depthTexture below.
+  local cz = m[9] * wx + m[10] * wy + m[11] * wz + m[12]
+  return x, y, (Voxel3D.focusW or cw) / cw, (cz / cw) * 0.5 + 0.5
+end
+
+-- The frame's depth texture, or nil where the driver gave us none.
+--
+-- It outlives the pass: endScene unbinds the canvas, it does not release the
+-- attachment, so an overlay composited afterwards can still test against the
+-- depth the pass wrote. beginOverlay binding the COLOUR canvas alone is what
+-- makes the texture readable at all -- a target cannot be sampled while it is
+-- attached, which is the same constraint beginWater takes the frame apart for.
+function Voxel3D.depthTexture()
+  return held and held.depth or nil
 end
 
 -- Re-bind the scene canvas for ordinary 2D drawing (no depth test), so

@@ -199,7 +199,47 @@ T.eq(cs, 7, "...and falls back to the flat scale for its size")
 T.eq(HealOverlay.place(function() return nil end, target, 1), nil,
   "a piece behind the camera is not drawn at all")
 
--- ------- and what colour it draws in, which is a third question
+-- ------- and whether it is behind something, which is a third question
+--
+-- The overlay composites flat with the depth test off, so it painted over
+-- the counter the player is standing at.  It now tests each fragment against
+-- the frame's own depth texture -- but a piece painted ON a face ties with
+-- that face's depth, so the point the depth is taken at is nudged toward the
+-- eye first, the way Voxel3D.draw's `pull` moves a character card off the
+-- wall it leans over.
+
+T.check(HealOverlay.PULL > 0, "the depth sample is pulled toward the eye")
+T.check(HealOverlay.PULL < machine.desk.depthPx,
+  ("...by less than the cabinet is deep (%d), so the pull can never carry a "
+   .. "piece in front of something that genuinely stands nearer")
+    :format(machine.desk.depthPx))
+
+local onPanel = HealOverlay.points(ha)[2]
+
+-- an eye due south of the machine, at counter height
+local eye = { onPanel.x, onPanel.h, onPanel.z + 64 }
+local dx, dy, dz = HealOverlay.depthPoint(onPanel, eye)
+T.eq(dx, onPanel.x, "a head-on eye pulls the sample along z alone")
+T.eq(dy, onPanel.h, "...on both of the other axes")
+T.eq(dz, onPanel.z + HealOverlay.PULL,
+  "...and exactly PULL toward it, off the face the piece is painted on")
+
+-- and from anywhere else it is still exactly PULL, just along the sightline
+local skew = { onPanel.x + 40, onPanel.h + 30, onPanel.z + 50 }
+local sx2, sy2, sz2 = HealOverlay.depthPoint(onPanel, skew)
+local moved = math.sqrt((sx2 - onPanel.x) ^ 2 + (sy2 - onPanel.h) ^ 2
+                        + (sz2 - onPanel.z) ^ 2)
+T.check(math.abs(moved - HealOverlay.PULL) < 1e-9,
+  ("an off-axis eye pulls the same distance along its own sightline (got %.6f)")
+    :format(moved))
+
+T.eq(select(3, HealOverlay.depthPoint(onPanel, nil)), onPanel.z,
+  "with no camera to pull toward, the piece's own point stands")
+T.eq(select(3, HealOverlay.depthPoint(onPanel,
+                                      { onPanel.x, onPanel.h, onPanel.z })),
+  onPanel.z, "and an eye standing in the piece cannot divide by its own zero")
+
+-- ------- and what colour it draws in, which is a fourth question
 --
 -- ADVANCED (RED++) bakes the OBP into every sprite sheet as it loads, so
 -- ctx.spriteColors answers nil there.  The heal sheet is not a sprite def
