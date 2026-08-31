@@ -26,6 +26,10 @@
 -- face inside the inset the drawing cuts for it, and the balls come out on
 -- the cabinet's front panel in the two columns the fascia notches.
 --
+-- Placing a piece is only half of it: it also has to be the right SIZE on
+-- the machine, and the flat renderer's pixels-per-world-pixel is not that
+-- number on every rung.  See `place` below, which measures it.
+--
 -- Kept OUT of the flat and tilt paths, which want the GB's own placement and
 -- already get it.  See tests/heal_overlay_test.lua, which holds every number
 -- below against the center_heal_machine template it was read off.
@@ -137,11 +141,46 @@ local function sheet(state)
   return img, state.healMachineQuads
 end
 
+-- Where a piece lands on the canvas, and how big one world pixel draws
+-- there.  nil when the point is behind the camera.
+--
+-- The size has to be MEASURED, not assumed.  `fallback` is the flat
+-- renderer's own pixels-per-world-pixel, and for the orbit camera that is
+-- very nearly the answer already: the orbit frames exactly `vh` world pixels
+-- top to bottom, so a world pixel is a scale pixel give or take the depth of
+-- the piece.  The 1ST and 3RD rungs are not the orbit.  They ride a PLACED
+-- camera (FirstPerson.frame) whose framing comes from its own 65 degree fov
+-- and how far the eye stands from what it looks at, with no relation to the
+-- view size at all -- standing at the counter a world pixel draws about 3.8
+-- times bigger than `fallback` says, and off the boom about 1.45 times.  Sized
+-- by `fallback` on those rungs the balls and the monitor come out at roughly
+-- a quarter and two thirds of the size of the machine they are painted on.
+--
+-- So step one world pixel along each of the face's own axes, east and up, and
+-- take the longer.  Head on the two agree.  Seen along the machine the east
+-- step collapses while the up step does not, and taking the longer keeps the
+-- piece a sensible size rather than shrinking it away to nothing.
+function HealOverlay.place(project, p, fallback)
+  local sx, sy = project(p.x, p.h, p.z)
+  if not sx then return nil end
+  local ex, ey = project(p.x + 1, p.h, p.z)
+  local ux, uy = project(p.x, p.h + 1, p.z)
+  local east = ex and math.sqrt((ex - sx) ^ 2 + (ey - sy) ^ 2) or 0
+  local up = ux and math.sqrt((ux - sx) ^ 2 + (uy - sy) ^ 2) or 0
+  local s = math.max(east, up)
+  -- a camera that has no answer at all (both neighbours behind it) still has
+  -- to draw something rather than a zero-sized nothing
+  if not (s > 1e-3) then s = fallback end
+  return sx, sy, s
+end
+
 -- Composite the overlay into the finished scene.  `project(wx, wy, wz)`
--- answers in canvas pixels and `scale` is canvas pixels per world pixel --
--- the same two the rest of the FX pass uses.  Deliberately unscaled by
--- depth, like every other billboard here: a piece keeps its authored size
--- and only its anchor moves.
+-- answers in canvas pixels and `scale` is canvas pixels per world pixel as
+-- the flat renderer counts them -- the same two the rest of the FX pass
+-- uses, with `scale` here only the fallback that `place` measures past.
+-- Still unscaled by DEPTH within a piece, like every other billboard here:
+-- a piece keeps its authored proportions and only its anchor and its size
+-- on the machine move.
 function HealOverlay.draw(ha, project, scale, ctx)
   local state = ctx and ctx.state
   if not (ha and state and project and scale) then return false end
@@ -162,14 +201,14 @@ function HealOverlay.draw(ha, project, scale, ctx)
 
   love.graphics.setColor(1, 1, 1, 1)
   for _, p in ipairs(HealOverlay.points(ha)) do
-    local sx, sy = project(p.x, p.h, p.z)
+    local sx, sy, s = HealOverlay.place(project, p, scale)
     if sx then
       local quad = quads[p.kind == "monitor" and 1 or 2]
-      local top = sy - p.ink.y * scale
+      local top = sy - p.ink.y * s
       if p.flip then
-        love.graphics.draw(img, quad, sx + p.ink.x * scale, top, 0, -scale, scale)
+        love.graphics.draw(img, quad, sx + p.ink.x * s, top, 0, -s, s)
       else
-        love.graphics.draw(img, quad, sx - p.ink.x * scale, top, 0, scale, scale)
+        love.graphics.draw(img, quad, sx - p.ink.x * s, top, 0, s, s)
       end
     end
   end

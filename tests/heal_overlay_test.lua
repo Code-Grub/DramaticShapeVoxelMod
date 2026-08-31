@@ -153,6 +153,52 @@ if monitor then
       :format(tostring(monitor.z), tostring(flatY)))
 end
 
+-- ------- and how big it draws, which is a separate question
+--
+-- The orbit frames exactly `vh` world pixels, so the flat renderer's own
+-- scale is very nearly right there.  1ST and 3RD ride a placed camera whose
+-- framing comes from its fov and how far the eye stands, and a world pixel
+-- draws about 3.8x and 1.45x bigger than that scale respectively -- which is
+-- what shrank the balls and the monitor to a quarter and two thirds size on
+-- those rungs.  `place` measures the size off the projection instead, so
+-- these run it against projections that stand in for each case.
+
+local target = HealOverlay.points(ha)[2]      -- a ball on the front panel
+
+-- a camera that magnifies the world k times, whatever the flat scale says
+local function magnify(k)
+  return function(x, h) return x * k, (100 - h) * k end
+end
+
+local sx, sy, s = HealOverlay.place(magnify(4), target, 1)
+T.eq(sx, target.x * 4, "the piece lands where the projection puts it")
+T.eq(sy, (100 - target.h) * 4, "...on both axes")
+T.eq(s, 4, "a world pixel is measured off the projection, not taken from the "
+        .. "flat renderer's scale (the 1ST/3RD shrink)")
+T.eq(select(3, HealOverlay.place(magnify(1), target, 1)), 1,
+  "and a camera that agrees with the flat scale is left alone")
+
+-- seen along the machine, the east step collapses but the up step does not
+local function edgeOn(k)
+  return function(x, h, z) return z * k, (100 - h) * k end
+end
+T.eq(select(3, HealOverlay.place(edgeOn(5), target, 1)), 5,
+  "an edge-on view sizes off the up step rather than shrinking to nothing")
+
+-- a projection with nothing to say about the neighbours still has to draw
+local function centreOnly(p)
+  return function(x, h)
+    if x == p.x and h == p.h then return 10, 20 end
+    return nil
+  end
+end
+local cx, cy, cs = HealOverlay.place(centreOnly(target), target, 7)
+T.eq(cx, 10, "a centre-only projection still places the piece")
+T.eq(cs, 7, "...and falls back to the flat scale for its size")
+
+T.eq(HealOverlay.place(function() return nil end, target, 1), nil,
+  "a piece behind the camera is not drawn at all")
+
 -- lit balls track the party, and nothing is drawn before the first one lights
 T.eq(#HealOverlay.points({ px = 48, py = 48, balls = 6, lit = 0 }), 1,
   "before any ball lights, only the monitor is drawn")
