@@ -113,6 +113,7 @@ local FirstPerson = V.require("FirstPerson")
 local FreeMove = V.require("FreeMove")
 local PoisonFlash = V.require("PoisonFlash")
 local MomHealFlash = V.require("MomHealFlash")
+local HealOverlay = V.require("HealOverlay")
 local TransformCompat = V.require("TransformCompat")
 local VoxelCompanion = V.require("VoxelCompanion")
 local CompanionLifecycle = V.require("CompanionLifecycle")
@@ -360,9 +361,36 @@ mod.content.render_pipelines:register("voxel", {
       -- else -- so the scale goes up with it, or the "!" bubble lands the
       -- right place at half the size.  project() already answers in canvas
       -- pixels, so only the scale needs saying.
-      ctx.drawFx(function(wx, wy) return Voxel3D.project(wx, 0, wy) end,
-                 ctx.scale * AntiAlias.factor())
+      local scale = ctx.scale * AntiAlias.factor()
+      -- Every field FX but one is anchored to the ground point of the thing
+      -- it belongs to -- the character wearing the "!", the cell the dust
+      -- puffs on -- so its flat closure lands unchanged through this.  The
+      -- heal machine's is not: it is anchored to the PLAYER, three tiles from
+      -- the art it paints, and slid rigidly onto that one point.  A camera
+      -- with any pitch foreshortens that lever arm, so the balls and the
+      -- monitor float off the cabinet.  Hide it from drawFx -- both the
+      -- dispatch and fxHeal itself read state.healAnim -- and put its pieces
+      -- on the machine's own surfaces instead.
+      --
+      -- healAnim goes back whatever drawFx does with the frame: the heal
+      -- script is waiting on that record to count its jingle out, and losing
+      -- it would strand the player at the counter.
+      local state = ctx.state
+      local healAnim = state and state.healAnim
+      if healAnim then state.healAnim = nil end
+      local drawn, err = pcall(ctx.drawFx,
+                               function(wx, wy) return Voxel3D.project(wx, 0, wy) end,
+                               scale)
+      if healAnim then
+        state.healAnim = healAnim
+        -- cosmetic, and last: a fault here must not retire the pipeline and
+        -- drop the whole world back to 2D mid-heal
+        if not pcall(HealOverlay.draw, healAnim, Voxel3D.project, scale, ctx) then
+          love.graphics.setShader()
+        end
+      end
       Voxel3D.endOverlay()
+      if not drawn then error(err, 0) end
     end
     -- and back to the window's own size, which is what the engine composites
     -- one canvas pixel to one display pixel.  A pass-through when AA is off.
