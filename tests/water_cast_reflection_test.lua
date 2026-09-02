@@ -71,6 +71,7 @@ end
 -- camera, then flipped about its own feet.
 
 local Mat4 = V.require("Mat4")
+local Water = V.require("Water")
 
 local function apply(m, x, y, z)
   return m[1] * x + m[2] * y + m[3] * z + m[4],
@@ -90,43 +91,47 @@ T.eq(fz, -4, "and z")
 -- the whole reflected transform, as billboardMatrix composes it
 local PLANE = -2
 local function reflected(px, py, y)
-  return Mat4.mul(Mat4.billboard(px, py, 2 * PLANE - y, 0, 0, false), flip)
+  return Mat4.mul(
+    Mat4.billboard(px, py, 2 * PLANE - y + Water.CAST_RAISE, 0, 0, false),
+    flip)
 end
 
 -- feet: the mesh stands on its own y = 0, so that vertex lands on the anchor
 local _, feet = apply(reflected(0, 0, 6), 0, 0, 0)
-T.eq(feet, 2 * PLANE - 6, "the reflected feet sit at the mirrored height")
+T.eq(feet, 2 * PLANE - 6 + Water.CAST_RAISE,
+  "the reflected feet sit at the mirrored height, lifted by the raise")
 
 -- and the body hangs DOWN from there rather than standing up
 local _, head = apply(reflected(0, 0, 6), 0, 10, 0)
 T.check(head < feet, "the card hangs downward, so it reads upside down")
-T.eq(head, 2 * PLANE - 6 - 10, "by exactly its own height")
+T.eq(head, 2 * PLANE - 6 + Water.CAST_RAISE - 10,
+  "by exactly its own height")
 
 -- a character standing ON the plane is its own reflection's anchor, which is
 -- what keeps the waterline agreeing
 local _, onPlane = apply(reflected(0, 0, PLANE), 0, 0, 0)
-T.eq(onPlane, PLANE, "a card standing on the plane is anchored on it")
+T.eq(onPlane, PLANE + Water.CAST_RAISE,
+  "a card standing on the plane is anchored on it, plus the raise")
 
 -- the flip must not shrink the card: a reflection is the same size as the
 -- thing it reflects, which is the whole reason the camera is not mirrored
 local upright = Mat4.billboard(0, 0, 0, 0, 0, false)
 local _, uy = apply(upright, 0, 10, 0)
 local _, ry = apply(reflected(0, 0, 0), 0, 10, 0)
-T.eq(math.abs(uy - 0), math.abs(ry - (2 * PLANE)),
+T.eq(math.abs(uy - 0), math.abs(ry - (2 * PLANE + Water.CAST_RAISE)),
   "the reflected card is the same height as the upright one")
 
 -- ------- surfing, where the player stands ON the water
 --
 -- The case that cannot be reached without Surf, so it is pinned here
--- instead. Two facts decide it and both live outside this file:
+-- instead. The numbers were measured in a real run rather than assumed:
+-- groundAt returns 0 on a water cell, the surf bob spans -1..0, and the
+-- water plane is -2, so the card's feet are at 0 and the player floats two
+-- pixels over the surface they are sitting on.
 --
---   water is a RECESSED class, so its surface is drawn below ground level
---   groundAt returns `s.h > 0 and s.h or 0`, so a recessed class does not
---   lower what stands on it -- a surfing player floats at ground level
---
--- Together they put the player a little ABOVE the surface rather than on
--- it, and the reflection has to answer for that gap rather than pretend it
--- is not there.
+-- Water is a recessed class and groundAt returns `s.h > 0 and s.h or 0`, so
+-- a recessed class does not lower what stands on it. That float is where
+-- the gap comes from.
 
 local TileShape = V.require("TileShape")
 local plane = TileShape.heights().water
@@ -136,37 +141,46 @@ T.check(plane < 0, "water is recessed below the ground it is cut into")
 -- halves of this file cannot drift apart if the shipped heights change
 T.eq(plane, PLANE, "the shipped water height is the plane the cards use")
 
--- a surfing player floats at ground level, which is `plane` above the water
 local FLOAT = 0 - plane
-local anchor = 2 * plane - 0
-T.eq(anchor, plane - FLOAT,
-  "the reflection hangs as far below the surface as the player floats above")
-T.check(anchor < plane, "so it is under the water, not standing on it")
+T.eq(FLOAT, 2, "a surfing player floats two pixels over the surface")
 
--- and the clear water between the two is twice the float, which is honest
--- mirror geometry rather than a fault: it is what standing above a surface
--- looks like reflected in it
-T.eq(0 - anchor, 2 * FLOAT,
-  "the gap between feet and reflection is twice the float height")
+-- A TRUE mirror doubles that float into open water between the two, which
+-- is correct and looks wrong. CAST_RAISE is what closes it.
+local function anchorFor(lift, raise)
+  return 2 * plane - (0 + lift) + raise
+end
 
--- the surf BOB, which pose() puts on the visual y. A mirror moves the
--- other way, so the two separate and close rather than sliding together.
-local function anchorFor(lift) return 2 * plane - (0 + lift) end
-T.check(anchorFor(2) < anchorFor(0),
+T.eq(anchorFor(0, 0), plane - FLOAT,
+  "an unraised reflection hangs a full float below the surface")
+T.eq(0 - anchorFor(0, 0), 2 * FLOAT,
+  "so the clear water between feet and reflection is twice the float")
+
+-- the raise walks it back up, one world pixel at a time
+T.eq(anchorFor(0, 2), plane, "raised by the float, it hangs from the waterline")
+T.eq(anchorFor(0, 2 * FLOAT), 0,
+  "raised by twice the float, it is joined at the character's own feet")
+T.check(Water.CAST_RAISE >= 2 * FLOAT,
+  "the shipped raise closes the geometric gap for a surfing player")
+
+-- Past that it compensates for the sprite's own bottom padding, which the
+-- card knows nothing about: whatever empty space the art carries under
+-- itself shows once upright and once flipped. That is why the shipped value
+-- is a measured number rather than a derived one.
+
+-- the bob still mirrors, whatever the raise is: a mirror moves the other
+-- way, so the pair open and close rather than sliding together
+T.check(anchorFor(2, Water.CAST_RAISE) < anchorFor(0, Water.CAST_RAISE),
   "bobbing up drives the reflection down")
-T.check(anchorFor(0) < anchorFor(-2),
-  "and bobbing down brings it back up")
-T.eq(anchorFor(0) - anchorFor(2), 2,
+T.eq(anchorFor(0, Water.CAST_RAISE) - anchorFor(2, Water.CAST_RAISE), 2,
   "by exactly the bob, so the pair open and close at twice its rate")
 
--- the reflection still hangs downward from wherever the bob leaves it
+-- and it still hangs downward from wherever the bob leaves it
 local _, bobbedFeet = apply(reflected(0, 0, 1), 0, 0, 0)
 local _, bobbedHead = apply(reflected(0, 0, 1), 0, 10, 0)
 T.check(bobbedHead < bobbedFeet, "upside down at every point of the bob")
 
 -- ------- the shader
 
-local Water = V.require("Water")
 local full = Water._source(false, false)
 local sky = Water._source(false, true)
 

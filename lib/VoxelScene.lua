@@ -301,9 +301,11 @@ local function billboardMatrix(px, py, y, mirror)
   local pitch = (Voxel.angle - math.pi / 2) * (1 - b)
   if reflectPlane then
     -- the mesh stands on its own y = 0, so scaling local y by -1 hangs it
-    -- from the anchor instead of standing it on it
+    -- from the anchor instead of standing it on it. CAST_RAISE lifts the
+    -- anchor off the true mirror toward the surface; see Water.
     return Mat4.mul(
-      Mat4.billboard(px, py, 2 * reflectPlane - y, yaw, pitch, mirror),
+      Mat4.billboard(px, py, 2 * reflectPlane - y + Water.CAST_RAISE,
+                     yaw, pitch, mirror),
       Mat4.scale(1, -1, 1))
   end
   return Mat4.billboard(px, py, y, yaw, pitch, mirror)

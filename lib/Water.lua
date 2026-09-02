@@ -375,6 +375,27 @@ Water.CAST_ALPHA = 0.55
 -- than a few thousandths tears the figure apart rather than disturbing it.
 Water.CAST_WOBBLE = 0.006
 
+-- How far the reflection is lifted from where a true mirror would put it,
+-- in world pixels, toward the surface.
+--
+-- An honest mirror leaves a gap, and surfing is where it shows. Water is a
+-- recessed class and groundAt does not lower what stands on a recessed one,
+-- so a surfing player floats at ground level, two pixels over a surface
+-- drawn at -2. Mirrored, the reflection sits two pixels under it, and the
+-- four between them are open water: correct, and it reads as a reflection
+-- floating loose rather than one belonging to anybody.
+--
+-- Worse than the four, and the reason this is a dial rather than a fix: a
+-- sprite's art does not sit flush with the bottom of its card. Whatever
+-- empty space it carries there appears ABOVE the card upright and BELOW the
+-- anchor flipped, so the visible gap is the geometric one plus twice the
+-- padding, and no amount of correct arithmetic closes it.
+--
+--   0   a true mirror
+--   2   the reflection hangs from the waterline
+--   4   joined at the character's own feet
+Water.CAST_RAISE = 6
+
 -- THE MARCH. Steps are in world pixels and lengthen as they go: near the
 -- surface the reflection needs precision (a shoreline is a few pixels), far
 -- from it reach matters more than accuracy, and a geometric ramp gets both
