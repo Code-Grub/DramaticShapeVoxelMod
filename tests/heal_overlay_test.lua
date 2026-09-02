@@ -249,7 +249,34 @@ T.eq(cs, 7, "...and falls back to the flat scale for its size")
 T.eq(HealOverlay.place(function() return nil end, target, 1), nil,
   "a piece behind the camera is not drawn at all")
 
--- ------- and whether it is behind something, which is a third question
+-- ------- the order they are painted in, which decides the overlap
+--
+-- The rows overlap by a pixel or two and nothing here writes depth, so which
+-- ball wins is settled purely by draw order.  points() hands them back in
+-- the OAM's own order, top row first, and draw walks that list with ipairs,
+-- so the bottom row is painted last and sits in front with the upper rows
+-- tucked behind it.  That is the reading the art wants: further up the
+-- machine is further back.
+--
+-- Sorting these by projected depth would invert it.  On the orbit rungs the
+-- eye is above the machine, and on a vertical panel that puts the TOP row
+-- nearer the camera.  So the order has to stay the drawing's rather than the
+-- camera's, and this is here to say so if anyone reaches for a sort.
+local painted = {}
+for _, p in ipairs(HealOverlay.points({ px = 48, py = 48, balls = 6, lit = 6 })) do
+  if p.kind == "ball" then painted[#painted + 1] = p.h end
+end
+local descending = true
+for i = 2, #painted do
+  if painted[i] > painted[i - 1] then descending = false end
+end
+T.check(descending,
+  "the balls are handed back top row first, so the bottom row paints last")
+T.check(painted[#painted] < painted[1],
+  ("the last ball painted is the lowest on the machine (%d against %d)")
+    :format(painted[#painted], painted[1]))
+
+-- ------- and whether it is behind something, which is a fourth question
 --
 -- The overlay composites flat with the depth test off, so it painted over
 -- the counter the player is standing at.  It now tests each fragment against
@@ -297,7 +324,9 @@ T.eq(select(3, HealOverlay.depthPoint(onPanel,
 -- Poke Balls on a fully coloured machine.  objPalette picks the pack's own
 -- OBJ palette for it.
 
-local pack = dofile(ROOT .. "/data/palettes_gbc.lua")
+-- an ENGINE file, so relative to the repo root this runs from, not to
+-- ROOT, which is where the MOD lives and is not the same place
+local pack = dofile("data/palettes_gbc.lua")
 local palette, group = HealOverlay.objPalette(pack and pack.world)
 T.check(palette ~= nil, "the ADVANCED pack yields an object palette")
 T.eq(group, pack.world.spriteAssignment[0],
