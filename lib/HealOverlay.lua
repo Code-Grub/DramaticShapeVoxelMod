@@ -77,6 +77,27 @@ local BALLS = { { 40, 27 }, { 48, 27, true },
 local MONITOR_INK = { x = 4, y = 3.5 }
 local BALL_INK = { x = 5, y = 5 }
 
+-- How far the whole ball group stands off the drawing's own reading, in
+-- world pixels, applied equally to all six.
+--
+-- The drawing puts them lower than the machine wants them here.  The
+-- cabinet's dark front panel is drawn rows 17..28, so its last row extrudes
+-- to height 3 and the cream lip at the machine's foot takes rows 29..30
+-- below it, while the ball art's ink reaches down to height 2 -- a pixel
+-- past the panel, hanging over the lip.
+--
+-- 1 to 3 is the whole usable range.  Below 1 the bottom row hangs over that
+-- lip; above 3 the top row's ink reaches into the console's screen, the
+-- inset drawn rows 6..8 whose bottom edge stands at height 22, covering the
+-- very surface the monitor tile is drawn on.  Inside the range it is a
+-- matter of looks, and 2 is the one that reads right on the machine.
+--
+-- It moves the WORLD point only, not the ink's place inside its tile --
+-- shifting BALL_INK instead would cancel itself out, because the blit
+-- offsets from the same number the height is measured with.
+HealOverlay.PANEL_ROWS = { 17, 28 }
+HealOverlay.BALL_LIFT = 2
+
 -- FlashSprite8Times XORs rOBP1 ($28): the sprites never disappear, the two
 -- middle shades swap in place.  ha.visible == false is that half of the beat.
 local FLASH_MAP = { [0] = 0, [1] = 2, [2] = 1, [3] = 3 }
@@ -119,7 +140,7 @@ end
 --   x, h, z   the point the piece's ink is centred on -- east, up, south
 --   flip   the right-hand ball column, drawn mirrored like its OAM
 --   ink    where that centre lies inside the 8x8 tile, for the blit
-local function piece(kind, px0, py0, oam, ink, plane)
+local function piece(kind, px0, py0, oam, ink, plane, lift)
   local flip = oam[3] == true
   local gx = oam[1] + GRID_DX
   local row = oam[2] + GRID_DY
@@ -128,7 +149,7 @@ local function piece(kind, px0, py0, oam, ink, plane)
     -- a mirrored tile draws leftward, so its ink centre reflects across the
     -- tile's own width rather than staying put
     x = px0 + gx + (flip and (8 - ink.x) or ink.x),
-    h = GROUND_ROW - (row + ink.y),
+    h = GROUND_ROW - (row + ink.y) + (lift or 0),
     z = py0 + plane,
     flip = flip,
     ink = ink,
@@ -140,7 +161,8 @@ function HealOverlay.points(ha)
   local out = { piece("monitor", px0, py0, MONITOR, MONITOR_INK, CONSOLE_Z) }
   local lit = math.max(0, math.min(tonumber(ha.lit) or 0, #BALLS))
   for i = 1, lit do
-    out[#out + 1] = piece("ball", px0, py0, BALLS[i], BALL_INK, FRONT_Z)
+    out[#out + 1] = piece("ball", px0, py0, BALLS[i], BALL_INK, FRONT_Z,
+                          HealOverlay.BALL_LIFT)
   end
   return out
 end

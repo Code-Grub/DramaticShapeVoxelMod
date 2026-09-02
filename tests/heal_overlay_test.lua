@@ -124,14 +124,64 @@ for i, b in ipairs(balls) do
   T.check(b.x > px0 + machine.desk.x[1] and b.x < px0 + machine.desk.x[2] + 1,
     ("ball %d stands within the cabinet's own columns (got %s)")
       :format(i, tostring(b.x)))
-  T.check(b.h > 0 and b.h <= plane,
-    ("ball %d is on the panel, not through the floor or the lid (got %s)")
-      :format(i, tostring(b.h)))
+  -- the group rides above the cabinet lid on purpose (see BALL_LIFT), so the
+  -- bounds that matter are the panel below and the console screen above,
+  -- both checked to the pixel further down
+  T.check(b.h > 0,
+    ("ball %d stands above the floor (got %s)"):format(i, tostring(b.h)))
   seenX[b.x] = true
 end
 local columns = 0
 for _ in pairs(seenX) do columns = columns + 1 end
 T.eq(columns, 2, "the balls fill two mirrored columns")
+
+-- ------- and they sit ON the panel, not over the lip below it
+--
+-- The ball art's ink is 6 rows of its tile, so a ball reaches 3 either side
+-- of the point it is centred on.  The dark front panel's last drawn row
+-- extrudes to GROUND_ROW - 28, and rows 29..30 under it are the cream lip at
+-- the machine's foot.  Unlifted, the lowest ball's ink lands one pixel into
+-- that lip and hangs over the cabinet.
+-- the OAM's own row pitch, which the lift must carry rather than squash
+local BALLS_PITCH = 5
+
+-- A FULL party, because the bottom row is the one at risk and a three-ball
+-- fixture never lights it. `balls` above is deliberately a partial party, so
+-- these bounds get their own six.
+local full = {}
+for _, p in ipairs(HealOverlay.points({ px = 48, py = 48, balls = 6, lit = 6 })) do
+  if p.kind == "ball" then full[#full + 1] = p end
+end
+T.eq(#full, 6, "a full party lights all six for the bounds below")
+
+local panelFloor = machine.desk.base[2] - HealOverlay.PANEL_ROWS[2]
+local lowest = math.huge
+for _, b in ipairs(full) do lowest = math.min(lowest, b.h) end
+T.check(lowest - 3 >= panelFloor,
+  ("the lowest ball's ink stays on the panel, whose last row stands at %d "
+   .. "(ink reaches %d)"):format(panelFloor, lowest - 3))
+
+-- The group travels as one, so the pitch the OAM sets is untouched: three
+-- rows, evenly spaced, however far up they sit.
+local seen = {}
+for _, b in ipairs(full) do seen[b.h] = true end
+local rows = {}
+for h in pairs(seen) do rows[#rows + 1] = h end
+table.sort(rows)
+T.eq(#rows, 3, "a full party stands on three rows")
+T.eq(rows[2] - rows[1], BALLS_PITCH, "evenly spaced, at the pitch the OAM sets")
+T.eq(rows[3] - rows[2], BALLS_PITCH,
+  "...and the lift carries the group without squashing it")
+
+-- The ceiling: the console's screen is the inset drawn rows 6..8, and the
+-- balls must stop under it.  Climbing into it would cover the very surface
+-- the monitor tile is drawn on.
+local screenFloor = machine.desk.base[2] - (console.inset.rows[2] + 1)
+local highest = -math.huge
+for _, b in ipairs(full) do highest = math.max(highest, b.h) end
+T.check(highest + 3 < screenFloor,
+  ("the top pair stays clear of the console screen, whose bottom edge is at "
+   .. "%d (ink reaches %d)"):format(screenFloor, highest + 3))
 
 -- and the flip survives: the right column is the left one's OAM_XFLIP
 local flipped = 0
