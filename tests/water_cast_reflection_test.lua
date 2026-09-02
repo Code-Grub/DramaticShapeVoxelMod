@@ -24,6 +24,11 @@ local V = {
     id = "BATTLE_ART_VOXEL_FORK",
     options = { get = function() return nil end },
   },
+  -- the SHIPPED heights, not the fallbacks: the water plane this reflection
+  -- is taken in is whatever data/voxel_heights.lua actually says
+  data = function(name)
+    return assert(loadfile(root .. "/data/" .. name .. ".lua"))()
+  end,
 }
 
 local fakes = {
@@ -109,6 +114,55 @@ local _, uy = apply(upright, 0, 10, 0)
 local _, ry = apply(reflected(0, 0, 0), 0, 10, 0)
 T.eq(math.abs(uy - 0), math.abs(ry - (2 * PLANE)),
   "the reflected card is the same height as the upright one")
+
+-- ------- surfing, where the player stands ON the water
+--
+-- The case that cannot be reached without Surf, so it is pinned here
+-- instead. Two facts decide it and both live outside this file:
+--
+--   water is a RECESSED class, so its surface is drawn below ground level
+--   groundAt returns `s.h > 0 and s.h or 0`, so a recessed class does not
+--   lower what stands on it -- a surfing player floats at ground level
+--
+-- Together they put the player a little ABOVE the surface rather than on
+-- it, and the reflection has to answer for that gap rather than pretend it
+-- is not there.
+
+local TileShape = V.require("TileShape")
+local plane = TileShape.heights().water
+
+T.check(plane < 0, "water is recessed below the ground it is cut into")
+-- and it is the number the card section above reflected in, so the two
+-- halves of this file cannot drift apart if the shipped heights change
+T.eq(plane, PLANE, "the shipped water height is the plane the cards use")
+
+-- a surfing player floats at ground level, which is `plane` above the water
+local FLOAT = 0 - plane
+local anchor = 2 * plane - 0
+T.eq(anchor, plane - FLOAT,
+  "the reflection hangs as far below the surface as the player floats above")
+T.check(anchor < plane, "so it is under the water, not standing on it")
+
+-- and the clear water between the two is twice the float, which is honest
+-- mirror geometry rather than a fault: it is what standing above a surface
+-- looks like reflected in it
+T.eq(0 - anchor, 2 * FLOAT,
+  "the gap between feet and reflection is twice the float height")
+
+-- the surf BOB, which pose() puts on the visual y. A mirror moves the
+-- other way, so the two separate and close rather than sliding together.
+local function anchorFor(lift) return 2 * plane - (0 + lift) end
+T.check(anchorFor(2) < anchorFor(0),
+  "bobbing up drives the reflection down")
+T.check(anchorFor(0) < anchorFor(-2),
+  "and bobbing down brings it back up")
+T.eq(anchorFor(0) - anchorFor(2), 2,
+  "by exactly the bob, so the pair open and close at twice its rate")
+
+-- the reflection still hangs downward from wherever the bob leaves it
+local _, bobbedFeet = apply(reflected(0, 0, 1), 0, 0, 0)
+local _, bobbedHead = apply(reflected(0, 0, 1), 0, 10, 0)
+T.check(bobbedHead < bobbedFeet, "upside down at every point of the bob")
 
 -- ------- the shader
 
