@@ -164,40 +164,6 @@ end
 -- skipping ~a million short-lived Lua tables per route and LOVE's slow
 -- table-by-table vertex upload.
 
-local function newTableSink()
-  local verts, indices, quads = {}, {}, 0
-  local spans = newSpans(function() return #verts end)
-  return {
-    own = spans.own,
-    spans = spans.runs,
-    push = function(c, uv, shade)
-      local flat = type(shade) ~= "table"
-      for i = 1, 4 do
-        local cc, t = c[i], uv[i]
-        verts[#verts + 1] = { cc[1], cc[2], cc[3], t[1], t[2],
-                              flat and shade or shade[i] }
-      end
-      Voxel3D.pushQuad(indices, quads)
-      quads = quads + 1
-    end,
-    results = function()
-      spans.close()
-      return verts, indices, quads
-    end,
-    finish = function()
-      spans.close()
-      return Voxel3D.newMesh(verts, indices)
-    end,
-  }
-end
-
-local TRI_ORDER = { 1, 2, 3, 1, 3, 4 }
-
--- Sandboxed engines no longer expose FFI to mod-authored chunks. LOVE's own
--- binary packer still gives newMesh the same tightly packed six-float stream,
--- without the historical fallback's table per vertex and million-table heap
--- pressure on large routes. Strings are folded into moderate chunks as they
--- are emitted, then uploaded cooperatively just like the FFI path.
 -- ------------------------------------------------------------------ spans
 --
 -- Records where each prop a sink was handed ended up in the vertex stream.
@@ -236,6 +202,40 @@ local function newSpans(count)
   }
 end
 
+local function newTableSink()
+  local verts, indices, quads = {}, {}, 0
+  local spans = newSpans(function() return #verts end)
+  return {
+    own = spans.own,
+    spans = spans.runs,
+    push = function(c, uv, shade)
+      local flat = type(shade) ~= "table"
+      for i = 1, 4 do
+        local cc, t = c[i], uv[i]
+        verts[#verts + 1] = { cc[1], cc[2], cc[3], t[1], t[2],
+                              flat and shade or shade[i] }
+      end
+      Voxel3D.pushQuad(indices, quads)
+      quads = quads + 1
+    end,
+    results = function()
+      spans.close()
+      return verts, indices, quads
+    end,
+    finish = function()
+      spans.close()
+      return Voxel3D.newMesh(verts, indices)
+    end,
+  }
+end
+
+local TRI_ORDER = { 1, 2, 3, 1, 3, 4 }
+
+-- Sandboxed engines no longer expose FFI to mod-authored chunks. LOVE's own
+-- binary packer still gives newMesh the same tightly packed six-float stream,
+-- without the historical fallback's table per vertex and million-table heap
+-- pressure on large routes. Strings are folded into moderate chunks as they
+-- are emitted, then uploaded cooperatively just like the FFI path.
 local PACKED_VERTEX = "<" .. string.rep("f", 6 * 6)
 local PACKED_VERTEX_BYTES = 6 * 4
 local PACKED_QUADS_PER_CHUNK = 4096
@@ -1419,6 +1419,7 @@ local function releaseEntry(c)
     if mesh and mesh.release then pcall(mesh.release, mesh) end
     c[slot] = nil
     c[slot .. "Spans"] = nil
+    c[slot .. "Masks"] = nil
   end
   releaseVisualMeshes(c.fullVisuals)
   releaseVisualMeshes(c.bodyVisuals)
@@ -1572,6 +1573,9 @@ local function runJob(job)
   swapVisualSlot(c, job.slot, visualMeshes)
   -- the runs describe THIS mesh, so they land and die with it
   c[job.slot .. "Spans"] = mesh and spans or nil
+  -- and the masks it was built against, so a rebuild this file queues for
+  -- itself (queueRepairs) asks for the same variant a caller would
+  c[job.slot .. "Masks"] = mesh and job.masks or nil
   if c.stale then
     c.stale[job.slot] = nil
     if not (c.stale.full or c.stale.body or c.stale.aux) then
@@ -1933,6 +1937,35 @@ function ChunkMesher.dropBlock(mapId, bx, by, map, before)
   return n
 end
 
+-- Queue the rebuild a block edit owes, for every variant of the map.
+--
+-- refresh() marks each slot stale, but staleness is LAZY: the rebuild runs
+-- when something asks for the slot. The scene asks for FULL for the map the
+-- player stands on and BODY only for that map's neighbours, so standing in a
+-- town nothing asks for its body mesh for as long as the player is in it.
+--
+-- That was harmless while a stale mesh merely showed an older version of the
+-- map. It stopped being harmless when Cut started editing the mesh on screen:
+-- the felled tree is taken out of BOTH variants, the body one is then never
+-- asked for, and Gen 1 grows the tree back when the map is re-entered
+-- (OverworldState:setMap restores cutBlocks). The block came back, and its
+-- collision with it, while that mesh still had a hole where the tree stood --
+-- a tree that blocks the way and is not drawn.
+--
+-- So repair every slot the edit invalidated rather than hope for a caller.
+-- This costs nothing when one comes: request() keeps a single job per slot,
+-- and the drawn slot's own request raises its priority on the same frame.
+local function queueRepairs(c, map)
+  if not map then return end
+  for _, slot in ipairs({ "full", "body" }) do
+    if c[slot] ~= nil then
+      -- the masks the slot was built with, and the background priority: a
+      -- repair must never take a slice from what is on screen
+      ChunkMesher.request(map, slot == "body", c[slot .. "Masks"], 0)
+    end
+  end
+end
+
 -- Rebuild a map's meshes IN PLACE: the stale meshes keep drawing while
 -- replacements cook, and each slot swaps as its build lands. This is
 -- the block-edit path (a cut tree, a door stamp) -- invalidate() drops
@@ -1967,6 +2000,7 @@ function ChunkMesher.refresh(mapId, bx, by, map, before)
   c.stale = { aux = true,
               full = (c.full ~= nil) or nil,
               body = (c.body ~= nil) or nil }
+  queueRepairs(c, map)
 end
 
 -- Evict everything outside `live` (a set of map ids): far maps' meshes
